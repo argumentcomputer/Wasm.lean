@@ -10,15 +10,18 @@
       url = "github:numtide/flake-utils";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # A lean dependency
     lean-ipld = {
       url = "github:yatima-inc/lean-ipld";
       # Compile dependencies with the same lean version
       inputs.lean.follows = "lean";
     };
+    parsec = {
+      url = "github:yatima-inc/Parsec.lean";
+      inputs.lean.follows = "lean";
+    };
   };
 
-  outputs = { self, lean, flake-utils, nixpkgs, lean-ipld }:
+  outputs = { self, lean, flake-utils, nixpkgs, lean-ipld, parsec }:
     let
       supportedSystems = [
         "aarch64-linux"
@@ -39,6 +42,7 @@
           deps = with leanPkgs; [
             Init
             Lean
+            parsec.project.${system}
             # lean-ipld.project.${system}
           ];
           # Where the lean files are located

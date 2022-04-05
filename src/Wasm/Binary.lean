@@ -1,4 +1,5 @@
-import Radiya.Wasm.Expr
+import Wasm.Expr
+import Wasm.Serialize
 
 namespace Wasm
 
@@ -19,15 +20,8 @@ inductive SectionType
   | dataSection
   deriving BEq
 
-/-
-Serialize a Type to Wasm bytecode.
--/
-class Serialize (t : Type) where
-  put : {M : Type → Type} → [Monad M] → [MonadExcept M] → (t : T) → M Unit
-  get : {M : Type → Type} → [Monad M] → [MonadExcept M] → M T
-
 instance : Serialize SectionType where
-    put section := putWord8 $ fromIntegral $ fromEnum section
+    put (section : SectionType) :=  putWord8 <| fromIntegral <| fromEnum section
     get := do
         op <- fromIntegral `fmap` getWord8
         if op <= fromEnum DataSection
@@ -35,12 +29,13 @@ instance : Serialize SectionType where
         else fail "Unexpected byte in section type position"
 
 instance : Serialize ValueType where
-    put I32 = putWord8 0x7F
-    put I64 = putWord8 0x7E
-    put F32 = putWord8 0x7D
-    put F64 = putWord8 0x7C
+    put : ValueType → M Unit
+     | I32 => putWord8 0x7F
+     | I64 => putWord8 0x7E
+     | F32 => putWord8 0x7D
+     | F64 => putWord8 0x7C
 
-    get = do
+    get := do
         op <- getWord8
         case op of
             0x7F -> return I32
@@ -132,21 +127,22 @@ instance Serialize Memory where
     put (Memory limit) = put limit
     get = Memory <$> get
 
-newtype Index = Index { unIndex :: Natural } deriving (Show, Eq)
+newtype Index = Index { unIndex :: Nat } deriving (Show, Eq)
 
 instance Serialize Index where
     put (Index idx) = putULEB128 idx
     get = Index <$> getULEB128 32
 
 instance Serialize MemArg where
-    put MemArg { align, offset } = putULEB128 align >> putULEB128 offset
+    put memArg := putULEB128 memArg.align >> putULEB128 memArg.offset
     get = do
         align <- getULEB128 32
         offset <- getULEB128 32
         return $ MemArg { align, offset }
 
-instance Serialize (Instruction Natural) where
-    put Unreachable = putWord8 0x00
+instance Serialize (Instruction Nat) where
+    put 
+    | Unreachable = putWord8 0x00
     put Nop = putWord8 0x01
     put (Block blockType body) = do
         putWord8 0x02
@@ -617,7 +613,7 @@ instance Serialize ElemSegment where
         putVec $ map Index funcIndexes
     get = ElemSegment <$> getULEB128 32 <*> getExpression <*> (map unIndex <$> getVec)
 
-data LocalTypeRange = LocalTypeRange Natural ValueType deriving (Show, Eq)
+data LocalTypeRange = LocalTypeRange Nat ValueType deriving (Show, Eq)
 
 instance Serialize LocalTypeRange where
     put (LocalTypeRange len valType) = do
@@ -633,7 +629,7 @@ instance Serialize Function where
         putULEB128 $ BS.length bs
         putByteString bs
     get = do
-        _size <- getULEB128 32 :: Get Natural
+        _size <- getULEB128 32 :: Get Nat
         localRanges <- getVec
         let localLen = sum $ map (\(LocalTypeRange n _) -> n) localRanges
         if localLen < 2^32 then return () else fail "too many locals"

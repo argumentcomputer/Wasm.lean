@@ -31,6 +31,21 @@
         "type": "github"
       }
     },
+    "flake-utils_10": {
+      "locked": {
+        "lastModified": 1648297722,
+        "narHash": "sha256-W+qlPsiZd8F3XkzXOzAoR+mpFqzm3ekQkJNa+PIh1BQ=",
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "rev": "0f8662f1319ad6abf89b3380dd2722369fc51ade",
+        "type": "github"
+      },
+      "original": {
+        "owner": "numtide",
+        "repo": "flake-utils",
+        "type": "github"
+      }
+    },
     "flake-utils_2": {
       "locked": {
         "lastModified": 1644229661,
@@ -161,11 +176,11 @@
         "temci": "temci"
       },
       "locked": {
-        "lastModified": 1648691282,
-        "narHash": "sha256-XWDUhOjUPPZwnWom5Dlu1kI8JR1Msfoevgnxt+4yFK4=",
+        "lastModified": 1648817598,
+        "narHash": "sha256-n3o4goP4aqnICAf12H0EnFTk5Too7eAIErcBpepVias=",
         "owner": "leanprover",
         "repo": "lean4",
-        "rev": "2bd04285f86b22fc44ce69a1846f81a569fc438b",
+        "rev": "92382ea47b28e4355e62aaef0222505f97377157",
         "type": "github"
       },
       "original": {
@@ -345,11 +360,11 @@
         "temci": "temci_2"
       },
       "locked": {
-        "lastModified": 1648691282,
-        "narHash": "sha256-XWDUhOjUPPZwnWom5Dlu1kI8JR1Msfoevgnxt+4yFK4=",
+        "lastModified": 1648817598,
+        "narHash": "sha256-n3o4goP4aqnICAf12H0EnFTk5Too7eAIErcBpepVias=",
         "owner": "leanprover",
         "repo": "lean4",
-        "rev": "2bd04285f86b22fc44ce69a1846f81a569fc438b",
+        "rev": "92382ea47b28e4355e62aaef0222505f97377157",
         "type": "github"
       },
       "original": {
@@ -368,11 +383,11 @@
         "temci": "temci_3"
       },
       "locked": {
-        "lastModified": 1648691282,
-        "narHash": "sha256-XWDUhOjUPPZwnWom5Dlu1kI8JR1Msfoevgnxt+4yFK4=",
+        "lastModified": 1648817598,
+        "narHash": "sha256-n3o4goP4aqnICAf12H0EnFTk5Too7eAIErcBpepVias=",
         "owner": "leanprover",
         "repo": "lean4",
-        "rev": "2bd04285f86b22fc44ce69a1846f81a569fc438b",
+        "rev": "92382ea47b28e4355e62aaef0222505f97377157",
         "type": "github"
       },
       "original": {
@@ -619,11 +634,11 @@
     },
     "nixpkgs_11": {
       "locked": {
-        "lastModified": 1648717359,
-        "narHash": "sha256-r27uaqWc94y83BkK97BCCvgEUKQe6mMrViqKd+XK56c=",
+        "lastModified": 1648819225,
+        "narHash": "sha256-7zWOh2zfbq2/Rikct4F8XJVGP4iaM1jHvgAVbSiT36g=",
         "owner": "nixos",
         "repo": "nixpkgs",
-        "rev": "fe9906cb4896d70d86452d76d11838025ffd6532",
+        "rev": "d625c265e32eea6a9600d28122383ef7cd0cb0a1",
         "type": "github"
       },
       "original": {
@@ -678,6 +693,22 @@
       }
     },
     "nixpkgs_15": {
+      "locked": {
+        "lastModified": 1648648646,
+        "narHash": "sha256-pHAq/GvsP7zRHkUTCs+4d31C0IEtTIuC6/TFASIA+zg=",
+        "owner": "nixos",
+        "repo": "nixpkgs",
+        "rev": "efea022d6fe0da84aa6613d4ddeafb80de713457",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nixos",
+        "ref": "nixos-21.11",
+        "repo": "nixpkgs",
+        "type": "github"
+      }
+    },
+    "nixpkgs_16": {
       "locked": {
         "lastModified": 1648648646,
         "narHash": "sha256-pHAq/GvsP7zRHkUTCs+4d31C0IEtTIuC6/TFASIA+zg=",
@@ -817,12 +848,35 @@
         "type": "github"
       }
     },
+    "parsec": {
+      "inputs": {
+        "flake-utils": "flake-utils_10",
+        "lean": [
+          "lean"
+        ],
+        "nixpkgs": "nixpkgs_16"
+      },
+      "locked": {
+        "lastModified": 1648822304,
+        "narHash": "sha256-zZa2bTzd20FvisOJzMOPpsUGSSZaVAUKAtQTRiknWdA=",
+        "owner": "yatima-inc",
+        "repo": "Parsec.lean",
+        "rev": "585e5b7674bfbf80e91b80812719907e4d1ccb9d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "yatima-inc",
+        "repo": "Parsec.lean",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
         "lean": "lean",
         "lean-ipld": "lean-ipld",
-        "nixpkgs": "nixpkgs_15"
+        "nixpkgs": "nixpkgs_15",
+        "parsec": "parsec"
       }
     },
     "temci": {

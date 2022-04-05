@@ -1,24 +1,24 @@
-
+import Wasm.Structure
 namespace Wasm
 
-def U32 := UInt32
-  deriving BEq
-def F32 := Float
-  deriving BEq
-def F64 := Float
-  deriving BEq
-def I32 := Int
-  deriving BEq
-def I64 := Int
-  deriving BEq
+-- def U32 := UInt32
+--   deriving BEq
+-- def F32 := Float
+--   deriving BEq
+-- def F64 := Float
+--   deriving BEq
+-- def I32 := Int
+--   deriving BEq
+-- def I64 := Int
+--   deriving BEq
 
 
-def Address := UInt64
-  deriving BEq
-def Size := UInt64
-  deriving BEq
-def Offset := Address
-  deriving BEq
+-- def Address := UInt64
+--   deriving BEq
+-- def Size := UInt64
+--   deriving BEq
+-- def Offset := Address
+--   deriving BEq
 
 inductive Value
   | VI32 : I32 → Value
