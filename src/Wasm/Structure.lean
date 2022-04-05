@@ -10,7 +10,20 @@ instance : BEq ByteArray where
 
 inductive BitSize := | BS32 | BS64 deriving Repr, BEq
 
+def Word32 := UInt32
+  deriving Repr, BEq
+
+def Word64 := UInt64
+  deriving Repr, BEq
+
+def Float := UInt32
+  deriving Repr, BEq
+
+def Double := UInt64
+  deriving Repr, BEq
+
 inductive IUnOp :=
+
     | IClz
     | ICtz
     | IPopcnt
@@ -131,12 +144,11 @@ inductive Instruction :=
     | I64Store32 : MemArg → Instruction
     | CurrentMemory : Instruction
     | GrowMemory : Instruction
-    -- TODO: The following contain undefined values
     -- Numeric instructions
-    -- | I32Const : Word32 → Instruction
-    -- | I64Const : Word64 → Instruction
-    -- | F32Const : Float → Instruction
-    -- | F64Const : Double → Instruction
+    | I32Const : Word32 → Instruction
+    | I64Const : Word64 → Instruction
+    | F32Const : Float → Instruction
+    | F64Const : Double → Instruction
     | IUnOp : BitSize → IUnOp → Instruction
     | IBinOp : BitSize → IBinOp → Instruction
     | I32Eqz : Instruction
@@ -164,10 +176,10 @@ def Expression := Instruction
   deriving Repr, BEq
 
 structure Function where
-    funcType : TypeIndex
-    localTypes : LocalsType
-    body : Expression
-    deriving Repr, BEq
+  funcType : TypeIndex
+  localTypes : LocalsType
+  body : Expression
+  deriving Repr, BEq
 
 structure Limit := (n : Nat) (l : Option Nat) deriving Repr, BEq
 
@@ -190,24 +202,25 @@ inductive GlobalType :=
   deriving Repr, BEq
 
 structure Global :=
-    globalType : GlobalType
-    initializer : Expression
-    deriving Repr, BEq
+  globalType : GlobalType
+  initializer : Expression
+  deriving Repr, BEq
 
 structure ElemSegment :=
-    tableIndex : TableIndex
-    offset : Expression
-    funcIndexes : List FuncIndex
-    deriving Repr, BEq
+  tableIndex : TableIndex
+  offset : Expression
+  funcIndexes : List FuncIndex
+  deriving Repr, BEq
 
 structure DataSegment :=
-    memIndex : MemoryIndex
-    offset : Expression
-    chunk : ByteArray
-    deriving Repr, BEq
+  memIndex : MemoryIndex
+  offset : Expression
+  chunk : ByteArray
+  deriving Repr, BEq
 
-structure StartFunction := (funcIndex : FuncIndex)
-    deriving Repr, BEq
+structure StartFunction :=
+  funcIndex : FuncIndex
+  deriving Repr, BEq
 
 inductive ExportDesc :=
     | ExportFunc : FuncIndex → ExportDesc
@@ -263,8 +276,7 @@ structure Module :=
     tables : List Table
     mems : List Memory
     globals : List Global
-    -- TODO: Elem is undefined
-    -- elems : List Elem
+    elems : List ElemSegment
     datas : List DataSegment
     start : Option StartFunction
     imports : List Import
@@ -277,7 +289,7 @@ def Module.empty : Module := {
     tables := [],
     mems := [],
     globals := [],
-    -- elems := [],
+    elems := [],
     datas := [],
     start := none,
     imports := [],
