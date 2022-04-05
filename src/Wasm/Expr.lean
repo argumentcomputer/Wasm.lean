@@ -1,33 +1,33 @@
 import Wasm.Structure
 namespace Wasm
 
--- def U32 := UInt32
---   deriving BEq
--- def F32 := Float
---   deriving BEq
--- def F64 := Float
---   deriving BEq
--- def I32 := Int
---   deriving BEq
--- def I64 := Int
---   deriving BEq
+def U32 := UInt32
+  deriving BEq
+def F32 := Float
+  deriving BEq
+def F64 := Float
+  deriving BEq
+def I32 := Int
+  deriving BEq
+def I64 := Int
+  deriving BEq
 
 
--- def Address := UInt64
---   deriving BEq
--- def Size := UInt64
---   deriving BEq
--- def Offset := Address
---   deriving BEq
+def Address := UInt64
+  deriving BEq
+def Size := UInt64
+  deriving BEq
+def Offset := Address
+  deriving BEq
 
 inductive Value
   | VI32 : I32 → Value
-  | VI64 : I32 → Value
-  | VF32 : I32 → Value
-  | VF64 : I32 → Value
+  | VI64 : I64 → Value
+  | VF32 : F32 → Value
+  | VF64 : F64 → Value
   deriving BEq
 
-inductive Name 
+inductive Name
   | name : String → Name
   -- | UnName Word32
   deriving BEq, Ord
@@ -129,7 +129,7 @@ inductive Extension
   deriving BEq
 
 inductive Extop
-  | extop : Memop → MemSize → Extension → Extop 
+  | extop : Memop → MemSize → Extension → Extop
   deriving BEq
 
 inductive Wrapop
@@ -175,10 +175,10 @@ inductive Expr
   | sel : SelOp → Expr → Expr → Expr → Expr
   | convert : ConvertOp → Typ → Expr → Expr
   | host : Hostop → (List Expr) → Expr
-  deriving BEq 
+  deriving BEq
 
 inductive Param
-  | param : (Option Name) → Typ → Param 
+  | param : (Option Name) → Typ → Param
   | result : Typ → Typ → Param
   | body : Expr → Param
   deriving BEq
@@ -189,9 +189,10 @@ inductive Func
   | import : Name → Int → Func
   deriving BEq
 
-inductive Module 
- | module : (funcs : List Func) → Module
- deriving BEq
+-- TODO: Already defined in Structure.lean, should it be removed, or perhaps have another name?
+-- inductive Module
+--  | module : (funcs : List Func) → Module
+--  deriving BEq
 
 inductive Decl
   | modDecl : Module → Decl

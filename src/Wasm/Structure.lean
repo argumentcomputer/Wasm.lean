@@ -37,7 +37,7 @@ inductive IBinOp :=
     | IRotr
     deriving Repr, BEq
 
-inductive IRelOp := | IEq | INe | ILtU | ILtS | IGtU | IGtS | ILeU | ILeS | IGeU | IGeS deriving BEq
+inductive IRelOp := | IEq | INe | ILtU | ILtS | IGtU | IGtS | ILeU | ILeS | IGeU | IGeS deriving Repr, BEq
 
 inductive FUnOp := | FAbs | FNeg | FCeil | FFloor | FTrunc | FNearest | FSqrt deriving Repr, BEq
 
@@ -79,166 +79,89 @@ def LocalsType := ValueType
 structure FuncType := (params : ParamsType) (results : ResultType) deriving Repr, BEq
 
 inductive BlockType :=
-    | inline (Option ValueType)
-    | typeIndex TypeIndex
+    | inline : (Option ValueType) → BlockType
+    | typeIndex : TypeIndex → BlockType
     deriving Repr, BEq
 
-inductive InstructionNat :=
+inductive Instruction :=
     -- Control instructions
-    | Unreachable
-    | Nop
-    | Block (blockType : BlockType) (body : InstructionNat) : InstructionNat
-    | Loop (blockType : BlockType) (body : InstructionNat) : InstructionNat
-    | If (blockType : BlockType) (true : InstructionNat) (false : InstructionNat) : InstructionNat
-    | Br Nat
-    | BrIf Nat
-    | BrTable Nat
-    | Return
-    | Call Nat
-    | CallIndirect Nat
+    | Unreachable : Instruction
+    | Nop : Instruction
+    | Block : (blockType : BlockType) → (body : Instruction) → Instruction
+    | Loop : (blockType : BlockType) → (body : Instruction) → Instruction
+    | If : (blockType : BlockType) → (true : Instruction) → (false : Instruction) → Instruction
+    | Br : Nat → Instruction
+    | BrIf : Nat → Instruction
+    | BrTable : Nat → Instruction
+    | Return : Instruction
+    | Call : Nat → Instruction
+    | CallIndirect : Nat → Instruction
     -- Parametric instructions
-    | Drop
-    | Select
+    | Drop : Instruction
+    | Select : Instruction
     -- Variable instructions
-    | GetLocal Nat
-    | SetLocal Nat
-    | TeeLocal Nat
-    | GetGlobal Nat
-    | SetGlobal Nat
-    -- Memory instructions
-    | I32Load MemArg
-    | I64Load MemArg
-    | F32Load MemArg
-    | F64Load MemArg
-    | I32Load8S MemArg
-    | I32Load8U MemArg
-    | I32Load16S MemArg
-    | I32Load16U MemArg
-    | I64Load8S MemArg
-    | I64Load8U MemArg
-    | I64Load16S MemArg
-    | I64Load16U MemArg
-    | I64Load32S MemArg
-    | I64Load32U MemArg
-    | I32Store MemArg
-    | I64Store MemArg
-    | F32Store MemArg
-    | F64Store MemArg
-    | I32Store8 MemArg
-    | I32Store16 MemArg
-    | I64Store8 MemArg
-    | I64Store16 MemArg
-    | I64Store32 MemArg
-    | CurrentMemory
-    | GrowMemory
+    | GetLocal : Nat → Instruction
+    | SetLocal : Nat → Instruction
+    | TeeLocal : Nat → Instruction
+    | GetGlobal : Nat → Instruction
+    | SetGlobal : Nat → Instruction
+    -- -- Memory instructions
+    | I32Load : MemArg → Instruction
+    | I64Load : MemArg → Instruction
+    | F32Load : MemArg → Instruction
+    | F64Load : MemArg → Instruction
+    | I32Load8S : MemArg → Instruction
+    | I32Load8U : MemArg → Instruction
+    | I32Load16S : MemArg → Instruction
+    | I32Load16U : MemArg → Instruction
+    | I64Load8S : MemArg → Instruction
+    | I64Load8U : MemArg → Instruction
+    | I64Load16S : MemArg → Instruction
+    | I64Load16U : MemArg → Instruction
+    | I64Load32S : MemArg → Instruction
+    | I64Load32U : MemArg → Instruction
+    | I32Store : MemArg → Instruction
+    | I64Store : MemArg → Instruction
+    | F32Store : MemArg → Instruction
+    | F64Store : MemArg → Instruction
+    | I32Store8 : MemArg → Instruction
+    | I32Store16 : MemArg → Instruction
+    | I64Store8 : MemArg → Instruction
+    | I64Store16 : MemArg → Instruction
+    | I64Store32 : MemArg → Instruction
+    | CurrentMemory : Instruction
+    | GrowMemory : Instruction
+    -- TODO: The following contain undefined values
     -- Numeric instructions
-    | I32Const Word32
-    | I64Const Word64
-    | F32Const Float
-    | F64Const Double
-    | IUnOp BitSize IUnOp
-    | IBinOp BitSize IBinOp
-    | I32Eqz
-    | I64Eqz
-    | IRelOp BitSize IRelOp
-    | FUnOp BitSize FUnOp
-    | FBinOp BitSize FBinOp
-    | FRelOp BitSize FRelOp
-    | I32WrapI64
-    | ITruncFU /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | ITruncFS /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | ITruncSatFU /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | ITruncSatFS /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | I64ExtendSI32
-    | I64ExtendUI32
-    | FConvertIU /- Float Size -/ BitSize /- Int Size -/ BitSize
-    | FConvertIS /- Float Size -/ BitSize /- Int Size -/ BitSize
-    | F32DemoteF64
-    | F64PromoteF32
-    | IReinterpretF BitSize
-    | FReinterpretI BitSize
-    -- deriving Repr, BEq
-
-
-inductive Instruction (index : Type) [BEq index] [Repr index] :=
-    -- Control instructions
-    | Unreachable
-    | Nop
-    | Block (blockType : BlockType) (body : InstructionNat)
-    | Loop (blockType : BlockType) (body : InstructionNat)
-    | If (blockType : BlockType) (true : InstructionNat) (false : InstructionNat)
-    | Br index
-    | BrIf index
-    | BrTable /-[index]-/ index
-    | Return
-    | Call index
-    | CallIndirect index
-    -- Parametric instructions
-    | Drop
-    | Select
-    -- Variable instructions
-    | GetLocal index
-    | SetLocal index
-    | TeeLocal index
-    | GetGlobal index
-    | SetGlobal index
-    -- Memory instructions
-    | I32Load MemArg
-    | I64Load MemArg
-    | F32Load MemArg
-    | F64Load MemArg
-    | I32Load8S MemArg
-    | I32Load8U MemArg
-    | I32Load16S MemArg
-    | I32Load16U MemArg
-    | I64Load8S MemArg
-    | I64Load8U MemArg
-    | I64Load16S MemArg
-    | I64Load16U MemArg
-    | I64Load32S MemArg
-    | I64Load32U MemArg
-    | I32Store MemArg
-    | I64Store MemArg
-    | F32Store MemArg
-    | F64Store MemArg
-    | I32Store8 MemArg
-    | I32Store16 MemArg
-    | I64Store8 MemArg
-    | I64Store16 MemArg
-    | I64Store32 MemArg
-    | CurrentMemory
-    | GrowMemory
-    -- Numeric instructions
-    | I32Const Word32
-    | I64Const Word64
-    | F32Const Float
-    | F64Const Double
-    | IUnOp BitSize IUnOp
-    | IBinOp BitSize IBinOp
-    | I32Eqz
-    | I64Eqz
-    | IRelOp BitSize IRelOp
-    | FUnOp BitSize FUnOp
-    | FBinOp BitSize FBinOp
-    | FRelOp BitSize FRelOp
-    | I32WrapI64
-    | ITruncFU /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | ITruncFS /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | ITruncSatFU /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | ITruncSatFS /- Int Size -/ BitSize /- Float Size -/ BitSize
-    | I64ExtendSI32
-    | I64ExtendUI32
-    | FConvertIU /- Float Size -/ BitSize /- Int Size -/ BitSize
-    | FConvertIS /- Float Size -/ BitSize /- Int Size -/ BitSize
-    | F32DemoteF64
-    | F64PromoteF32
-    | IReinterpretF BitSize
-    | FReinterpretI BitSize
+    -- | I32Const : Word32 → Instruction
+    -- | I64Const : Word64 → Instruction
+    -- | F32Const : Float → Instruction
+    -- | F64Const : Double → Instruction
+    | IUnOp : BitSize → IUnOp → Instruction
+    | IBinOp : BitSize → IBinOp → Instruction
+    | I32Eqz : Instruction
+    | I64Eqz : Instruction
+    | IRelOp : BitSize → IRelOp → Instruction
+    | FUnOp : BitSize → FUnOp → Instruction
+    | FBinOp : BitSize → FBinOp → Instruction
+    | FRelOp : BitSize → FRelOp → Instruction
+    | I32WrapI64 : Instruction
+    | ITruncFU : /- Int Size -/ BitSize → /- Float Size -/ BitSize → Instruction
+    | ITruncFS : /- Int Size -/ BitSize → /- Float Size -/ BitSize → Instruction
+    | ITruncSatFU : /- Int Size -/ BitSize → /- Float Size -/ BitSize → Instruction
+    | ITruncSatFS : /- Int Size -/ BitSize → /- Float Size -/ BitSize → Instruction
+    | I64ExtendSI32 : Instruction
+    | I64ExtendUI32 : Instruction
+    | FConvertIU : /- Float Size -/ BitSize → /- Int Size -/ BitSize → Instruction
+    | FConvertIS : /- Float Size -/ BitSize → /- Int Size -/ BitSize → Instruction
+    | F32DemoteF64 : Instruction
+    | F64PromoteF32 : Instruction
+    | IReinterpretF : BitSize → Instruction
+    | FReinterpretI : BitSize → Instruction
     deriving Repr, BEq
 
-def Expression := Instruction Nat
+def Expression := Instruction
   deriving Repr, BEq
-
 
 structure Function where
     funcType : TypeIndex
@@ -248,27 +171,30 @@ structure Function where
 
 structure Limit := (n : Nat) (l : Option Nat) deriving Repr, BEq
 
-inductive ElemType := 
+inductive ElemType :=
   | FuncRef
   deriving Repr, BEq
 
-structure TableType := (limit : Limit) (elemType : ElemType) deriving Repr, BEq
+structure TableType := (limit : Limit) (elemType : ElemType)
+ deriving Repr, BEq
 
-structure Table := (type : TableType) deriving Repr, BEq
-
-structure Memory := (limit : Limit) deriving Repr, BEq
-
-inductive GlobalType :=
-  | Const ValueType
-  | Mut ValueType
+structure Table := (type : TableType)
   deriving Repr, BEq
 
-inductive Global :=
+structure Memory := (limit : Limit)
+ deriving Repr, BEq
+
+inductive GlobalType :=
+  | Const : ValueType → GlobalType
+  | Mut : ValueType → GlobalType
+  deriving Repr, BEq
+
+structure Global :=
     globalType : GlobalType
     initializer : Expression
     deriving Repr, BEq
 
-inductive ElemSegment :=
+structure ElemSegment :=
     tableIndex : TableIndex
     offset : Expression
     funcIndexes : List FuncIndex
@@ -280,13 +206,14 @@ structure DataSegment :=
     chunk : ByteArray
     deriving Repr, BEq
 
-structure StartFunction := (funcIndex : FuncIndex) deriving Repr, BEq
+structure StartFunction := (funcIndex : FuncIndex)
+    deriving Repr, BEq
 
 inductive ExportDesc :=
-    | ExportFunc FuncIndex
-    | ExportTable TableIndex
-    | ExportMemory MemoryIndex
-    | ExportGlobal GlobalIndex
+    | ExportFunc : FuncIndex → ExportDesc
+    | ExportTable : TableIndex → ExportDesc
+    | ExportMemory : MemoryIndex → ExportDesc
+    | ExportGlobal : GlobalIndex → ExportDesc
     deriving Repr, BEq
 
 structure Export :=
@@ -295,10 +222,10 @@ structure Export :=
     deriving Repr, BEq
 
 inductive ImportDesc :=
-    | ImportFunc TypeIndex
-    | ImportTable TableType
-    | ImportMemory Limit
-    | ImportGlobal GlobalType
+    | ImportFunc : TypeIndex → ImportDesc
+    | ImportTable : TableType → ImportDesc
+    | ImportMemory : Limit → ImportDesc
+    | ImportGlobal : GlobalType → ImportDesc
     deriving Repr, BEq
 
 structure Import :=
@@ -310,22 +237,22 @@ structure Import :=
 namespace Import
 open ImportDesc
 def isFuncImport (imp : Import) : Bool :=
-  match imp.desc with 
+  match imp.desc with
   | ImportFunc _ => true
   | _ => false
 
 def isTableImport (imp : Import) : Bool :=
-  match imp.desc with 
+  match imp.desc with
   | ImportTable _ => true
   | _ => false
 
 def isMemImport (imp : Import) : Bool :=
-  match imp.desc with 
+  match imp.desc with
   | ImportMemory _ => true
   | _ => false
 
 def isGlobalImport (imp : Import) : Bool :=
-  match imp.desc with 
+  match imp.desc with
   | ImportGlobal _ => true
   | _ => false
 end Import
@@ -336,7 +263,8 @@ structure Module :=
     tables : List Table
     mems : List Memory
     globals : List Global
-    elems : List Elem
+    -- TODO: Elem is undefined
+    -- elems : List Elem
     datas : List DataSegment
     start : Option StartFunction
     imports : List Import
@@ -349,7 +277,7 @@ def Module.empty : Module := {
     tables := [],
     mems := [],
     globals := [],
-    elems := [],
+    -- elems := [],
     datas := [],
     start := none,
     imports := [],
