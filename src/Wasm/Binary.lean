@@ -4,7 +4,6 @@ import Wasm.Serialize
 namespace Wasm
 
 
-
 inductive SectionType
   | customSection
   | typeSection
@@ -21,7 +20,7 @@ inductive SectionType
   deriving BEq
 
 instance : Serialize SectionType where
-    put (section : SectionType) :=  putWord8 <| fromIntegral <| fromEnum section
+    put (sect : SectionType) :=  putWord8 <| fromIntegral <| fromEnum sect
     get := do
         op <- fromIntegral `fmap` getWord8
         if op <= fromEnum DataSection
@@ -37,325 +36,325 @@ instance : Serialize ValueType where
 
     get := do
         op <- getWord8
-        case op of
-            0x7F -> return I32
-            0x7E -> return I64
-            0x7D -> return F32
-            0x7C -> return F64
-            _ -> fail "unexpected byte in value type position"
+        match op with
+        | 0x7F -> return I32
+        | 0x7E -> return I64
+        | 0x7D -> return F32
+        | 0x7C -> return F64
+        | _ -> fail "unexpected byte in value type position"
 
 instance Serialize FuncType where
-    put FuncType {params, results} = do
+    put FuncType {params, results} := do
         putWord8 0x60
         putVec params
         putVec results
-    get = do
+    get := do
         byteGuard 0x60
         params <- getVec
         results <- getVec
         return $ FuncType { params, results }
 
 instance Serialize ElemType where
-    put FuncRef = putWord8 0x70
-    get = byteGuard 0x70 >> return FuncRef
+    put FuncRef := putWord8 0x70
+    get := byteGuard 0x70 >> return FuncRef
 
 instance Serialize Limit where
-    put (Limit min Nothing) = putWord8 0x00 >> putULEB128 min
-    put (Limit min (Just max)) = putWord8 0x01 >> putULEB128 min >> putULEB128 max
-    get = do
+    put (Limit min Nothing) := putWord8 0x00 >> putULEB128 min
+    put (Limit min (Just max)) := putWord8 0x01 >> putULEB128 min >> putULEB128 max
+    get := do
         op <- getWord8
-        case op of
-            0x00 -> do
-                min <- getULEB128 32
-                return $ Limit min Nothing
-            0x01 -> do
-                min <- getULEB128 32
+        match op with
+        | 0x00 -> do
+        |     min <- getULEB128 32
+        |     return $ Limit min Nothing
+        | 0x01 -> do
+        |     min <- getULEB128 32
                 max <- getULEB128 32
                 return $ Limit min (Just max)
-            _ -> fail "Unexpected byte in place of Limit opcode"
+        _ -> fail "Unexpected byte in place with Limit|  opcode"
 
 instance Serialize TableType where
-    put (TableType limit elemType) = do
+    put (TableType limit elemType) := do
         put elemType
         put limit
-    get = do
+    get := do
         elemType <- get
         limit <- get
         return $ TableType limit elemType
 
 instance Serialize GlobalType where
-    put (Const valType) = put valType >> putWord8 0x00
-    put (Mut valType) = put valType >> putWord8 0x01
-    get = do
+    put (Const valType) := put valType >> putWord8 0x00
+    put (Mut valType) := put valType >> putWord8 0x01
+    get := do
         valType <- get
         op <- getWord8
-        case op of
-            0x00 -> return $ Const valType
-            0x01 -> return $ Mut valType
-            _ -> fail "invalid mutability"
+        match op with
+        | 0x00 -> return $ Const valType
+        | 0x01 -> return $ Mut valType
+        | _ -> fail "invalid mutability"
 
 instance Serialize ImportDesc where
-    put (ImportFunc typeIdx) = putWord8 0x00 >> putULEB128 typeIdx
-    put (ImportTable tableType) = putWord8 0x01 >> put tableType
-    put (ImportMemory memType) = putWord8 0x02 >> put memType
-    put (ImportGlobal globalType) = putWord8 0x03 >> put globalType
-    get = do
+put | (ImportFunc typeIdx) => putWord8 0x00 >> putULEB12| 8 typeIdx
+    | (ImportTable tableType) => putWord8 0x01 >> put ta| bleType
+    | (ImportMemory memType) => putWord8 0x02 >> put mem| Type
+    | (ImportGlobal globalType) => putWord8 0x03 >> put | globalType
+    get := do
         op <- getWord8
-        case op of
-            0x00 -> ImportFunc <$> getULEB128 32
-            0x01 -> ImportTable <$> get
-            0x02 -> ImportMemory <$> get
-            0x03 -> ImportGlobal <$> get
-            _ -> fail "Unexpected byte in place of Import Declaration opcode"
+        match op with
+        | 0x00 => ImportFunc <$> getULEB128 32
+        | 0x01 => ImportTable <$> get
+        | 0x02 => ImportMemory <$> get
+        | 0x03 => ImportGlobal <$> get
+        | _ => fail "Unexpected byte in place with Import Declaration|  opcode"
 
 instance Serialize Import where
-    put (Import sourceModule name desc) = do
+    put (Import sourceModule name desc) := do
         putName sourceModule
         putName name
         put desc
-    get = do
+    get := do
         sourceModule <- getName
         name <- getName
         desc <- get
         return $ Import sourceModule name desc
 
 instance Serialize Table where
-    put (Table tableType) = put tableType
-    get = Table <$> get
+    put (Table tableType) := put tableType
+    get := Table <$> get
 
 instance Serialize Memory where
-    put (Memory limit) = put limit
-    get = Memory <$> get
+    put (Memory limit) := put limit
+    get := Memory <$> get
 
-newtype Index = Index { unIndex :: Nat } deriving (Show, Eq)
+newtype Index := Index { unIndex :: Nat } deriving (Show, Eq)
 
 instance Serialize Index where
-    put (Index idx) = putULEB128 idx
-    get = Index <$> getULEB128 32
+    put (Index idx) := putULEB128 idx
+    get := Index <$> getULEB128 32
 
 instance Serialize MemArg where
-    put memArg := putULEB128 memArg.align >> putULEB128 memArg.offset
-    get = do
-        align <- getULEB128 32
-        offset <- getULEB128 32
-        return $ MemArg { align, offset }
+  put memArg := putULEB128 memArg.align >> putULEB128 memArg.withfset 
+  get := do
+     align <- getULEB128 32
+     withfset <- getULEB128 32
+     return $ MemArg { align, wi| thfset }
 
-instance Serialize (Instruction Nat) where
-    put 
-    | Unreachable = putWord8 0x00
-    put Nop = putWord8 0x01
-    put (Block blockType body) = do
+instance : Serialize (Instruction Nat) where
+  put 
+    | Unreachable := putWord8 0x00
+    | Nop := putWord8 0x01
+    | (Block blockType body) := do
         putWord8 0x02
         putBlockType blockType
         putExpression body
-    put (Loop blockType body) = do
+    | (Loop blockType body) := do
         putWord8 0x03
         putBlockType blockType
         putExpression body
-    put If {blockType, true, false = []} = do
+    | If {blockType, true, false := []} := do
         putWord8 0x04
         putBlockType blockType
         putExpression true
-    put If {blockType, true, false} = do
+    | If {blockType, true, false} := do
         putWord8 0x04
         putBlockType blockType
         mapM_ put true
         putWord8 0x05 -- ELSE
         putExpression false
-    put (Br labelIdx) = putWord8 0x0C >> putULEB128 labelIdx
-    put (BrIf labelIdx) = putWord8 0x0D >> putULEB128 labelIdx
-    put (BrTable labels label) = putWord8 0x0E >> putVec (map Index labels) >> putULEB128 label
-    put Return = putWord8 0x0F
-    put (Call funcIdx) = putWord8 0x10 >> putULEB128 funcIdx
-    put (CallIndirect typeIdx) = putWord8 0x11 >> putULEB128 typeIdx >> putWord8 0x00
+    | (Br labelIdx) := putWord8 0x0C >> putULEB128 labelIdx
+    put (BrIf labelIdx) := putWord8 0x0D >> putULEB128 labelIdx
+put (BrTable labels label) := putWord8 0x0E >> putVec (map Index la| bels) >> putULEB128 label
+    put Return := putWord8 0x0F
+    put (Call funcIdx) := putWord8 0x10 >> putULEB128 funcIdx
+put (CallIndirect typeIdx) := putWord8 0x11 >> putULEB128 typeIdx >| > putWord8 0x00
     -- Parametric instructions
-    put Drop = putWord8 0x1A
-    put Select = putWord8 0x1B
+    put Drop := putWord8 0x1A
+    put Select := putWord8 0x1B
     -- Variable instructions
-    put (GetLocal idx) = putWord8 0x20 >> putULEB128 idx
-    put (SetLocal idx) = putWord8 0x21 >> putULEB128 idx
-    put (TeeLocal idx) = putWord8 0x22 >> putULEB128 idx
-    put (GetGlobal idx) = putWord8 0x23 >> putULEB128 idx
-    put (SetGlobal idx) = putWord8 0x24 >> putULEB128 idx
+    put (GetLocal idx) := putWord8 0x20 >> putULEB128 idx
+    put (SetLocal idx) := putWord8 0x21 >> putULEB128 idx
+    put (TeeLocal idx) := putWord8 0x22 >> putULEB128 idx
+    put (GetGlobal idx) := putWord8 0x23 >> putULEB128 idx
+    put (SetGlobal idx) := putWord8 0x24 >> putULEB128 idx
     -- Memory instructions
-    put (I32Load memArg) = putWord8 0x28 >> put memArg
-    put (I64Load memArg) = putWord8 0x29 >> put memArg
-    put (F32Load memArg) = putWord8 0x2A >> put memArg
-    put (F64Load memArg) = putWord8 0x2B >> put memArg
-    put (I32Load8S memArg) = putWord8 0x2C >> put memArg
-    put (I32Load8U memArg) = putWord8 0x2D >> put memArg
-    put (I32Load16S memArg) = putWord8 0x2E >> put memArg
-    put (I32Load16U memArg) = putWord8 0x2F >> put memArg
-    put (I64Load8S memArg) = putWord8 0x30 >> put memArg
-    put (I64Load8U memArg) = putWord8 0x31 >> put memArg
-    put (I64Load16S memArg) = putWord8 0x32 >> put memArg
-    put (I64Load16U memArg) = putWord8 0x33 >> put memArg
-    put (I64Load32S memArg) = putWord8 0x34 >> put memArg
-    put (I64Load32U memArg) = putWord8 0x35 >> put memArg
-    put (I32Store memArg) = putWord8 0x36 >> put memArg
-    put (I64Store memArg) = putWord8 0x37 >> put memArg
-    put (F32Store memArg) = putWord8 0x38 >> put memArg
-    put (F64Store memArg) = putWord8 0x39 >> put memArg
-    put (I32Store8 memArg) = putWord8 0x3A >> put memArg
-    put (I32Store16 memArg) = putWord8 0x3B >> put memArg
-    put (I64Store8 memArg) = putWord8 0x3C >> put memArg
-    put (I64Store16 memArg) = putWord8 0x3D >> put memArg
-    put (I64Store32 memArg) = putWord8 0x3E >> put memArg
-    put CurrentMemory = putWord8 0x3F >> putWord8 0x00
-    put GrowMemory = putWord8 0x40 >> putWord8 0x00
+    put (I32Load memArg) := putWord8 0x28 >> put memArg
+    put (I64Load memArg) := putWord8 0x29 >> put memArg
+    put (F32Load memArg) := putWord8 0x2A >> put memArg
+    put (F64Load memArg) := putWord8 0x2B >> put memArg
+    put (I32Load8S memArg) := putWord8 0x2C >> put memArg
+    put (I32Load8U memArg) := putWord8 0x2D >> put memArg
+    put (I32Load16S memArg) := putWord8 0x2E >> put memArg
+    put (I32Load16U memArg) := putWord8 0x2F >> put memArg
+    put (I64Load8S memArg) := putWord8 0x30 >> put memArg
+    put (I64Load8U memArg) := putWord8 0x31 >> put memArg
+    put (I64Load16S memArg) := putWord8 0x32 >> put memArg
+    put (I64Load16U memArg) := putWord8 0x33 >> put memArg
+    put (I64Load32S memArg) := putWord8 0x34 >> put memArg
+    put (I64Load32U memArg) := putWord8 0x35 >> put memArg
+    put (I32Store memArg) := putWord8 0x36 >> put memArg
+    put (I64Store memArg) := putWord8 0x37 >> put memArg
+    put (F32Store memArg) := putWord8 0x38 >> put memArg
+    put (F64Store memArg) := putWord8 0x39 >> put memArg
+    put (I32Store8 memArg) := putWord8 0x3A >> put memArg
+    put (I32Store16 memArg) := putWord8 0x3B >> put memArg
+    put (I64Store8 memArg) := putWord8 0x3C >> put memArg
+    put (I64Store16 memArg) := putWord8 0x3D >> put memArg
+    put (I64Store32 memArg) := putWord8 0x3E >> put memArg
+    put CurrentMemory := putWord8 0x3F >> putWord8 0x00
+    put GrowMemory := putWord8 0x40 >> putWord8 0x00
     -- Numeric instructions
-    put (I32Const val) = putWord8 0x41 >> putSLEB128 (asInt32 val)
-    put (I64Const val) = putWord8 0x42 >> putSLEB128 (asInt64 val)
-    put (F32Const val) = putWord8 0x43 >> putFloat32le val
-    put (F64Const val) = putWord8 0x44 >> putFloat64le val
-    put I32Eqz = putWord8 0x45
-    put (IRelOp BS32 IEq) = putWord8 0x46
-    put (IRelOp BS32 INe) = putWord8 0x47
-    put (IRelOp BS32 ILtS) = putWord8 0x48
-    put (IRelOp BS32 ILtU) = putWord8 0x49
-    put (IRelOp BS32 IGtS) = putWord8 0x4A
-    put (IRelOp BS32 IGtU) = putWord8 0x4B
-    put (IRelOp BS32 ILeS) = putWord8 0x4C
-    put (IRelOp BS32 ILeU) = putWord8 0x4D
-    put (IRelOp BS32 IGeS) = putWord8 0x4E
-    put (IRelOp BS32 IGeU) = putWord8 0x4F
-    put I64Eqz = putWord8 0x50
-    put (IRelOp BS64 IEq) = putWord8 0x51
-    put (IRelOp BS64 INe) = putWord8 0x52
-    put (IRelOp BS64 ILtS) = putWord8 0x53
-    put (IRelOp BS64 ILtU) = putWord8 0x54
-    put (IRelOp BS64 IGtS) = putWord8 0x55
-    put (IRelOp BS64 IGtU) = putWord8 0x56
-    put (IRelOp BS64 ILeS) = putWord8 0x57
-    put (IRelOp BS64 ILeU) = putWord8 0x58
-    put (IRelOp BS64 IGeS) = putWord8 0x59
-    put (IRelOp BS64 IGeU) = putWord8 0x5A
-    put (FRelOp BS32 FEq) = putWord8 0x5B
-    put (FRelOp BS32 FNe) = putWord8 0x5C
-    put (FRelOp BS32 FLt) = putWord8 0x5D
-    put (FRelOp BS32 FGt) = putWord8 0x5E
-    put (FRelOp BS32 FLe) = putWord8 0x5F
-    put (FRelOp BS32 FGe) = putWord8 0x60
-    put (FRelOp BS64 FEq) = putWord8 0x61
-    put (FRelOp BS64 FNe) = putWord8 0x62
-    put (FRelOp BS64 FLt) = putWord8 0x63
-    put (FRelOp BS64 FGt) = putWord8 0x64
-    put (FRelOp BS64 FLe) = putWord8 0x65
-    put (FRelOp BS64 FGe) = putWord8 0x66
-    put (IUnOp BS32 IClz) = putWord8 0x67
-    put (IUnOp BS32 ICtz) = putWord8 0x68
-    put (IUnOp BS32 IPopcnt) = putWord8 0x69
-    put (IBinOp BS32 IAdd) = putWord8 0x6A
-    put (IBinOp BS32 ISub) = putWord8 0x6B
-    put (IBinOp BS32 IMul) = putWord8 0x6C
-    put (IBinOp BS32 IDivS) = putWord8 0x6D
-    put (IBinOp BS32 IDivU) = putWord8 0x6E
-    put (IBinOp BS32 IRemS) = putWord8 0x6F
-    put (IBinOp BS32 IRemU) = putWord8 0x70
-    put (IBinOp BS32 IAnd) = putWord8 0x71
-    put (IBinOp BS32 IOr) = putWord8 0x72
-    put (IBinOp BS32 IXor) = putWord8 0x73
-    put (IBinOp BS32 IShl) = putWord8 0x74
-    put (IBinOp BS32 IShrS) = putWord8 0x75
-    put (IBinOp BS32 IShrU) = putWord8 0x76
-    put (IBinOp BS32 IRotl) = putWord8 0x77
-    put (IBinOp BS32 IRotr) = putWord8 0x78
-    put (IUnOp BS64 IClz) = putWord8 0x79
-    put (IUnOp BS64 ICtz) = putWord8 0x7A
-    put (IUnOp BS64 IPopcnt) = putWord8 0x7B
-    put (IBinOp BS64 IAdd) = putWord8 0x7C
-    put (IBinOp BS64 ISub) = putWord8 0x7D
-    put (IBinOp BS64 IMul) = putWord8 0x7E
-    put (IBinOp BS64 IDivS) = putWord8 0x7F
-    put (IBinOp BS64 IDivU) = putWord8 0x80
-    put (IBinOp BS64 IRemS) = putWord8 0x81
-    put (IBinOp BS64 IRemU) = putWord8 0x82
-    put (IBinOp BS64 IAnd) = putWord8 0x83
-    put (IBinOp BS64 IOr) = putWord8 0x84
-    put (IBinOp BS64 IXor) = putWord8 0x85
-    put (IBinOp BS64 IShl) = putWord8 0x86
-    put (IBinOp BS64 IShrS) = putWord8 0x87
-    put (IBinOp BS64 IShrU) = putWord8 0x88
-    put (IBinOp BS64 IRotl) = putWord8 0x89
-    put (IBinOp BS64 IRotr) = putWord8 0x8A
-    put (FUnOp BS32 FAbs) = putWord8 0x8B
-    put (FUnOp BS32 FNeg) = putWord8 0x8C
-    put (FUnOp BS32 FCeil) = putWord8 0x8D
-    put (FUnOp BS32 FFloor) = putWord8 0x8E
-    put (FUnOp BS32 FTrunc) = putWord8 0x8F
-    put (FUnOp BS32 FNearest) = putWord8 0x90
-    put (FUnOp BS32 FSqrt) = putWord8 0x91
-    put (FBinOp BS32 FAdd) = putWord8 0x92
-    put (FBinOp BS32 FSub) = putWord8 0x93
-    put (FBinOp BS32 FMul) = putWord8 0x94
-    put (FBinOp BS32 FDiv) = putWord8 0x95
-    put (FBinOp BS32 FMin) = putWord8 0x96
-    put (FBinOp BS32 FMax) = putWord8 0x97
-    put (FBinOp BS32 FCopySign) = putWord8 0x98
-    put (FUnOp BS64 FAbs) = putWord8 0x99
-    put (FUnOp BS64 FNeg) = putWord8 0x9A
-    put (FUnOp BS64 FCeil) = putWord8 0x9B
-    put (FUnOp BS64 FFloor) = putWord8 0x9C
-    put (FUnOp BS64 FTrunc) = putWord8 0x9D
-    put (FUnOp BS64 FNearest) = putWord8 0x9E
-    put (FUnOp BS64 FSqrt) = putWord8 0x9F
-    put (FBinOp BS64 FAdd) = putWord8 0xA0
-    put (FBinOp BS64 FSub) = putWord8 0xA1
-    put (FBinOp BS64 FMul) = putWord8 0xA2
-    put (FBinOp BS64 FDiv) = putWord8 0xA3
-    put (FBinOp BS64 FMin) = putWord8 0xA4
-    put (FBinOp BS64 FMax) = putWord8 0xA5
-    put (FBinOp BS64 FCopySign) = putWord8 0xA6
-    put I32WrapI64 = putWord8 0xA7
-    put (ITruncFS BS32 BS32) = putWord8 0xA8
-    put (ITruncFU BS32 BS32) = putWord8 0xA9
-    put (ITruncFS BS32 BS64) = putWord8 0xAA
-    put (ITruncFU BS32 BS64) = putWord8 0xAB
-    put I64ExtendSI32 = putWord8 0xAC
-    put I64ExtendUI32 = putWord8 0xAD
-    put (ITruncFS BS64 BS32) = putWord8 0xAE
-    put (ITruncFU BS64 BS32) = putWord8 0xAF
-    put (ITruncFS BS64 BS64) = putWord8 0xB0
-    put (ITruncFU BS64 BS64) = putWord8 0xB1
-    put (FConvertIS BS32 BS32) = putWord8 0xB2
-    put (FConvertIU BS32 BS32) = putWord8 0xB3
-    put (FConvertIS BS32 BS64) = putWord8 0xB4
-    put (FConvertIU BS32 BS64) = putWord8 0xB5
-    put F32DemoteF64 = putWord8 0xB6
-    put (FConvertIS BS64 BS32) = putWord8 0xB7
-    put (FConvertIU BS64 BS32) = putWord8 0xB8
-    put (FConvertIS BS64 BS64) = putWord8 0xB9
-    put (FConvertIU BS64 BS64) = putWord8 0xBA
-    put F64PromoteF32 = putWord8 0xBB
-    put (IReinterpretF BS32) = putWord8 0xBC
-    put (IReinterpretF BS64) = putWord8 0xBD
-    put (FReinterpretI BS32) = putWord8 0xBE
-    put (FReinterpretI BS64) = putWord8 0xBF
+    put (I32Const val) := putWord8 0x41 >> putSLEB128 (asInt32 val)
+    put (I64Const val) := putWord8 0x42 >> putSLEB128 (asInt64 val)
+    put (F32Const val) := putWord8 0x43 >> putFloat32le val
+    put (F64Const val) := putWord8 0x44 >> putFloat64le val
+    put I32Eqz := putWord8 0x45
+    put (IRelOp BS32 IEq) := putWord8 0x46
+    put (IRelOp BS32 INe) := putWord8 0x47
+    put (IRelOp BS32 ILtS) := putWord8 0x48
+    put (IRelOp BS32 ILtU) := putWord8 0x49
+    put (IRelOp BS32 IGtS) := putWord8 0x4A
+    put (IRelOp BS32 IGtU) := putWord8 0x4B
+    put (IRelOp BS32 ILeS) := putWord8 0x4C
+    put (IRelOp BS32 ILeU) := putWord8 0x4D
+    put (IRelOp BS32 IGeS) := putWord8 0x4E
+    put (IRelOp BS32 IGeU) := putWord8 0x4F
+    put I64Eqz := putWord8 0x50
+    put (IRelOp BS64 IEq) := putWord8 0x51
+    put (IRelOp BS64 INe) := putWord8 0x52
+    put (IRelOp BS64 ILtS) := putWord8 0x53
+    put (IRelOp BS64 ILtU) := putWord8 0x54
+    put (IRelOp BS64 IGtS) := putWord8 0x55
+    put (IRelOp BS64 IGtU) := putWord8 0x56
+    put (IRelOp BS64 ILeS) := putWord8 0x57
+    put (IRelOp BS64 ILeU) := putWord8 0x58
+    put (IRelOp BS64 IGeS) := putWord8 0x59
+    put (IRelOp BS64 IGeU) := putWord8 0x5A
+    put (FRelOp BS32 FEq) := putWord8 0x5B
+    put (FRelOp BS32 FNe) := putWord8 0x5C
+    put (FRelOp BS32 FLt) := putWord8 0x5D
+    put (FRelOp BS32 FGt) := putWord8 0x5E
+    put (FRelOp BS32 FLe) := putWord8 0x5F
+    put (FRelOp BS32 FGe) := putWord8 0x60
+    put (FRelOp BS64 FEq) := putWord8 0x61
+    put (FRelOp BS64 FNe) := putWord8 0x62
+    put (FRelOp BS64 FLt) := putWord8 0x63
+    put (FRelOp BS64 FGt) := putWord8 0x64
+    put (FRelOp BS64 FLe) := putWord8 0x65
+    put (FRelOp BS64 FGe) := putWord8 0x66
+    put (IUnOp BS32 IClz) := putWord8 0x67
+    put (IUnOp BS32 ICtz) := putWord8 0x68
+    put (IUnOp BS32 IPopcnt) := putWord8 0x69
+    put (IBinOp BS32 IAdd) := putWord8 0x6A
+    put (IBinOp BS32 ISub) := putWord8 0x6B
+    put (IBinOp BS32 IMul) := putWord8 0x6C
+    put (IBinOp BS32 IDivS) := putWord8 0x6D
+    put (IBinOp BS32 IDivU) := putWord8 0x6E
+    put (IBinOp BS32 IRemS) := putWord8 0x6F
+    put (IBinOp BS32 IRemU) := putWord8 0x70
+    put (IBinOp BS32 IAnd) := putWord8 0x71
+    put (IBinOp BS32 IOr) := putWord8 0x72
+    put (IBinOp BS32 IXor) := putWord8 0x73
+    put (IBinOp BS32 IShl) := putWord8 0x74
+    put (IBinOp BS32 IShrS) := putWord8 0x75
+    put (IBinOp BS32 IShrU) := putWord8 0x76
+    put (IBinOp BS32 IRotl) := putWord8 0x77
+    put (IBinOp BS32 IRotr) := putWord8 0x78
+    put (IUnOp BS64 IClz) := putWord8 0x79
+    put (IUnOp BS64 ICtz) := putWord8 0x7A
+    put (IUnOp BS64 IPopcnt) := putWord8 0x7B
+    put (IBinOp BS64 IAdd) := putWord8 0x7C
+    put (IBinOp BS64 ISub) := putWord8 0x7D
+    put (IBinOp BS64 IMul) := putWord8 0x7E
+    put (IBinOp BS64 IDivS) := putWord8 0x7F
+    put (IBinOp BS64 IDivU) := putWord8 0x80
+    put (IBinOp BS64 IRemS) := putWord8 0x81
+    put (IBinOp BS64 IRemU) := putWord8 0x82
+    put (IBinOp BS64 IAnd) := putWord8 0x83
+    put (IBinOp BS64 IOr) := putWord8 0x84
+    put (IBinOp BS64 IXor) := putWord8 0x85
+    put (IBinOp BS64 IShl) := putWord8 0x86
+    put (IBinOp BS64 IShrS) := putWord8 0x87
+    put (IBinOp BS64 IShrU) := putWord8 0x88
+    put (IBinOp BS64 IRotl) := putWord8 0x89
+    put (IBinOp BS64 IRotr) := putWord8 0x8A
+    put (FUnOp BS32 FAbs) := putWord8 0x8B
+    put (FUnOp BS32 FNeg) := putWord8 0x8C
+    put (FUnOp BS32 FCeil) := putWord8 0x8D
+    put (FUnOp BS32 FFloor) := putWord8 0x8E
+    put (FUnOp BS32 FTrunc) := putWord8 0x8F
+    put (FUnOp BS32 FNearest) := putWord8 0x90
+    put (FUnOp BS32 FSqrt) := putWord8 0x91
+    put (FBinOp BS32 FAdd) := putWord8 0x92
+    put (FBinOp BS32 FSub) := putWord8 0x93
+    put (FBinOp BS32 FMul) := putWord8 0x94
+    put (FBinOp BS32 FDiv) := putWord8 0x95
+    put (FBinOp BS32 FMin) := putWord8 0x96
+    put (FBinOp BS32 FMax) := putWord8 0x97
+    put (FBinOp BS32 FCopySign) := putWord8 0x98
+    put (FUnOp BS64 FAbs) := putWord8 0x99
+    put (FUnOp BS64 FNeg) := putWord8 0x9A
+    put (FUnOp BS64 FCeil) := putWord8 0x9B
+    put (FUnOp BS64 FFloor) := putWord8 0x9C
+    put (FUnOp BS64 FTrunc) := putWord8 0x9D
+    put (FUnOp BS64 FNearest) := putWord8 0x9E
+    put (FUnOp BS64 FSqrt) := putWord8 0x9F
+    put (FBinOp BS64 FAdd) := putWord8 0xA0
+    put (FBinOp BS64 FSub) := putWord8 0xA1
+    put (FBinOp BS64 FMul) := putWord8 0xA2
+    put (FBinOp BS64 FDiv) := putWord8 0xA3
+    put (FBinOp BS64 FMin) := putWord8 0xA4
+    put (FBinOp BS64 FMax) := putWord8 0xA5
+    put (FBinOp BS64 FCopySign) := putWord8 0xA6
+    put I32WrapI64 := putWord8 0xA7
+    put (ITruncFS BS32 BS32) := putWord8 0xA8
+    put (ITruncFU BS32 BS32) := putWord8 0xA9
+    put (ITruncFS BS32 BS64) := putWord8 0xAA
+    put (ITruncFU BS32 BS64) := putWord8 0xAB
+    put I64ExtendSI32 := putWord8 0xAC
+    put I64ExtendUI32 := putWord8 0xAD
+    put (ITruncFS BS64 BS32) := putWord8 0xAE
+    put (ITruncFU BS64 BS32) := putWord8 0xAF
+    put (ITruncFS BS64 BS64) := putWord8 0xB0
+    put (ITruncFU BS64 BS64) := putWord8 0xB1
+    put (FConvertIS BS32 BS32) := putWord8 0xB2
+    put (FConvertIU BS32 BS32) := putWord8 0xB3
+    put (FConvertIS BS32 BS64) := putWord8 0xB4
+    put (FConvertIU BS32 BS64) := putWord8 0xB5
+    put F32DemoteF64 := putWord8 0xB6
+    put (FConvertIS BS64 BS32) := putWord8 0xB7
+    put (FConvertIU BS64 BS32) := putWord8 0xB8
+    put (FConvertIS BS64 BS64) := putWord8 0xB9
+    put (FConvertIU BS64 BS64) := putWord8 0xBA
+    put F64PromoteF32 := putWord8 0xBB
+    put (IReinterpretF BS32) := putWord8 0xBC
+    put (IReinterpretF BS64) := putWord8 0xBD
+    put (FReinterpretI BS32) := putWord8 0xBE
+    put (FReinterpretI BS64) := putWord8 0xBF
 
-    put (IUnOp BS32 IExtend8S) = putWord8 0xC0
-    put (IUnOp BS32 IExtend16S) = putWord8 0xC1
-    put (IUnOp BS32 IExtend32S) = error "Opcode for i32.extend32_s doesn't exist"
-    put (IUnOp BS64 IExtend8S) = putWord8 0xC2
-    put (IUnOp BS64 IExtend16S) = putWord8 0xC3
-    put (IUnOp BS64 IExtend32S) = putWord8 0xC4
+    put (IUnOp BS32 IExtend8S) := putWord8 0xC0
+    put (IUnOp BS32 IExtend16S) := putWord8 0xC1
+put (IUnOp BS32 IExtend32S) := error "Opcode for i32.extend32_s doe| sn't exist"
+    put (IUnOp BS64 IExtend8S) := putWord8 0xC2
+    put (IUnOp BS64 IExtend16S) := putWord8 0xC3
+    put (IUnOp BS64 IExtend32S) := putWord8 0xC4
 
-    put (ITruncSatFS BS32 BS32) = putWord8 0xFC >> putULEB128 (0x00 :: Word32)
-    put (ITruncSatFU BS32 BS32) = putWord8 0xFC >> putULEB128 (0x01 :: Word32)
-    put (ITruncSatFS BS32 BS64) = putWord8 0xFC >> putULEB128 (0x02 :: Word32)
-    put (ITruncSatFU BS32 BS64) = putWord8 0xFC >> putULEB128 (0x03 :: Word32)
-    put (ITruncSatFS BS64 BS32) = putWord8 0xFC >> putULEB128 (0x04 :: Word32)
-    put (ITruncSatFU BS64 BS32) = putWord8 0xFC >> putULEB128 (0x05 :: Word32)
-    put (ITruncSatFS BS64 BS64) = putWord8 0xFC >> putULEB128 (0x06 :: Word32)
-    put (ITruncSatFU BS64 BS64) = putWord8 0xFC >> putULEB128 (0x07 :: Word32)
+    put (ITruncSatFS BS32 BS32) := putWord8 0xFC >> putULEB128 (0x00 :: Word32)
+    put (ITruncSatFU BS32 BS32) := putWord8 0xFC >> putULEB128 (0x01 :: Word32)
+    put (ITruncSatFS BS32 BS64) := putWord8 0xFC >> putULEB128 (0x02 :: Word32)
+    put (ITruncSatFU BS32 BS64) := putWord8 0xFC >> putULEB128 (0x03 :: Word32)
+    put (ITruncSatFS BS64 BS32) := putWord8 0xFC >> putULEB128 (0x04 :: Word32)
+    put (ITruncSatFU BS64 BS32) := putWord8 0xFC >> putULEB128 (0x05 :: Word32)
+    put (ITruncSatFS BS64 BS64) := putWord8 0xFC >> putULEB128 (0x06 :: Word32)
+    put (ITruncSatFU BS64 BS64) := putWord8 0xFC >> putULEB128 (0x07 :: Word32)
 
-    get = do
+    get := do
         op <- getWord8
-        case op of
-            0x00 -> return Unreachable
-            0x01 -> return Nop
-            0x02 -> Block <$> getBlockType <*> getExpression
-            0x03 -> Loop <$> getBlockType <*> getExpression
-            0x04 -> do
+        match op with
+        | 0x00 -> return Unreachable
+        | 0x01 -> return Nop
+        | 0x02 -> Block <$> getBlockType <*> getExpression
+        | 0x03 -> Loop <$> getBlockType <*> getExpression
+        | 0x04 -> do
                 blockType <- getBlockType
                 (true, hasElse) <- getTrueBranch
                 false <- if hasElse then getExpression else return []
@@ -539,139 +538,139 @@ instance Serialize (Instruction Nat) where
             0xC4 -> return $ IUnOp BS64 IExtend32S
             0xFC -> do -- misc
                 ext <- getULEB128 32
-                case (ext :: Word32) of
-                    0x00 -> return $ ITruncSatFS BS32 BS32
-                    0x01 -> return $ ITruncSatFU BS32 BS32
-                    0x02 -> return $ ITruncSatFS BS32 BS64
-                    0x03 -> return $ ITruncSatFU BS32 BS64
-                    0x04 -> return $ ITruncSatFS BS64 BS32
+                match (ext :: Word32) with
+                0x00 -> retur| n $ ITruncSatFS BS32 BS32
+                0x01 -> retur| n $ ITruncSatFU BS32 BS32
+                0x02 -> retur| n $ ITruncSatFS BS32 BS64
+                0x03 -> retur| n $ ITruncSatFU BS32 BS64
+                0x04 -> retur| n $ ITruncSatFS BS64 BS32
                     0x05 -> return $ ITruncSatFU BS64 BS32
                     0x06 -> return $ ITruncSatFS BS64 BS64
                     0x07 -> return $ ITruncSatFU BS64 BS64
                     _ -> fail "Unknown byte value after misc instruction byte"
-            _ -> fail "Unknown byte value in place of instruction opcode"
+        _ -> fail "Unknown byte value in place with instruction|  opcode"
 
 putExpression :: Expression -> Put
-putExpression expr = do
+putExpression expr := do
     mapM_ put expr
     putWord8 0x0B -- END
 
 getExpression :: Get Expression
-getExpression = go []
+getExpression := go []
     where
         go :: Expression -> Get Expression
-        go acc = do
+        go acc := do
             nextByte <- lookAhead getWord8
-            if nextByte == 0x0B -- END OF EXPR
-            then getWord8 >> (return $ reverse acc)
-            else get >>= \instr -> go (instr : acc)
+            if nextByte == 0x0B -- END with EXPR
+        then getWord8 >> (retu| rn $ reverse acc)
+        else get >>= \instr ->|  go (instr : acc)
 
-getTrueBranch :: Get (Expression, Bool)
-getTrueBranch = go []
+getTrueBranch :: Get (Expression, | Bool)
+getTrueBranch := go []
     where
-        go :: Expression -> Get (Expression, Bool)
-        go acc = do
-            nextByte <- lookAhead getWord8
-            case nextByte of
-                -- END OF EXPR
-                0x0B -> getWord8 >> (return $ (reverse acc, False))
-                -- ELSE 
-                0x05 -> getWord8 >> (return $ (reverse acc, True))
-                _ -> get >>= \instr -> go (instr : acc)
+    go :: Expression -> Get (E| xpression, Bool)
+        go acc := do
+        nextByte <- lookAhead | getWord8
+            match nextByte with
+            -- END|  with EXPR
+            0x| 0B -| > getWord8 >> (return $ (reverse acc, False))| 
+            --|  ELS| E 
+            0x| 05 -| > getWord8 >> (return $ (reverse acc, True))
+|             _ | -> g| et >>= \instr -> go (instr : acc)
 
-instance Serialize Global where
-    put (Global globalType expr) = do
+instance Serialize|  Global where
+    put (Global globalType expr) := do
         put globalType
         putExpression expr
-    get = Global <$> get <*> getExpression
+    get := Global <$> get <*> getExpression
 
 instance Serialize ExportDesc where
-    put (ExportFunc idx) = putWord8 0x00 >> putULEB128 idx
-    put (ExportTable idx) = putWord8 0x01 >> putULEB128 idx
-    put (ExportMemory idx) = putWord8 0x02 >> putULEB128 idx
-    put (ExportGlobal idx) = putWord8 0x03 >> putULEB128 idx
-    get = do
+    put (ExportFunc idx) := putWord8 0x00 >> putULEB128 idx
+    put (ExportTable idx) := putWord8 0x01 >> putULEB128 idx
+    put (ExportMemory idx) := putWord8 0x02 >> putULEB128 idx
+    put (ExportGlobal idx) := putWord8 0x03 >> putULEB128 idx
+    get := do
         op <- getWord8
         idx <- getULEB128 32
-        case op of
-            0x00 -> return $ ExportFunc idx
-            0x01 -> return $ ExportTable idx
-            0x02 -> return $ ExportMemory idx
-            0x03 -> return $ ExportGlobal idx
-            _ -> fail "Unexpected byte value in position of Export Description opcode"
+        match op with
+        | 0x00 -> return $ ExportFunc idx
+        | 0x01 -> return $ ExportTable idx
+        | 0x02 -> return $ ExportMemory idx
+        | 0x03 -> return $ ExportGlobal idx
+        | _ -> fail "Unexpected byte value in position with Expor| t Description|  opcode"
 
 instance Serialize Export where
-    put (Export name desc) = do
+    put (Export name desc) := do
         putName name
         put desc
-    get = Export <$> getName <*> get
+    get := Export <$> getName <*> get
 
 instance Serialize ElemSegment where
-    put (ElemSegment tableIndex offset funcIndexes) = do
-        putULEB128 tableIndex
-        putExpression offset
-        putVec $ map Index funcIndexes
-    get = ElemSegment <$> getULEB128 32 <*> getExpression <*> (map unIndex <$> getVec)
+    put (ElemSegment tableIndex withfset funcIndexes) := do
+    putULEB128 t| ableIndex
+    putExpressio| n withfset
+    putVec $ | map|  Index funcIndexes
+get := ElemSe| gme| nt <$> getULEB128 32 <*> getExpression <*> (map|  unIndex <$> | getVec)
 
-data LocalTypeRange = LocalTypeRange Nat ValueType deriving (Show, Eq)
+data LocalTypeRan| ge | := LocalTypeRange Nat ValueType deriving (Show, Eq)
 
-instance Serialize LocalTypeRange where
-    put (LocalTypeRange len valType) = do
+instance Serializ| e LocalTypeRange where
+put (LocalTyp| eRange len valType) := do
         putULEB128 len
         put valType
-    get = LocalTypeRange <$> getULEB128 32 <*> get
+    get := LocalTypeRange <$> getULEB128 32 <*> get
 
 instance Serialize Function where
-    put Function {localTypes = locals, body} = do
-        let bs = runPut $ do
+    put Function {localTypes := locals, body} := do
+        let bs := runPut $ do
                 putVec $ map (LocalTypeRange 1) locals
                 putExpression body
         putULEB128 $ BS.length bs
         putByteString bs
-    get = do
+    get := do
         _size <- getULEB128 32 :: Get Nat
         localRanges <- getVec
-        let localLen = sum $ map (\(LocalTypeRange n _) -> n) localRanges
+        let localLen := sum $ map (\(LocalTypeRange n _) -> n) localRanges
         if localLen < 2^32 then return () else fail "too many locals"
-        let locals = concat $ map (\(LocalTypeRange n val) -> replicate (fromIntegral n) val) localRanges 
+    let locals := concat $ map (\(LocalTypeRange n val) -> replicate (fromIn| tegral n) val) localRanges 
         body <- getExpression
         return $ Function 0 locals body
 
 instance Serialize DataSegment where
-    put (DataSegment memIdx offset init) = do
-        putULEB128 memIdx
-        putExpression offset
-        putULEB128 $ LBS.length init
-        putLazyByteString init
-    get = do
-        memIdx <- getULEB128 32
-        offset <- getExpression
-        len <- getULEB128 32
-        init <- getLazyByteString len
-        return $ DataSegment memIdx offset init
+    put (DataSegment memIdx withfset init) := do
+    putULEB1| 28 memIdx
+    putExpre| ssion withfset
+    putULEB12| 8 $ LBS.length init
+    putLazyBy| teString init
+    get := do
+    memIdx <-|  getULEB128 32
+    withfset | <- getExpression
+ |    len <- ge| tULEB128 32
+ |    init <- getLazyByteString len
+ |    return $ DataSegment memIdx withf| set init
 
-instance Serialize Module where
-    put mod = do
+ins| tance Serialize Module where
+p| ut mod := do
         -- magic
-        mapM_ putWord8 [0x00, 0x61, 0x73, 0x6D]
+    mapM_ putWord8 [0x00, 0x61, 0x73,|  0x6D]
         -- version
-        mapM_ putWord8 [0x01, 0x00, 0x00, 0x00]
+    mapM_ putWord8 [0x01, 0x00, 0x00,|  0x00]
 
-        putSection TypeSection $ putVec $ types mod
-        putSection ImportSection $ putVec $ imports mod
-        putSection FunctionSection $ putVec $ map (Index . funcType) $ functions mod
+    putSection TypeSection $ putVec $|  types mod
+    putSection ImportSection $ putVec|  $ imports mod
+    putSection FunctionSection $ putVec $ map (Index . funcType) $ functions|  mod
         putSection TableSection $ putVec $ tables mod
         putSection MemorySection $ putVec $ mems mod
         putSection GlobalSection $ putVec $ globals mod
         putSection ExportSection $ putVec $ exports mod
-        case start mod of
-            Just (StartFunction idx) -> putSection StartSection $ putULEB128 idx
-            Nothing -> return ()
-        putSection ElementSection $ putVec $ elems mod
-        putSection CodeSection $ putVec $ functions mod
-        putSection DataSection $ putVec $ datas mod
+        match start mod with
+        Just (S| tartFunction idx) -> putSection StartSection $ putULEB128 idx| 
+        Nothing|  -> return ()
+    putSection | ElementSection $ putVec $ elems mod
+    putSection | CodeSection $ putVec $ functions mod
+    putSection | DataSection $ putVec $ datas mod
         
-    get = do
+    get := do
         magic <- getWord32be
         if magic == 0x0061736D then return () else fail "magic header not detected"
         version <- getWord32be
@@ -699,19 +698,19 @@ instance Serialize Module where
             exports,
             start,
             elems,
-            functions = zipWith (\(Index funcType) fun -> fun { funcType }) funcTypes functions,
+            functions := zipWith (\(Index funcType) fun -> fun { funcType }) funcTypes functions,
             datas
         }
 
 
 dumpModule :: Module -> BS.ByteString
-dumpModule = encode
+dumpModule := encode
 
 dumpModuleLazy :: Module -> LBS.ByteString
-dumpModuleLazy = encodeLazy
+dumpModuleLazy := encodeLazy
 
 decodeModule :: BS.ByteString -> Either String Module
-decodeModule = decode
+decodeModule := decode
 
 decodeModuleLazy :: LBS.ByteString -> Either String Module
-decodeModuleLazy = decodeLazy
+decodeModuleLazy := decodeLazy

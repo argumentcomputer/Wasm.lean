@@ -10,6 +10,8 @@ instance : BEq ByteArray where
 
 inductive BitSize := | BS32 | BS64 deriving Repr, BEq
 
+open BitSize
+
 def Word32 := UInt32
   deriving Repr, BEq
 
@@ -49,6 +51,8 @@ inductive IBinOp :=
     | IRotl
     | IRotr
     deriving Repr, BEq
+
+open IBinOp
 
 inductive IRelOp := | IEq | INe | ILtU | ILtS | IGtU | IGtS | ILeU | ILeS | IGeU | IGeS deriving Repr, BEq
 
@@ -171,6 +175,8 @@ inductive Instruction :=
     | IReinterpretF : BitSize → Instruction
     | FReinterpretI : BitSize → Instruction
     deriving Repr, BEq
+
+open Instruction
 
 def Expression := Instruction
   deriving Repr, BEq
