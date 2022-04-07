@@ -73,19 +73,19 @@ inductive FRelOp := | FEq | FNe | FLt | FGt | FLe | FGe deriving Repr, BEq
 structure MemArg := (offset : Nat) (align : Nat) deriving Repr, BEq
 
 def LabelIndex := Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 def FuncIndex := Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 def TypeIndex := Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 def LocalIndex := Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 def GlobalIndex := Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 def MemoryIndex := Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 def TableIndex := Nat
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 inductive ValueType :=
     | I32
@@ -94,14 +94,16 @@ inductive ValueType :=
     | F64
     deriving Inhabited, Repr, BEq
 
-def ResultType := ValueType
-  deriving Repr, BEq
-def ParamsType := ValueType
-  deriving Repr, BEq
-def LocalsType := ValueType
-  deriving Repr, BEq
+open ValueType
 
-structure FuncType := (params : ParamsType) (results : ResultType) deriving Repr, BEq
+def ResultType := ValueType
+  deriving Repr, BEq, Inhabited
+def ParamsType := ValueType
+  deriving Repr, BEq, Inhabited
+def LocalsType := ValueType
+  deriving Repr, BEq, Inhabited
+
+structure FuncType := (params : ParamsType) (results : ResultType) deriving Repr, BEq, Inhabited
 
 inductive BlockType :=
     | inline : (Option ValueType) → BlockType
@@ -182,49 +184,52 @@ inductive Instruction :=
     | F64PromoteF32 : Instruction
     | IReinterpretF : BitSize → Instruction
     | FReinterpretI : BitSize → Instruction
-    deriving Repr, BEq
+    deriving Repr, BEq, Inhabited
 
 open Instruction
 
 def Expression := Instruction
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 structure Function where
   funcType : TypeIndex
   localTypes : LocalsType
   body : Expression
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
-structure Limit := (n : Nat) (l : Option Nat) deriving Repr, BEq
+structure Limit :=
+  from_ : Nat
+  to : Option Nat := none
+  deriving Repr, BEq, Inhabited
 
 inductive ElemType :=
   | FuncRef
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 structure TableType := (limit : Limit) (elemType : ElemType)
- deriving Repr, BEq
+ deriving Repr, BEq, Inhabited
 
 structure Table := (type : TableType)
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 structure Memory := (limit : Limit)
- deriving Repr, BEq
+ deriving Repr, BEq, Inhabited
 
 inductive GlobalType :=
   | Const : ValueType → GlobalType
   | Mut : ValueType → GlobalType
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 structure Global :=
   globalType : GlobalType
   initializer : Expression
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 structure ElemSegment :=
   tableIndex : TableIndex
   offset : Expression
   funcIndexes : List FuncIndex
-  deriving Repr, BEq
+  deriving Repr, BEq, Inhabited
 
 structure DataSegment :=
   memIndex : MemoryIndex

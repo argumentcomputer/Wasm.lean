@@ -8,9 +8,11 @@ inductive Value :=
   | VI64 Word64
   | VF32 Float
   | VF64 Double
-  deriving Inhabited, BEq, Repr
+  deriving BEq, Repr
 
 open Value
+
+instance : Inhabited Value := ⟨VI32 0⟩
 
 def Value.type : Value -> ValueType
   | (VI32 _) => I32
@@ -108,40 +110,64 @@ structure Label :=
   deriving Repr, BEq
 
 def Address := UInt32
-    deriving BEq, Repr
+    deriving BEq, Repr, Inhabited
+
+instance : OfNat Address n := ⟨UInt32.ofNat n⟩
 
 structure TableInstance :=
     lim : Limit
     elements : Array (Option Address)
 
 def MemoryStore := ByteArray -- .MutableByteArray (Primitive.PrimState IO)
+    deriving Inhabited, BEq, Repr
 
 structure MemoryInstance :=
-    lim : Limit
+    limit : Limit
     memory : MemoryStore
+    deriving Inhabited, BEq, Repr
 
 inductive GlobalInstance :=
-  | const ValueType Value
-  | mutable ValueType Value
-  deriving Inhabited, BEq, Repr
+    | const : ValueType → Value → GlobalInstance
+    | mutable : ValueType → Value → GlobalInstance
+    deriving Inhabited, BEq, Repr
 
 def makeMutGlobal (val: Value) : GlobalInstance :=
   GlobalInstance.mutable (val.type) val
 
 def makeConstGlobal (val : Value) : GlobalInstance := GlobalInstance.const (val.type) val
 
-
-structure ExportInstance :=
-  name : String
-  value : ExternalValue
-  deriving BEq, Repr
-
 inductive ExternalValue :=
     | ExternFunction Address
     | ExternTable Address
     | ExternMemory Address
     | ExternGlobal Address
-    deriving BEq, Repr
+    deriving BEq, Repr, Inhabited
+
+structure ExportInstance :=
+  name : String
+  value : ExternalValue
+  deriving BEq, Repr, Inhabited
+
+structure ModuleInstance :=
+    funcTypes : Array FuncType := Array.empty
+    funcaddrs : Array Address := Array.empty
+    tableaddrs : Array Address := Array.empty
+    memaddrs : Array Address := Array.empty
+    globaladdrs : Array Address := Array.empty
+    exports : Array ExportInstance := Array.empty
+    deriving BEq, Repr, Inhabited
+
+def ModuleInstance.empty (_ : Unit) : ModuleInstance := {
+    funcTypes := Array.empty,
+    funcaddrs := Array.empty,
+    tableaddrs := Array.empty,
+    memaddrs := Array.empty,
+    globaladdrs := Array.empty,
+    exports := Array.empty
+  : ModuleInstance }
+
+def HostFunction := List Value -> IO (List Value)
+  deriving Inhabited
 
 inductive FunctionInstance :=
     | FunctionInstance
@@ -151,34 +177,38 @@ inductive FunctionInstance :=
     | HostInstance
         (funcType : FuncType)
         (hostCode : HostFunction)
+    deriving Inhabited
+
+open FunctionInstance
+
 
 structure Store :=
     funcInstances : Array FunctionInstance := Array.empty
     tableInstances : Array TableInstance := Array.empty
     memInstances : Array MemoryInstance := Array.empty
     globalInstances : Array GlobalInstance := Array.empty
+    deriving Inhabited
 
 
 -- def Store.empty : Store := { funcInstances := #[] : Store }
 
-def HostFunction := List Value -> IO (List Value)
-
 inductive HostItem :=
-  | HostFunction FuncType HostFunction
-  | HostGlobal GlobalInstance
-  | HostMemory Limit
-  | HostTable Limit
+  | function : FuncType → HostFunction → HostItem
+  | global : GlobalInstance → HostItem
+  | memory : Limit → HostItem
+  | table : Limit → HostItem
+  deriving BEq, Repr, Inhabited
 
 def makeHostModule (st : Store) (items : List (TL.Text × HostItem)) : IO (Store × ModuleInstance) := do
   let makeHostFunctions : (Store, ModuleInstance) -> (Store, ModuleInstance) :=
       (λ (st, inst) =>
             let funcLen := Array.length $ funcInstances st
-            let (names, types, instances) := unzip3 [(name, t, HostInstance t c) | (name, (HostFunction t c)) <- items]
+            let (names, types, instances) := unzip3 <| items.map λ (name, {t, c}) => (name, t, HostInstance.mk t c)
             let exps := Array.fromList $ zipWith (\name i -> ExportInstance name (ExternFunction i)) names [funcLen..]
             let inst' := inst {
                     funcTypes := Array.fromList types,
                     funcaddrs := Array.fromList [funcLen..funcLen + length instances - 1],
-                    exports := Language.Wasm.Interpreter.exports inst <> exps
+                    exports := Wasm.exports inst <> exps
                 }
             let st' := st { funcInstances := funcInstances st <> Array.fromList instances }
             (st', inst')
@@ -230,24 +260,6 @@ def makeHostModule (st : Store) (items : List (TL.Text × HostItem)) : IO (Store
       |> makeHostMems
       >>= makeHostTables
 
-
-structure ModuleInstance :=
-    funcTypes : Array FuncType := Array.empty
-    funcaddrs : Array Address := Array.empty
-    tableaddrs : Array Address := Array.empty
-    memaddrs : Array Address := Array.empty
-    globaladdrs : Array Address := Array.empty
-    exports : Array ExportInstance := Array.empty
-    deriving BEq, Repr
-
-def ModuleInstance.empty (_ : Unit) : ModuleInstance := {
-    funcTypes := Array.empty,
-    funcaddrs := Array.empty,
-    tableaddrs := Array.empty,
-    memaddrs := Array.empty,
-    globaladdrs := Array.empty,
-    exports := Array.empty
-  : ModuleInstance }
 
 def calcInstance (s : Store) (imports : Imports) (mod : Module) : Initialize ModuleInstance := do
   let getImpIdx : Import -> Initialize ExternalValue :=
@@ -351,120 +363,111 @@ def getGlobalValue (inst : ModuleInstance) (store : Store) (idx : Nat) : IO Valu
     | GlobalInstance.mutable _ ref => readIORef ref
 
 -- due the validation there can be only these instructions
-evalConstExpr :: ModuleInstance -> Store -> Expression -> IO Value
-evalConstExpr _ _ [I32Const v] := return $ VI32 v
-evalConstExpr _ _ [I64Const v] := return $ VI64 v
-evalConstExpr _ _ [F32Const v] := return $ VF32 v
-evalConstExpr _ _ [F64Const v] := return $ VF64 v
-evalConstExpr inst store [GetGlobal i] := getGlobalValue inst store i
-evalConstExpr _ _ instrs := error $ "Global initializer contains unsupported instructions: " ++ show instrs
+def evalConstExpr : ModuleInstance -> Store -> Expression -> IO Value
+  | _ _ [I32Const v] => pure $ VI32 v
+  | _ _ [I64Const v] => pure $ VI64 v
+  | _ _ [F32Const v] => pure $ VF32 v
+  | _ _ [F64Const v] => pure $ VF64 v
+  | inst store [GetGlobal i] => getGlobalValue inst store i
+  | _ _ instrs => throw $ "Global initializer contains unsupported instructions: " ++ show instrs
 
-allocAndInitGlobals :: ModuleInstance -> Store -> [Global] -> IO (Array GlobalInstance)
-allocAndInitGlobals inst store globs := Array.fromList <$> mapM allocGlob globs
-    where
-        runIniter :: Expression -> IO Value
-        -- the spec says get global can ref only imported globals
-        -- only they are in store for this moment
-        runIniter := evalConstExpr inst store
+def allocAndInitGlobals (inst : ModuleInstance) (store : Store) (globs : List Global) : IO (Array GlobalInstance) :=
+  let runIniter : Expression -> IO Value
+  -- the spec says get global can ref only imported globals
+  -- only they are in store for this moment
+    := evalConstExpr inst store
 
-        allocGlob :: Global -> IO GlobalInstance
-        allocGlob (Global (Const vt) initer) := GIConst vt <$> runIniter initer
-        allocGlob (Global (Mut vt) initer) := do
-            val <- runIniter initer
-            GIMut vt <$> newIORef val
+  let allocGlob : Global -> IO GlobalInstance := (λ
+    | (Global (Const vt) initer) => GIConst vt <$> runIniter initer
+    | (Global (Mut vt) initer) => do
+      let val <- runIniter initer
+      return GlobalInstance.mutable vt val
+  Array.fromList <$> mapM allocGlob globs
 
-allocTables :: [Table] -> Array TableInstance
-allocTables tables := Array.fromList $ map allocTable tables
-    where
-        allocTable :: Table -> TableInstance
-        allocTable (Table (TableType lim@(Limit from to) _)) =
-            TableInstance {
-                lim,
-                elements := Array.fromList $ replicate (fromIntegral from) Nothing
-            }
+def allocTables (tables : Array Table) : Array TableInstance :=
+  let allocTable : Table -> TableInstance :=
+    λ table =>
+      {
+          lim := table.type.limit,
+          elements := List.toArray $ List.replicate table.type.limit.from_ none
+      }
+  tables.map allocTable
 
-defaultBudget :: Natural
-defaultBudget := 300
+def defaultBudget : Nat := 300
 
-pageSize :: Int
-pageSize := 64 * 1024
+def pageSize : Nat := 64 * 1024
 
-allocMems :: [Memory] -> IO (Array MemoryInstance)
-allocMems mems := Array.fromList <$> mapM allocMem mems
-    where
-        allocMem :: Memory -> IO MemoryInstance
-        allocMem (Memory lim@(Limit from to)) := do
-            let size := fromIntegral from * pageSize
-            mem <- ByteArray.newByteArray size
-            ByteArray.setByteArray @Word64 mem 0 (size `div` 8) 0
-            memory <- newIORef mem
-            return MemoryInstance {
-                lim,
-                memory
-            }
+def allocMems (mems : Array Memory) : IO (Array MemoryInstance) :=
+    let allocMem : Memory -> IO MemoryInstance := λ memory => do
+        let size := memory.limit.from * pageSize
+        let mem  := ByteArray.mkEmpty size
+        -- ByteArray.setByteArray @Word64 mem 0 (size / 8) 0
+        return {
+            limit := memory.limit,
+            memory := mem
+        : MemoryInstance }
+    Array.mapM allocMem mems
 
-type Initialize := ExceptT String (State.StateT Store IO)
+def Initialize := ExceptT String (StateT Store IO)
+    deriving MonadState, MonadExcept
 
-initialize :: ModuleInstance -> Module -> Initialize ()
-initialize inst Module {elems, inductives, start} := do
-    checkedMems <- mapM checkinductive inductives
-    checkedTables <- mapM checkElem elems
+def initialize (inst : ModuleInstance) (module : Module) : Initialize := do
+    let checkElem : ElemSegment -> Initialize (Address × Int × List Address) := λ elem do
+        let st <- State.get
+        let VI32 val <- liftIO $ evalConstExpr inst st elem.offset
+        let from := fromIntegral val
+        let funcs := map ((funcaddrs inst !) . fromIntegral) funcIndexes
+        let idx := tableaddrs inst ! fromIntegral tableIndex
+        let last := from + funcs.size
+        let TableInstance lim elems := tableInstances st ! idx
+        let len := Array.length elems
+        Monad.when (last > len) $ throw "elements segment does not fit"
+        return (idx, from, funcs)
+
+    let initElem : (Address × Int × List Address) -> Initialize Unit := λ (idx, from, funcs) => 
+        State.modify $ λ st =>
+            let TableInstance lim elems := tableInstances st ! idx in
+            let table := TableInstance lim (elems // zip [from..] (map some funcs)) in
+            { st with tableInstances := tableInstances st Array.// [(idx, table)] }
+
+    let checkinductive : InductiveSegment -> Initialize (Int, MemoryStore, LBS.ByteString)
+    checkinductive inductiveSegment {memIndex, offset, chunk} := do
+        st <- State.get
+        VI32 val <- liftIO $ evalConstExpr inst st offset
+        let from := fromIntegral val
+        let idx := memaddrs inst ! fromIntegral memIndex
+        let last := from + (fromIntegral $ LBS.length chunk)
+        let MemoryInstance _ memory := memInstances st ! idx
+        mem <- liftIO $ readIORef memory
+        len <- ByteArray.getSizeofMutableByteArray mem
+        Monad.when (last > len) $ throwError "inductive segment does not fit"
+        return (from, mem, chunk)
+
+    initinductive :: (Int, MemoryStore, LBS.ByteString) -> Initialize ()
+    initinductive (from, mem, chunk) =
+        mapM_ (\(i,b) -> ByteArray.writeByteArray mem i b) $ zip [from..] $ LBS.unpack chunk
+    let checkedMems <- mapM checkinductive module.inductives
+    let checkedTables <- mapM checkElem module.elems
     mapM_ initinductive checkedMems
     mapM_ initElem checkedTables
-    st <- State.get
-    case start of
-        Just (StartFunction idx) -> do
-            let funInst := funcInstances st ! (funcaddrs inst ! fromIntegral idx)
-            mainRes <- liftIO $ eval defaultBudget st funInst []
-            case mainRes of
-                Just [] -> return ()
-                _ -> throwError "Start function terminated with trap"
-        Nothing -> return ()
+    let st <- State.get
+    match start with
+    | some (StartFunction idx) -> do
+      let funInst := funcInstances st ! (funcaddrs inst ! fromIntegral idx)
+      let mainRes <- liftIO $ eval defaultBudget st funInst []
+      match mainRes with
+      | some [] => return ()
+      |  _ => throw "Start function terminated with trap"
+    | none => return ()
     where
-        checkElem :: ElemSegment -> Initialize (Address, Int, [Address])
-        checkElem ElemSegment {tableIndex, offset, funcIndexes} := do
-            st <- State.get
-            VI32 val <- liftIO $ evalConstExpr inst st offset
-            let from := fromIntegral val
-            let funcs := map ((funcaddrs inst !) . fromIntegral) funcIndexes
-            let idx := tableaddrs inst ! fromIntegral tableIndex
-            let last := from + length funcs
-            let TableInstance lim elems := tableInstances st ! idx
-            let len := Array.length elems
-            Monad.when (last > len) $ throwError "elements segment does not fit"
-            return (idx, from, funcs)
 
-        initElem :: (Address, Int, [Address]) -> Initialize ()
-        initElem (idx, from, funcs) := State.modify $ \st ->
-            let TableInstance lim elems := tableInstances st ! idx in
-            let table := TableInstance lim (elems // zip [from..] (map Just funcs)) in
-            st { tableInstances := tableInstances st Array.// [(idx, table)] }
-
-        checkinductive :: inductiveSegment -> Initialize (Int, MemoryStore, LBS.ByteString)
-        checkinductive inductiveSegment {memIndex, offset, chunk} := do
-            st <- State.get
-            VI32 val <- liftIO $ evalConstExpr inst st offset
-            let from := fromIntegral val
-            let idx := memaddrs inst ! fromIntegral memIndex
-            let last := from + (fromIntegral $ LBS.length chunk)
-            let MemoryInstance _ memory := memInstances st ! idx
-            mem <- liftIO $ readIORef memory
-            len <- ByteArray.getSizeofMutableByteArray mem
-            Monad.when (last > len) $ throwError "inductive segment does not fit"
-            return (from, mem, chunk)
-        
-        initinductive :: (Int, MemoryStore, LBS.ByteString) -> Initialize ()
-        initinductive (from, mem, chunk) =
-            mapM_ (\(i,b) -> ByteArray.writeByteArray mem i b) $ zip [from..] $ LBS.unpack chunk
-
-instantiate :: Store -> Imports -> Valid.ValidModule -> IO (Either String ModuleInstance, Store)
-instantiate st imps mod := flip State.runStateT st $ runExceptT $ do
+def instantiate (st : Store) (imps : Imports) (mod : Valid.ValidModule) : IO (Either String ModuleInstance × Store) := flip State.runStateT st $ runExceptT $ do
     let m := Valid.getModule mod
-    inst <- calcInstance st imps m
-    let functions := funcInstances st <> (allocFunctions inst $ Struct.functions m)
-    globals <- liftIO $ (globalInstances st <>) <$> (allocAndInitGlobals inst st $ Struct.globals m)
-    let tables := tableInstances st <> (allocTables $ Struct.tables m)
-    mems <- liftIO $ (memInstances st <>) <$> (allocMems $ Struct.mems m)
+    let inst <- calcInstance st imps m
+    let functions := funcInstances st <|> (allocFunctions inst $ Struct.functions m)
+    let globals <- liftIO $ (globalInstances st <|> ·) <$> (allocAndInitGlobals inst st $ Struct.globals m)
+    let tables := tableInstances st <|> (allocTables $ Struct.tables m)
+    let mems <- liftIO $ (memInstances st <|> ·) <$> (allocMems $ Struct.mems m)
     State.put $ st {
         funcInstances := functions,
         tableInstances := tables,
@@ -474,105 +477,92 @@ instantiate st imps mod := flip State.runStateT st $ runExceptT $ do
     initialize inst m
     return inst
 
-type Stack := [Value]
+def Stack := List Value
+    deriving Repr, BEq
 
-inductive EvalCtx := EvalCtx {
-    locals :: Array Value,
-    labels :: [Label],
-    stack :: Stack
-} deriving (Repr, BEq)
+structure EvalCtx :=
+    locals : Array Value
+    labels : Array Label
+    stack : Stack
+    deriving Repr, BEq
 
-inductive EvalResult =
-    Done EvalCtx
-    | Break Int [Value] EvalCtx
+inductive EvalResult :=
+    | Done EvalCtx
+    | Break Int (List Value) EvalCtx
     | Trap
-    | ReturnFn [Value]
-    deriving (Repr, BEq)
+    | ReturnFn (List Value)
+    deriving Repr, BEq
 
-eval :: Natural -> Store -> FunctionInstance -> [Value] -> IO (Option [Value])
-eval 0 _ _ _ := return Nothing
-eval budget store FunctionInstance { funcType, moduleInstance, code := Function { localTypes, body} } args := do
-    case sequence $ zipWith checkValType (params funcType) args of
-        Just checkedArgs -> do
-            let initialContext := EvalCtx {
-                    locals := Array.fromList $ checkedArgs ++ map initLocal localTypes,
-                    labels := [Label $ results funcType],
-                    stack := []
-                }
-            res <- go initialContext body
-            case res of
-                Done ctx -> return $ Just $ reverse $ stack ctx
-                ReturnFn r -> return $ Just r
-                Break 0 r _ -> return $ Just $ reverse r
-                Break _ _ _ -> error "Break is out of range"
-                Trap -> return Nothing
-        Nothing -> return Nothing
-    where
-        checkValType :: ValueType -> Value -> Option Value
-        checkValType I32 (VI32 v) := Just $ VI32 v
-        checkValType I64 (VI64 v) := Just $ VI64 v
-        checkValType F32 (VF32 v) := Just $ VF32 v
-        checkValType F64 (VF64 v) := Just $ VF64 v
-        checkValType _   _        := Nothing
+def checkValType : ValueType -> Value -> Option Value
+    | I32 (VI32 v) => some $ VI32 v
+    | I64 (VI64 v) => some $ VI64 v
+    | F32 (VF32 v) => some $ VF32 v
+    | F64 (VF64 v) => some $ VF64 v
+    | _   _        => none
 
-        initLocal :: ValueType -> Value
-        initLocal I32 := VI32 0
-        initLocal I64 := VI64 0
-        initLocal F32 := VF32 0
-        initLocal F64 := VF64 0
+def initLocal : ValueType -> Value
+    | I32 => VI32 0
+    | I64 => VI64 0
+    | F32 => VF32 0
+    | F64 => VF64 0
 
-        go :: EvalCtx -> Expression -> IO EvalResult
-        go ctx [] := return $ Done ctx
-        go ctx (instr:rest) := do
-            res <- step ctx instr
-            case res of
-                Done ctx' -> go ctx' rest
-                command -> return command
+
+def eval (budget : Nat) (store : Store) (funcInst : FunctionInstance) (args : List Value) : IO (Option (List Value)) := do
+-- eval 0 _ _ _ := return Nothing
+-- eval budget store FunctionInstance { funcType, moduleInstance, code := Function { localTypes, body} } args := do
+    if budget = 0 then return none
+    let go : EvalCtx -> Expression -> IO EvalResult := λ
+        | ctx [] => pure $ Done ctx
+        | ctx (instr :: rest) => do
+            let res <- step ctx instr
+            match res with
+            | Done ctx' => go ctx' rest
+            | command => return command
         
-        makeLoadInstr :: (Primitive.Prim i, Bits i, Integral i) => EvalCtx -> Natural -> Int -> ([Value] -> i -> EvalResult) -> IO EvalResult
-        makeLoadInstr ctx@EvalCtx{ stack := (VI32 v:rest) } offset byteWidth cont := do
-            let MemoryInstance { memory := memoryRef } := memInstances store ! (memaddrs moduleInstance ! 0)
-            memory <- readIORef memoryRef
-            let addr := fromIntegral v + fromIntegral offset
-            let readByte idx := do
-                    byte <- ByteArray.readByteArray @Word8 memory $ addr + idx
-                    return $ fromIntegral byte `shiftL` (idx * 8)
-            len <- ByteArray.getSizeofMutableByteArray memory
-            let isAligned := addr `rem` byteWidth == 0
-            if addr + byteWidth > len
-            then return Trap
-            else (
-                    if isAligned
-                    then cont rest <$> ByteArray.readByteArray memory (addr `quot` byteWidth)
-                    else cont rest . sum <$> mapM readByte [0..byteWidth-1]
-                )
-        makeLoadInstr _ _ _ _ := error "Incorrect value on top of stack for memory instruction"
+    let makeLoadInstr : EvalCtx → Nat → Int → (List Value -> Nat -> EvalResult) → IO EvalResult :=
+        λ (ctx : EvalCtx) (offset : Nat) (byteWidth : Int) (cont : List Value -> Nat -> EvalResult) (v : Nat) => do
+          let { memory, limit : MemoryInstance } := memInstances store.memInstances ! (memaddrs moduleInstance ! 0)
+          -- let memory <- readIORefc memoryRef
+          let addr := v + offset
+          let readByte idx := do
+              let byte <- ByteArray.readByteArray @Word8 memory $ addr + idx
+              return $ byte <<< (idx * 8)
+          let len := memory.size
+          let isAligned := rem addr byteWidth == 0
+          if addr + byteWidth > len
+          then return Trap
+          else (
+            if isAligned
+            then cont rest <$> ByteArray.readByteArray memory (Nat.quot addr byteWidth)
+            else cont rest . sum <$> mapM readByte [0 : byteWidth-1]
+          )
+        -- makeLoadInstr _ _ _ _ := error "Incorrect value on top of stack for memory instruction"
 
-        makeStoreInstr :: (Primitive.Prim i, Bits i, Integral i) => EvalCtx -> Natural -> Int -> i -> IO EvalResult
-        makeStoreInstr ctx@EvalCtx{ stack := (VI32 va:rest) } offset byteWidth v := do
-            let MemoryInstance { memory := memoryRef } := memInstances store ! (memaddrs moduleInstance ! 0)
-            memory <- readIORef memoryRef
-            let addr := fromIntegral $ va + fromIntegral offset
-            let writeByte idx := do
-                    let byte := fromIntegral $ v `shiftR` (idx * 8) .&. 0xFF
-                    ByteArray.writeByteArray @Word8 memory (addr + idx) byte
-            len <- ByteArray.getSizeofMutableByteArray memory
-            let isAligned := addr `rem` byteWidth == 0
-            let write := if isAligned
-                then ByteArray.writeByteArray memory (addr `quot` byteWidth) v
-                else mapM_ writeByte [0..byteWidth-1] :: IO ()
-            if addr + byteWidth > len
-            then return Trap
-            else write >> (return $ Done ctx { stack := rest })
+    let makeStoreInstr (ctx : EvalCtx) (offset : Nat) (byteWith : Int) (v : Nat) : IO EvalResult :=
+        λ (ctx : EvalCtx) (offset : Nat) (byteWith : Int) (v : Nat) => do
+        let { memory : MemoryInstance } := store.memInstances.get! (moduleInstance.memaddrs.get! 0)
+        -- let memory <- readIORef memoryRef
+        let addr := fromIntegral $ va + fromIntegral offset
+        let writeByte idx := do
+            let byte := fromIntegral $ v >>> (idx * 8) && 0xFF
+            ByteArray.writeByteArray @Word8 memory (addr + idx) byte
+        let len := memory.size
+        let isAligned := rem addr byteWidth == 0
+        let write := if isAligned
+            then ByteArray.writeByteArray memory (Nat.quot addr byteWidth) v
+            else (mapM_ writeByte [0 : byteWidth-1] : IO Unit)
+        if addr + byteWidth > len
+        then return Trap
+        else write >> (return $ Done ctx { stack := rest })
         makeStoreInstr _ _ _ _ := error "Incorrect value on top of stack for memory instruction"
 
-        step :: EvalCtx -> Instruction Natural -> IO EvalResult
-        step _ Unreachable := return Trap
-        step ctx Nop := return $ Done ctx
-        step ctx (Block blockType expr) := do
+    let step : EvalCtx -> Instruction Natural -> IO EvalResult := λ
+        | _ Unreachable := return Trap
+        | ctx Nop := return $ Done ctx
+        | ctx (Block blockType expr) := do
             let FuncType paramType resType := case blockType of
                     Inline Nothing -> FuncType [] []
-                    Inline (Just valType) -> FuncType [] [valType]
+                    Inline (some valType) -> FuncType [] [valType]
                     TypeIndex typeIdx -> funcTypes moduleInstance ! fromIntegral typeIdx
             res <- go ctx { labels := Label resType : labels ctx } expr
             case res of
@@ -580,10 +570,10 @@ eval budget store FunctionInstance { funcType, moduleInstance, code := Function 
                 Break n r ctx' -> return $ Break (n - 1) r ctx'
                 Done ctx'@EvalCtx{ labels := (_:rest) } -> return $ Done ctx' { labels := rest }
                 command -> return command
-        step ctx loop@(Loop blockType expr) := do
+        | ctx loop@(Loop blockType expr) := do
             let resType := case blockType of
                     Inline Nothing -> []
-                    Inline (Just valType) -> [valType]
+                    Inline (some valType) -> [valType]
                     TypeIndex typeIdx -> results $ funcTypes moduleInstance ! fromIntegral typeIdx
             res <- go ctx { labels := Label resType : labels ctx } expr
             case res of
@@ -591,10 +581,10 @@ eval budget store FunctionInstance { funcType, moduleInstance, code := Function 
                 Break n r ctx' -> return $ Break (n - 1) r ctx'
                 Done ctx'@EvalCtx{ labels := (_:rest) } -> return $ Done ctx' { labels := rest }
                 command -> return command
-        step ctx@EvalCtx{ stack := (VI32 v): rest } (If blockType true false) := do
+        | ctx@EvalCtx{ stack := (VI32 v): rest } (If blockType true false) := do
             let FuncType paramType resType := case blockType of
                     Inline Nothing -> FuncType [] []
-                    Inline (Just valType) -> FuncType [] [valType]
+                    Inline (some valType) -> FuncType [] [valType]
                     TypeIndex typeIdx -> funcTypes moduleInstance ! fromIntegral typeIdx
             let expr := if v /= 0 then true else false
             res <- go ctx { labels := Label resType : labels ctx, stack := rest } expr
@@ -603,37 +593,37 @@ eval budget store FunctionInstance { funcType, moduleInstance, code := Function 
                 Break n r ctx' -> return $ Break (n - 1) r ctx'
                 Done ctx'@EvalCtx{ labels := (_:rest) } -> return $ Done ctx' { labels := rest }
                 command -> return command
-        step ctx@EvalCtx{ stack, labels } (Br label) := do
+        | ctx@EvalCtx{ stack, labels } (Br label) := do
             let idx := fromIntegral label
             let Label resType := labels !! idx
             case sequence $ zipWith checkValType (reverse resType) $ take (length resType) stack of
-                Just result -> return $ Break idx result ctx
+                some result -> return $ Break idx result ctx
                 Nothing -> return Trap
-        step ctx@EvalCtx{ stack := (VI32 v): rest } (BrIf label) =
+        | ctx@EvalCtx{ stack := (VI32 v): rest } (BrIf label) =
             if v == 0
             then return $ Done ctx { stack := rest }
             else step ctx { stack := rest } (Br label)
-        step ctx@EvalCtx{ stack := (VI32 v): rest } (BrTable labels label) =
+        | ctx@EvalCtx{ stack := (VI32 v): rest } (BrTable labels label) =
             let idx := fromIntegral v in
             let lbl := fromIntegral $ if idx < length labels then labels !! idx else label in
             step ctx { stack := rest } (Br lbl)
-        step EvalCtx{ stack } Return =
+        | EvalCtx{ stack } Return =
             let resType := results funcType in
             case sequence $ zipWith checkValType (reverse resType) $ take (length resType) stack of
-                Just result -> return $ ReturnFn $ reverse result
+                some result -> return $ ReturnFn $ reverse result
                 Nothing -> return Trap
-        step ctx (Call fun) := do
+        | ctx (Call fun) := do
             let funInst := funcInstances store ! (funcaddrs moduleInstance ! fromIntegral fun)
             let ft := Language.Wasm.Interpreter.funcType funInst 
             let args := params ft
             case sequence $ zipWith checkValType args $ reverse $ take (length args) $ stack ctx of
-                Just params -> do
+                some params -> do
                     res <- eval (budget - 1) store funInst params
                     case res of
-                        Just res -> return $ Done ctx { stack := reverse res ++ (drop (length args) $ stack ctx) }
+                        some res -> return $ Done ctx { stack := reverse res ++ (drop (length args) $ stack ctx) }
                         Nothing -> return Trap
                 Nothing -> return Trap
-        step ctx@EvalCtx{ stack := (VI32 v): rest } (CallIndirect typeIdx) := do
+        | ctx@EvalCtx{ stack := (VI32 v): rest } (CallIndirect typeIdx) := do
             let funcType := funcTypes moduleInstance ! fromIntegral typeIdx
             let TableInstance { elements } := tableInstances store ! (tableaddrs moduleInstance ! 0)
             let checks := do
@@ -646,498 +636,512 @@ eval budget store FunctionInstance { funcType, moduleInstance, code := Function 
                     params <- sequence $ zipWith checkValType args $ reverse $ take (length args) rest
                     return (funcInst, params)
             case checks of
-                Just (funcInst, params) -> do
+                some (funcInst, params) -> do
                     res <- eval (budget - 1) store funcInst params
                     case res of
-                        Just res -> return $ Done ctx { stack := reverse res ++ (drop (length params) rest) }
+                        some res -> return $ Done ctx { stack := reverse res ++ (drop (length params) rest) }
                         Nothing -> return Trap
                 Nothing -> return Trap
-        step ctx@EvalCtx{ stack := (_:rest) } Drop := return $ Done ctx { stack := rest }
-        step ctx@EvalCtx{ stack := (VI32 test:val2:val1:rest) } Select =
+        | ctx@EvalCtx{ stack := (_:rest) } Drop := return $ Done ctx { stack := rest }
+        | ctx@EvalCtx{ stack := (VI32 test:val2:val1:rest) } Select =
             if test == 0
             then return $ Done ctx { stack := val2 : rest }
             else return $ Done ctx { stack := val1 : rest }
-        step ctx (GetLocal i) := return $ Done ctx { stack := (locals ctx ! fromIntegral i) : stack ctx }
-        step ctx@EvalCtx{ stack := (v:rest) } (SetLocal i) =
+        | ctx (GetLocal i) := return $ Done ctx { stack := (locals ctx ! fromIntegral i) : stack ctx }
+        | ctx@EvalCtx{ stack := (v:rest) } (SetLocal i) =
             return $ Done ctx { stack := rest, locals := locals ctx // [(fromIntegral i, v)] }
-        step ctx@EvalCtx{ locals := ls, stack := (v:rest) } (TeeLocal i) =
+        | ctx@EvalCtx{ locals := ls, stack := (v:rest) } (TeeLocal i) =
             return $ Done ctx {
                 stack := v : rest,
                 locals := locals ctx // [(fromIntegral i, v)]
             }
-        step ctx (GetGlobal i) := do
+        | ctx (GetGlobal i) := do
             let globalInst := globalInstances store ! (globaladdrs moduleInstance ! fromIntegral i)
             val <- case globalInst of
                 GIConst _ v -> return v
                 GIMut _ ref -> readIORef ref
             return $ Done ctx { stack := val : stack ctx }
-        step ctx@EvalCtx{ stack := (v:rest) } (SetGlobal i) := do
+        | ctx@EvalCtx{ stack := (v:rest) } (SetGlobal i) := do
             let globalInst := globalInstances store ! (globaladdrs moduleInstance ! fromIntegral i)
             case globalInst of
                 GIConst _ v -> error "Attempt of mutation of constant global"
                 GIMut _ ref -> writeIORef ref v
             return $ Done ctx { stack := rest }
-        step ctx (I32Load MemArg { offset }) =
-            makeLoadInstr ctx offset 4 $ (\rest val -> Done ctx { stack := VI32 val : rest })
-        step ctx (I64Load MemArg { offset }) =
-            makeLoadInstr ctx offset 8 $ (\rest val -> Done ctx { stack := VI64 val : rest })
-        step ctx (F32Load MemArg { offset }) =
-            makeLoadInstr ctx offset 4 $ (\rest val -> Done ctx { stack := VF32 (wordToFloat val) : rest })
-        step ctx (F64Load MemArg { offset }) =
-            makeLoadInstr ctx offset 8 $ (\rest val -> Done ctx { stack := VF64 (wordToDouble val) : rest })
-        step ctx (I32Load8U MemArg { offset }) =
-            makeLoadInstr @Word8 ctx offset 1 $ (\rest val -> Done ctx { stack := VI32 (fromIntegral val) : rest })
-        step ctx (I32Load8S MemArg { offset }) =
-            makeLoadInstr ctx offset 1 $ (\rest byte ->
+        | ctx (I32Load MemArg { offset }) =
+            makeLoadInstr ctx offset 4 $ (λ rest val => Done ctx { stack := VI32 val : rest })
+        | ctx (I64Load MemArg { offset }) =
+            makeLoadInstr ctx offset 8 $ (λ rest val => Done ctx { stack := VI64 val : rest })
+        | ctx (F32Load MemArg { offset }) =
+            makeLoadInstr ctx offset 4 $ (λ rest val => Done ctx { stack := VF32 (wordToFloat val) : rest })
+        | ctx (F64Load MemArg { offset }) =
+            makeLoadInstr ctx offset 8 $ (λ rest val => Done ctx { stack := VF64 (wordToDouble val) : rest })
+        | ctx (I32Load8U MemArg { offset }) =
+            makeLoadInstr @Word8 ctx offset 1 $ (λ rest val => Done ctx { stack := VI32 (fromIntegral val) : rest })
+        | ctx (I32Load8S MemArg { offset }) =
+            makeLoadInstr ctx offset 1 $ (λ rest byte =>
                 let val := asWord32 $ if (byte :: Word8) >= 128 then -1 * fromIntegral (0xFF - byte + 1) else fromIntegral byte in
                 Done ctx { stack := VI32 val : rest })
-        step ctx (I32Load16U MemArg { offset }) := do
-            makeLoadInstr @Word16 ctx offset 2 $ (\rest val -> Done ctx { stack := VI32 (fromIntegral val) : rest })
-        step ctx (I32Load16S MemArg { offset }) =
-            makeLoadInstr ctx offset 2 $ (\rest val ->
+        | ctx (I32Load16U MemArg { offset }) := do
+            makeLoadInstr @Word16 ctx offset 2 $ (λ rest val => Done ctx { stack := VI32 (fromIntegral val) : rest })
+        | ctx (I32Load16S MemArg { offset }) =
+            makeLoadInstr ctx offset 2 $ (λ rest val =>
                 let signed := asWord32 $ if (val :: Word16) >= 2 ^ 15 then -1 * fromIntegral (0xFFFF - val + 1) else fromIntegral val in
                 Done ctx { stack := VI32 signed : rest })
-        step ctx (I64Load8U MemArg { offset }) =
-            makeLoadInstr @Word8 ctx offset 1 $ (\rest val -> Done ctx { stack := VI64 (fromIntegral val) : rest })
-        step ctx (I64Load8S MemArg { offset }) =
-            makeLoadInstr ctx offset 1 $ (\rest byte ->
+        | ctx (I64Load8U MemArg { offset }) =
+            makeLoadInstr @Word8 ctx offset 1 $ (λ rest val => Done ctx { stack := VI64 (fromIntegral val) : rest })
+        | ctx (I64Load8S MemArg { offset }) =
+            makeLoadInstr ctx offset 1 $ (λ rest byte =>
                 let val := asWord64 $ if (byte :: Word8) >= 128 then -1 * fromIntegral (0xFF - byte + 1) else fromIntegral byte in
                 Done ctx { stack := VI64 val : rest })
-        step ctx (I64Load16U MemArg { offset }) =
-            makeLoadInstr @Word16 ctx offset 2 $ (\rest val -> Done ctx { stack := VI64 (fromIntegral val) : rest })
-        step ctx (I64Load16S MemArg { offset }) =
-            makeLoadInstr ctx offset 2 $ (\rest val ->
+        | ctx (I64Load16U MemArg { offset }) =
+            makeLoadInstr @Word16 ctx offset 2 $ (λ rest val => Done ctx { stack := VI64 (fromIntegral val) : rest })
+        | ctx (I64Load16S MemArg { offset }) =
+            makeLoadInstr ctx offset 2 $ (λ rest val =>
                 let signed := asWord64 $ if (val :: Word16) >= 2 ^ 15 then -1 * fromIntegral (0xFFFF - val + 1) else fromIntegral val in
                 Done ctx { stack := VI64 signed : rest })
-        step ctx (I64Load32U MemArg { offset }) =
-            makeLoadInstr @Word32 ctx offset 4 $ (\rest val -> Done ctx { stack := VI64 (fromIntegral val) : rest })
-        step ctx (I64Load32S MemArg { offset }) =
-            makeLoadInstr ctx offset 4 $ (\rest val ->
+        | ctx (I64Load32U MemArg { offset }) =
+            makeLoadInstr @Word32 ctx offset 4 $ (λ rest val => Done ctx { stack := VI64 (fromIntegral val) : rest })
+        | ctx (I64Load32S MemArg { offset }) =
+            makeLoadInstr ctx offset 4 $ (λ rest val =>
                 let signed := asWord64 $ fromIntegral $ asInt32 val in
                 Done ctx { stack := VI64 signed : rest })
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (I32Store MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (I32Store MemArg { offset }) =
             makeStoreInstr ctx { stack := rest } offset 4 v
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store MemArg { offset }) =
             makeStoreInstr ctx { stack := rest } offset 8 v
-        step ctx@EvalCtx{ stack := (VF32 f:rest) } (F32Store MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VF32 f:rest) } (F32Store MemArg { offset }) =
             makeStoreInstr ctx { stack := rest } offset 4 $ floatToWord f
-        step ctx@EvalCtx{ stack := (VF64 f:rest) } (F64Store MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VF64 f:rest) } (F64Store MemArg { offset }) =
             makeStoreInstr ctx { stack := rest } offset 8 $ doubleToWord f
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (I32Store8 MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (I32Store8 MemArg { offset }) =
             makeStoreInstr @Word8 ctx { stack := rest } offset 1 $ fromIntegral v
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (I32Store16 MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (I32Store16 MemArg { offset }) =
             makeStoreInstr @Word16 ctx { stack := rest } offset 2 $ fromIntegral v
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store8 MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store8 MemArg { offset }) =
             makeStoreInstr @Word8 ctx { stack := rest } offset 1 $ fromIntegral v
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store16 MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store16 MemArg { offset }) =
             makeStoreInstr @Word16 ctx { stack := rest } offset 2 $ fromIntegral v
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store32 MemArg { offset }) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (I64Store32 MemArg { offset }) =
             makeStoreInstr @Word32 ctx { stack := rest } offset 4 $ fromIntegral v
-        step ctx@EvalCtx{ stack := st } CurrentMemory := do
+        | ctx@EvalCtx{ stack := st } CurrentMemory := do
             let MemoryInstance { memory := memoryRef } := memInstances store ! (memaddrs moduleInstance ! 0)
-            memory <- readIORef memoryRef
-            size <- ((`quot` pageSize) . fromIntegral) <$> ByteArray.getSizeofMutableByteArray memory
+            let memory <- readIORef memoryRef
+            let size <- ((`quot` pageSize) . fromIntegral) <$> ByteArray.getSizeofMutableByteArray memory
             return $ Done ctx { stack := VI32 (fromIntegral size) : st }
-        step ctx@EvalCtx{ stack := (VI32 n:rest) } GrowMemory := do
+        | ctx@EvalCtx{ stack := (VI32 n:rest) } GrowMemory := do
             let MemoryInstance { lim := limit@(Limit _ maxLen), memory := memoryRef } := memInstances store ! (memaddrs moduleInstance ! 0)
-            memory <- readIORef memoryRef
-            size <- (`quot` pageSize) <$> ByteArray.getSizeofMutableByteArray memory
+            let memory <- readIORef memoryRef
+            let size <- (`quot` pageSize) <$> ByteArray.getSizeofMutableByteArray memory
             let growTo := size + fromIntegral n
             let w64PageSize := fromIntegral $ pageSize `div` 8
-            result <- (
-                    if fromOption True ((growTo <=) . fromIntegral <$> maxLen) && growTo <= 0xFFFF
-                    then (
-                        if n == 0 then return size else do
-                            mem' <- ByteArray.resizeMutableByteArray memory $ growTo * pageSize
-                            ByteArray.setByteArray @Word64 mem' (size * w64PageSize) (fromIntegral n * w64PageSize) 0
-                            writeIORef memoryRef mem'
-                            return size
-                    )
-                    else return $ -1
+            let result <- (
+                if fromOption True ((growTo <=) . fromIntegral <$> maxLen) && growTo <= 0xFFFF
+                then (
+                    if n == 0 then return size else do
+                        mem' <- ByteArray.resizeMutableByteArray memory $ growTo * pageSize
+                        ByteArray.setByteArray @Word64 mem' (size * w64PageSize) (fromIntegral n * w64PageSize) 0
+                        writeIORef memoryRef mem'
+                        return size
                 )
+                else return $ -1
+            )
             return $ Done ctx { stack := VI32 (asWord32 $ fromIntegral result) : rest }
-        step ctx (I32Const v) := return $ Done ctx { stack := VI32 v : stack ctx }
-        step ctx (I64Const v) := return $ Done ctx { stack := VI64 v : stack ctx }
-        step ctx (F32Const v) := return $ Done ctx { stack := VF32 v : stack ctx }
-        step ctx (F64Const v) := return $ Done ctx { stack := VF64 v : stack ctx }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IAdd) =
+        | ctx (I32Const v) := return $ Done ctx { stack := VI32 v : stack ctx }
+        | ctx (I64Const v) := return $ Done ctx { stack := VI64 v : stack ctx }
+        | ctx (F32Const v) := return $ Done ctx { stack := VF32 v : stack ctx }
+        | ctx (F64Const v) := return $ Done ctx { stack := VF64 v : stack ctx }
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IAdd) =
             return $ Done ctx { stack := VI32 (v1 + v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 ISub) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 ISub) =
             return $ Done ctx { stack := VI32 (v1 - v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IMul) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IMul) =
             return $ Done ctx { stack := VI32 (v1 * v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IDivU) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IDivU) =
             if v2 == 0
             then return Trap
             else return $ Done ctx { stack := VI32 (v1 `quot` v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IDivS) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IDivS) =
             if v2 == 0 || (v1 == 0x80000000 && v2 == 0xFFFFFFFF)
             then return Trap
             else return $ Done ctx { stack := VI32 (asWord32 $ asInt32 v1 `quot` asInt32 v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRemU) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRemU) =
             if v2 == 0
             then return Trap
             else return $ Done ctx { stack := VI32 (v1 `rem` v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRemS) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRemS) =
             if v2 == 0
             then return Trap
             else return $ Done ctx { stack := VI32 (asWord32 $ asInt32 v1 `rem` asInt32 v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IAnd) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IAnd) =
             return $ Done ctx { stack := VI32 (v1 .&. v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IOr) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IOr) =
             return $ Done ctx { stack := VI32 (v1 .|. v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IXor) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IXor) =
             return $ Done ctx { stack := VI32 (v1 `xor` v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IShl) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IShl) =
             return $ Done ctx { stack := VI32 (v1 `shiftL` (fromIntegral v2 `rem` 32)) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IShrU) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IShrU) =
             return $ Done ctx { stack := VI32 (v1 `shiftR` (fromIntegral v2 `rem` 32)) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IShrS) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IShrS) =
             return $ Done ctx { stack := VI32 (asWord32 $ asInt32 v1 `shiftR` (fromIntegral v2 `rem` 32)) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRotl) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRotl) =
             return $ Done ctx { stack := VI32 (v1 `rotateL` fromIntegral v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRotr) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IBinOp BS32 IRotr) =
             return $ Done ctx { stack := VI32 (v1 `rotateR` fromIntegral v2) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IBEq) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IBEq) =
             return $ Done ctx { stack := VI32 (if v1 == v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 INe) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 INe) =
             return $ Done ctx { stack := VI32 (if v1 /= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILtU) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILtU) =
             return $ Done ctx { stack := VI32 (if v1 < v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILtS) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILtS) =
             return $ Done ctx { stack := VI32 (if asInt32 v1 < asInt32 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGtU) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGtU) =
             return $ Done ctx { stack := VI32 (if v1 > v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGtS) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGtS) =
             return $ Done ctx { stack := VI32 (if asInt32 v1 > asInt32 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILeU) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILeU) =
             return $ Done ctx { stack := VI32 (if v1 <= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILeS) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 ILeS) =
             return $ Done ctx { stack := VI32 (if asInt32 v1 <= asInt32 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGeU) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGeU) =
             return $ Done ctx { stack := VI32 (if v1 >= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGeS) =
+        | ctx@EvalCtx{ stack := (VI32 v2:VI32 v1:rest) } (IRelOp BS32 IGeS) =
             return $ Done ctx { stack := VI32 (if asInt32 v1 >= asInt32 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } I32BEqz =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } I32BEqz =
             return $ Done ctx { stack := VI32 (if v == 0 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IClz) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IClz) =
             return $ Done ctx { stack := VI32 (fromIntegral $ countLeadingZeros v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 ICtz) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 ICtz) =
             return $ Done ctx { stack := VI32 (fromIntegral $ countTrailingZeros v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IPopcnt) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IPopcnt) =
             return $ Done ctx { stack := VI32 (fromIntegral $ popCount v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IExtend8S) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IExtend8S) =
             let byte := v .&. 0xFF in
             let r := if byte >= 0x80 then asWord32 (fromIntegral byte - 0x100) else byte in
             return $ Done ctx { stack := VI32 r : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IExtend16S) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IExtend16S) =
             let half := v .&. 0xFFFF in
             let r := if half >= 0x8000 then asWord32 (fromIntegral half - 0x10000) else half in
             return $ Done ctx { stack := VI32 r : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IExtend32S) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (IUnOp BS32 IExtend32S) =
             return $ Done ctx { stack := VI32 v : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IAdd) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IAdd) =
             return $ Done ctx { stack := VI64 (v1 + v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 ISub) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 ISub) =
             return $ Done ctx { stack := VI64 (v1 - v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IMul) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IMul) =
             return $ Done ctx { stack := VI64 (v1 * v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IDivU) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IDivU) =
             if v2 == 0
             then return Trap
             else return $ Done ctx { stack := VI64 (v1 `quot` v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IDivS) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IDivS) =
             if v2 == 0 || (v1 == 0x8000000000000000 && v2 == 0xFFFFFFFFFFFFFFFF)
             then return Trap
             else return $ Done ctx { stack := VI64 (asWord64 $ asInt64 v1 `quot` asInt64 v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRemU) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRemU) =
             if v2 == 0
             then return Trap
             else return $ Done ctx { stack := VI64 (v1 `rem` v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRemS) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRemS) =
             if v2 == 0
             then return Trap
             else return $ Done ctx { stack := VI64 (asWord64 $ asInt64 v1 `rem` asInt64 v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IAnd) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IAnd) =
             return $ Done ctx { stack := VI64 (v1 .&. v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IOr) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IOr) =
             return $ Done ctx { stack := VI64 (v1 .|. v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IXor) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IXor) =
             return $ Done ctx { stack := VI64 (v1 `xor` v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IShl) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IShl) =
             return $ Done ctx { stack := VI64 (v1 `shiftL` (fromIntegral (v2 `rem` 64))) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IShrU) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IShrU) =
             return $ Done ctx { stack := VI64 (v1 `shiftR` (fromIntegral (v2 `rem` 64))) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IShrS) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IShrS) =
             return $ Done ctx { stack := VI64 (asWord64 $ asInt64 v1 `shiftR` (fromIntegral (v2 `rem` 64))) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRotl) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRotl) =
             return $ Done ctx { stack := VI64 (v1 `rotateL` fromIntegral v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRotr) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IBinOp BS64 IRotr) =
             return $ Done ctx { stack := VI64 (v1 `rotateR` fromIntegral v2) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IBEq) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IBEq) =
             return $ Done ctx { stack := VI32 (if v1 == v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 INe) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 INe) =
             return $ Done ctx { stack := VI32 (if v1 /= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILtU) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILtU) =
             return $ Done ctx { stack := VI32 (if v1 < v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILtS) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILtS) =
             return $ Done ctx { stack := VI32 (if asInt64 v1 < asInt64 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGtU) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGtU) =
             return $ Done ctx { stack := VI32 (if v1 > v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGtS) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGtS) =
             return $ Done ctx { stack := VI32 (if asInt64 v1 > asInt64 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILeU) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILeU) =
             return $ Done ctx { stack := VI32 (if v1 <= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILeS) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 ILeS) =
             return $ Done ctx { stack := VI32 (if asInt64 v1 <= asInt64 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGeU) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGeU) =
             return $ Done ctx { stack := VI32 (if v1 >= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGeS) =
+        | ctx@EvalCtx{ stack := (VI64 v2:VI64 v1:rest) } (IRelOp BS64 IGeS) =
             return $ Done ctx { stack := VI32 (if asInt64 v1 >= asInt64 v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } I64BEqz =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } I64BEqz =
             return $ Done ctx { stack := VI32 (if v == 0 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IClz) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IClz) =
             return $ Done ctx { stack := VI64 (fromIntegral $ countLeadingZeros v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 ICtz) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 ICtz) =
             return $ Done ctx { stack := VI64 (fromIntegral $ countTrailingZeros v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IPopcnt) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IPopcnt) =
             return $ Done ctx { stack := VI64 (fromIntegral $ popCount v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IExtend8S) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IExtend8S) =
             let byte := v .&. 0xFF in
             let r := if byte >= 0x80 then asWord64 (fromIntegral byte - 0x100) else byte in
             return $ Done ctx { stack := VI64 r : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IExtend16S) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IExtend16S) =
             let quart := v .&. 0xFFFF in
             let r := if quart >= 0x8000 then asWord64 (fromIntegral quart - 0x10000) else quart in
             return $ Done ctx { stack := VI64 r : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IExtend32S) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (IUnOp BS64 IExtend32S) =
             let half := v .&. 0xFFFFFFFF in
             let r := if half >= 0x80000000 then asWord64 (fromIntegral half - 0x100000000) else half in
             return $ Done ctx { stack := VI64 r : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FAbs) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FAbs) =
             return $ Done ctx { stack := VF32 (abs v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FNeg) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FNeg) =
             return $ Done ctx { stack := VF32 (negate v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FCeil) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FCeil) =
             return $ Done ctx { stack := VF32 (floatCeil v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FFloor) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FFloor) =
             return $ Done ctx { stack := VF32 (floatFloor v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FTrunc) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FTrunc) =
             return $ Done ctx { stack := VF32 (floatTrunc v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FNearest) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FNearest) =
             return $ Done ctx { stack := VF32 (nearest v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FSqrt) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (FUnOp BS32 FSqrt) =
             return $ Done ctx { stack := VF32 (sqrt v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FAbs) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FAbs) =
             return $ Done ctx { stack := VF64 (abs v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FNeg) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FNeg) =
             return $ Done ctx { stack := VF64 (negate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FCeil) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FCeil) =
             return $ Done ctx { stack := VF64 (doubleCeil v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FFloor) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FFloor) =
             return $ Done ctx { stack := VF64 (doubleFloor v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FTrunc) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FTrunc) =
             return $ Done ctx { stack := VF64 (doubleTrunc v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FNearest) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FNearest) =
             return $ Done ctx { stack := VF64 (nearest v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FSqrt) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (FUnOp BS64 FSqrt) =
             return $ Done ctx { stack := VF64 (sqrt v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FAdd) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FAdd) =
             return $ Done ctx { stack := VF32 (v1 + v2) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FSub) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FSub) =
             return $ Done ctx { stack := VF32 (v1 - v2) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FMul) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FMul) =
             return $ Done ctx { stack := VF32 (v1 * v2) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FDiv) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FDiv) =
             return $ Done ctx { stack := VF32 (v1 / v2) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FMin) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FMin) =
             return $ Done ctx { stack := VF32 (zeroAwareMin v1 v2) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FMax) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FMax) =
             return $ Done ctx { stack := VF32 (zeroAwareMax v1 v2) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FCopySign) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FBinOp BS32 FCopySign) =
             return $ Done ctx { stack := VF32 (copySign v1 v2) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FAdd) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FAdd) =
             return $ Done ctx { stack := VF64 (v1 + v2) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FSub) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FSub) =
             return $ Done ctx { stack := VF64 (v1 - v2) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FMul) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FMul) =
             return $ Done ctx { stack := VF64 (v1 * v2) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FDiv) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FDiv) =
             return $ Done ctx { stack := VF64 (v1 / v2) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FMin) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FMin) =
             return $ Done ctx { stack := VF64 (zeroAwareMin v1 v2) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FMax) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FMax) =
             return $ Done ctx { stack := VF64 (zeroAwareMax v1 v2) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FCopySign) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FBinOp BS64 FCopySign) =
             return $ Done ctx { stack := VF64 (copySign v1 v2) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FBEq) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FBEq) =
             return $ Done ctx { stack := VI32 (if v1 == v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FNe) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FNe) =
             return $ Done ctx { stack := VI32 (if v1 /= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FLt) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FLt) =
             return $ Done ctx { stack := VI32 (if v1 < v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FGt) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FGt) =
             return $ Done ctx { stack := VI32 (if v1 > v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FLe) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FLe) =
             return $ Done ctx { stack := VI32 (if v1 <= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FGe) =
+        | ctx@EvalCtx{ stack := (VF32 v2:VF32 v1:rest) } (FRelOp BS32 FGe) =
             return $ Done ctx { stack := VI32 (if v1 >= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FBEq) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FBEq) =
             return $ Done ctx { stack := VI32 (if v1 == v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FNe) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FNe) =
             return $ Done ctx { stack := VI32 (if v1 /= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FLt) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FLt) =
             return $ Done ctx { stack := VI32 (if v1 < v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FGt) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FGt) =
             return $ Done ctx { stack := VI32 (if v1 > v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FLe) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FLe) =
             return $ Done ctx { stack := VI32 (if v1 <= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FGe) =
+        | ctx@EvalCtx{ stack := (VF64 v2:VF64 v1:rest) } (FRelOp BS64 FGe) =
             return $ Done ctx { stack := VI32 (if v1 >= v2 then 1 else 0) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } I32WrapI64 =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } I32WrapI64 =
             return $ Done ctx { stack := VI32 (fromIntegral $ v .&. 0xFFFFFFFF) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFU BS32 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFU BS32 BS32) =
             if isNaN v || isInfinite v || v >= 2^32 || v <= -1
             then return Trap
             else return $ Done ctx { stack := VI32 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFU BS32 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFU BS32 BS64) =
             if isNaN v || isInfinite v || v >= 2^32 || v <= -1
             then return Trap
             else return $ Done ctx { stack := VI32 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFU BS64 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFU BS64 BS32) =
             if isNaN v || isInfinite v || v >= 2^64 || v <= -1
             then return Trap
             else return $ Done ctx { stack := VI64 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFU BS64 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFU BS64 BS64) =
             if isNaN v || isInfinite v || v >= 2^64 || v <= -1
             then return Trap
             else return $ Done ctx { stack := VI64 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFS BS32 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFS BS32 BS32) =
             if isNaN v || isInfinite v || v >= 2^31 || v < -2^31 - 1
             then return Trap
             else return $ Done ctx { stack := VI32 (asWord32 $ truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFS BS32 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFS BS32 BS64) =
             if isNaN v || isInfinite v || v >= 2^31 || v <= -2^31 - 1
             then return Trap
             else return $ Done ctx { stack := VI32 (asWord32 $ truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFS BS64 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncFS BS64 BS32) =
             if isNaN v || isInfinite v || v >= 2^63 || v < -2^63 - 1
             then return Trap
             else return $ Done ctx { stack := VI64 (asWord64 $ truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFS BS64 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncFS BS64 BS64) =
             if isNaN v || isInfinite v || v >= 2^63 || v < -2^63 - 1
             then return Trap
             else return $ Done ctx { stack := VI64 (asWord64 $ truncate v) : rest }
 
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) | isNaN v =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) | isNaN v =
             return $ Done ctx { stack := VI32 0 : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) | isNaN v =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) | isNaN v =
             return $ Done ctx { stack := VI32 0 : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) | isNaN v =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) | isNaN v =
             return $ Done ctx { stack := VI64 0 : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) | isNaN v =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) | isNaN v =
             return $ Done ctx { stack := VI64 0 : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS32 BS32) | v <= -1 || isNaN v =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS32 BS32) | v <= -1 || isNaN v =
             return $ Done ctx { stack := VI32 0 : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS32 BS64) | v <= -1 || isNaN v =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS32 BS64) | v <= -1 || isNaN v =
             return $ Done ctx { stack := VI32 0 : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS64 BS32) | v <= -1 || isNaN v =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS64 BS32) | v <= -1 || isNaN v =
             return $ Done ctx { stack := VI64 0 : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS64 BS64) | v <= -1 || isNaN v =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS64 BS64) | v <= -1 || isNaN v =
             return $ Done ctx { stack := VI64 0 : rest }
 
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) | v >= 2^31 =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) | v >= 2^31 =
             return $ Done ctx { stack := VI32 0x7fffffff : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) | v >= 2^31 =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) | v >= 2^31 =
             return $ Done ctx { stack := VI32 0x7fffffff : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) | v >= 2^63 =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) | v >= 2^63 =
             return $ Done ctx { stack := VI64 0x7fffffffffffffff : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) | v >= 2^63 =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) | v >= 2^63 =
             return $ Done ctx { stack := VI64 0x7fffffffffffffff : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS32 BS32) | v >= 2^32 =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS32 BS32) | v >= 2^32 =
             return $ Done ctx { stack := VI32 0xffffffff : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS32 BS64) | v >= 2^32 =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS32 BS64) | v >= 2^32 =
             return $ Done ctx { stack := VI32 0xffffffff : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS64 BS32) | v >= 2^64 =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS64 BS32) | v >= 2^64 =
             return $ Done ctx { stack := VI64 0xffffffffffffffff : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS64 BS64) | v >= 2^64 =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS64 BS64) | v >= 2^64 =
             return $ Done ctx { stack := VI64 0xffffffffffffffff : rest }
         
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) | v <= -2^31 - 1 =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) | v <= -2^31 - 1 =
             return $ Done ctx { stack := VI32 0x80000000 : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) | v <= -2^31 - 1 =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) | v <= -2^31 - 1 =
             return $ Done ctx { stack := VI32 0x80000000 : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) | v <= -2^63 - 1 =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) | v <= -2^63 - 1 =
             return $ Done ctx { stack := VI64 0x8000000000000000 : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) | v <= -2^63 - 1 =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) | v <= -2^63 - 1 =
             return $ Done ctx { stack := VI64 0x8000000000000000 : rest }
 
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS32 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS32 BS32) =
             return $ Done ctx { stack := VI32 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS32 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS32 BS64) =
             return $ Done ctx { stack := VI32 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS64 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFU BS64 BS32) =
             return $ Done ctx { stack := VI64 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS64 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFU BS64 BS64) =
             return $ Done ctx { stack := VI64 (truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS32 BS32) =
             return $ Done ctx { stack := VI32 (asWord32 $ truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS32 BS64) =
             return $ Done ctx { stack := VI32 (asWord32 $ truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (ITruncSatFS BS64 BS32) =
             return $ Done ctx { stack := VI64 (asWord64 $ truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (ITruncSatFS BS64 BS64) =
             return $ Done ctx { stack := VI64 (asWord64 $ truncate v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } I64ExtendUI32 =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } I64ExtendUI32 =
             return $ Done ctx { stack := VI64 (fromIntegral v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } I64ExtendSI32 =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } I64ExtendSI32 =
             return $ Done ctx { stack := VI64 (asWord64 $ fromIntegral $ asInt32 v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIU BS32 BS32) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIU BS32 BS32) =
             return $ Done ctx { stack := VF32 (realToFrac v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIU BS32 BS64) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIU BS32 BS64) =
             return $ Done ctx { stack := VF32 (realToFrac v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIU BS64 BS32) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIU BS64 BS32) =
             return $ Done ctx { stack := VF64 (realToFrac v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIU BS64 BS64) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIU BS64 BS64) =
             return $ Done ctx { stack := VF64 (realToFrac v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIS BS32 BS32) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIS BS32 BS32) =
             return $ Done ctx { stack := VF32 (realToFrac $ asInt32 v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIS BS32 BS64) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIS BS32 BS64) =
             return $ Done ctx { stack := VF32 (realToFrac $ asInt64 v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIS BS64 BS32) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (FConvertIS BS64 BS32) =
             return $ Done ctx { stack := VF64 (realToFrac $ asInt32 v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIS BS64 BS64) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (FConvertIS BS64 BS64) =
             return $ Done ctx { stack := VF64 (realToFrac $ asInt64 v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } F32DemoteF64 =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } F32DemoteF64 =
             return $ Done ctx { stack := VF32 (realToFrac v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } F64PromoteF32 =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } F64PromoteF32 =
             return $ Done ctx { stack := VF64 (realToFrac v) : rest }
-        step ctx@EvalCtx{ stack := (VF32 v:rest) } (IReinterpretF BS32) =
+        | ctx@EvalCtx{ stack := (VF32 v:rest) } (IReinterpretF BS32) =
             return $ Done ctx { stack := VI32 (floatToWord v) : rest }
-        step ctx@EvalCtx{ stack := (VF64 v:rest) } (IReinterpretF BS64) =
+        | ctx@EvalCtx{ stack := (VF64 v:rest) } (IReinterpretF BS64) =
             return $ Done ctx { stack := VI64 (doubleToWord v) : rest }
-        step ctx@EvalCtx{ stack := (VI32 v:rest) } (FReinterpretI BS32) =
+        | ctx@EvalCtx{ stack := (VI32 v:rest) } (FReinterpretI BS32) =
             return $ Done ctx { stack := VF32 (wordToFloat v) : rest }
-        step ctx@EvalCtx{ stack := (VI64 v:rest) } (FReinterpretI BS64) =
+        | ctx@EvalCtx{ stack := (VI64 v:rest) } (FReinterpretI BS64) =
             return $ Done ctx { stack := VF64 (wordToDouble v) : rest }
-        step EvalCtx{ stack } instr := error $ "Error during evaluation of instruction: " ++ show instr ++ ". Stack " ++ show stack
-eval _ _ HostInstance { funcType, hostCode } args := Just <$> hostCode args
+        | EvalCtx{ stack } instr := error $ "Error during evaluation of instruction: " ++ show instr ++ ". Stack " ++ show stack
+    match sequence $ zipWith checkValType (params funcType) args with
+    | some checkedArgs => do
+        let initialContext := {
+              locals := Array.fromList $ checkedArgs ++ map initLocal localTypes,
+              labels := [Label $ results funcType],
+              stack := []
+            }
+        let res <- go initialContext body
+        match res with
+        | Done ctx => pure $ some $ reverse $ stack ctx
+        | ReturnFn r => pure $ some r
+        | Break 0 r _ => pure $ some $ reverse r
+        | Break _ _ _ => throw "Break is out of range"
+        | Trap => return none
+    | none => return none
+-- eval _ _ HostInstance { funcType, hostCode } args := some <$> hostCode args
 
-invoke :: Store -> Address -> [Value] -> IO (Option [Value])
-invoke st funcIdx := eval defaultBudget st $ funcInstances st ! funcIdx
+def invoke (st : Store) (funcIdx : Address) (args : List Value) : IO (Option (List Value)) :=
+    eval defaultBudget st $ st.funcInstances.get! funcIdx.toNat
 
-invokeExport :: Store -> ModuleInstance -> TL.Text -> [Value] -> IO (Option [Value])
-invokeExport st ModuleInstance { exports } name args =
-    case Array.find (\(ExportInstance n _) -> n == name) exports of
-        Just (ExportInstance _ (ExternFunction addr)) -> invoke st addr args
-        _ -> error $ "Function with name " ++ show name ++ " was not found in module's exports"
+def invokeExport (st : Store) (inst : ModuleInstance) (name : String) (args : List Value) : IO (Option (List Value)) :=
+    match Array.find (λ (ExportInstance n _) => n == name) inst.exports with
+    | some (ExportInstance _ (ExternFunction addr)) => invoke st addr args
+    | none => throw $ "Function with name " ++ show name ++ " was not found in module's exports"
 
-getGlobalValueByName :: Store -> ModuleInstance -> TL.Text -> IO Value
-getGlobalValueByName store ModuleInstance { exports } name =
-    case Array.find (\(ExportInstance n _) -> n == name) exports of
-        Just (ExportInstance _ (ExternGlobal addr)) ->
-            let globalInst := globalInstances store ! addr in
-            case globalInst of
-                GIConst _ v -> return v
-                GIMut _ ref -> readIORef ref
-        _ -> error $ "Function with name " ++ show name ++ " was not found in module's exports"
+def getGlobalValueByName (store : Store) (inst : ModuleInstance) (name : String) : IO Value :=
+    match Array.find (λ (ExportInstance n _) => n == name) inst.exports with
+    | some (ExportInstance _ (ExternGlobal addr)) =>
+        let globalInst := store.globalInstances.get! addr.toNat
+        match globalInst with
+        | GlobalInstance.const _ v => return v
+        | GlobalInstance.mut _ ref => readIORef ref
+    | none => throw $ "Function with name " ++ show name ++ " was not found in module's exports"
+---/
