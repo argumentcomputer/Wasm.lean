@@ -15,14 +15,22 @@ open BitSize
 def Word32 := UInt32
   deriving Repr, BEq
 
+instance : OfNat Word32 n := ⟨UInt32.ofNat n⟩
+
 def Word64 := UInt64
   deriving Repr, BEq
+
+instance : OfNat Word64 n := ⟨UInt64.ofNat n⟩
 
 def Float := UInt32
   deriving Repr, BEq
 
+instance : OfNat Float n := ⟨UInt32.ofNat n⟩
+
 def Double := UInt64
   deriving Repr, BEq
+
+instance : OfNat Double n := ⟨UInt64.ofNat n⟩
 
 inductive IUnOp :=
 
@@ -84,7 +92,7 @@ inductive ValueType :=
     | I64
     | F32
     | F64
-    deriving Repr, BEq
+    deriving Inhabited, Repr, BEq
 
 def ResultType := ValueType
   deriving Repr, BEq

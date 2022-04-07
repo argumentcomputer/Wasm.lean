@@ -239,6 +239,7 @@ def eq [Producer A] [Producer B] (h : OutType A = OutType B) (a : A) (b : B) : G
   | F64 => appendExpr [FRelOp BS64 FEq]
   return Proxy
 
+/-
 ne :: (Producer a, Producer b, OutType a ~ OutType b) => a -> b -> GenFun (Proxy I32)
 ne a b := do
     produce a
@@ -905,4 +906,4 @@ asWord64 :: Int64 -> Word64
 asWord64 i
     | i >= 0 := fromIntegral i
     | otherwise := 0xFFFFFFFFFFFFFFFF - (fromIntegral (abs i)) + 1
-
+-/
