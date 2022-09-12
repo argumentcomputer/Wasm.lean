@@ -1,16 +1,17 @@
 # Wasm tools for lean
 
-Webassembly tools implemented in Lean.
+Webassembly tools to be implemented in Lean.
 
 ## Develop
 
-Enable auto loading dependencies into the shell with `direnv allow` or manually with `nix develop`.
+`lake build`.
 
 ## Building
 
-Build with `nix build .`
+`lake build`.
 
 ## Tests
 
-Run tests with `nix run .#test`
+Build `lspec`: `lake build lspec`.
 
+Run tests with `./lean_packages/LSpec/build/bin/lspec`.
