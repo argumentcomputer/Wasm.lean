@@ -579,7 +579,7 @@ getTrueBranch = go []
             case nextByte of
                 -- END OF EXPR
                 0x0B -> getWord8 >> (return $ (reverse acc, False))
-                -- ELSE 
+                -- ELSE
                 0x05 -> getWord8 >> (return $ (reverse acc, True))
                 _ -> get >>= \instr -> go (instr : acc)
 
@@ -637,7 +637,7 @@ instance Serialize Function where
         localRanges <- getVec
         let localLen = sum $ map (\(LocalTypeRange n _) -> n) localRanges
         if localLen < 2^32 then return () else fail "too many locals"
-        let locals = concat $ map (\(LocalTypeRange n val) -> replicate (fromIntegral n) val) localRanges 
+        let locals = concat $ map (\(LocalTypeRange n val) -> replicate (fromIntegral n) val) localRanges
         body <- getExpression
         return $ Function 0 locals body
 
@@ -674,7 +674,7 @@ instance Serialize Module where
         putSection ElementSection $ putVec $ elems mod
         putSection CodeSection $ putVec $ functions mod
         putSection DataSection $ putVec $ datas mod
-        
+
     get = do
         magic <- getWord32be
         if magic == 0x0061736D then return () else fail "magic header not detected"
