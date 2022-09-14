@@ -2,6 +2,12 @@
 
 Webassembly tools to be implemented in Lean.
 
+To get the reference test suite, please run:
+
+```
+git submodule update --init --recursive
+```
+
 ## Develop
 
 `lake build`.
