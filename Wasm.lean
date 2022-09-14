@@ -1,2 +1,2 @@
-import Wasm.Expr
-import Wasm.Parser.Wast
+import Wasm.Wast.Parser
+import Wasm.Wast.Expr

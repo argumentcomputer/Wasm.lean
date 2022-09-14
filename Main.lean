@@ -1,5 +1,4 @@
-import Wasm.Expr
-import Wasm.Parser.Wast
+import Wasm
 
 def main : IO Unit :=
-  IO.println "(2): WASM demo coming soon."
+  IO.println "(3) WASM demo coming soon."
