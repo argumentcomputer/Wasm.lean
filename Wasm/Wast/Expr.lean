@@ -54,23 +54,25 @@ inductive NumType :=
 | int : BitSize → NumType
 | float : BitSize → NumType
 
-/- Opaque structure that captures a particular string at type level.
-
-TODO make it actually opaque: https://leanprover.zulipchat.com/#narrow/stream/270676-lean4/topic/Export.20smart.20constructor.20but.20also.20the.20type/near/298828483 -/
-structure Name (x : String) where
-  val : String := x
-  deriving Repr
-
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
 
+/- Captures a valid identifier.
+-/
+structure Name (x : String) where
+  val : String := x
+  isNE : x.length ≠ 0
+  onlyLegal : x.data.all isIdChar
+  deriving Repr
+
+
 def mkName (xs : String) : Option (Name xs) :=
   let xs' := xs.data
-  if xs'.length == 0 then
+  if isNE : xs.length = 0 then
     .none
   else
-    if List.foldl (fun a x => if a then isIdChar x else false) true xs.data then
-      .some {}
+    if onlyLegal : xs'.all isIdChar then
+      .some { isNE, onlyLegal }
     else
       .none
 
@@ -78,9 +80,18 @@ def mkName (xs : String) : Option (Name xs) :=
 #eval 5 + (BitSize.sixtyFour : Nat)
 #eval (Ord.compare BitSize.sixtyFour BitSize.thirtyTwo) == Ordering.gt
 
-def hello : Name "hello" := {}
+-- def zoink : Name "zoink" :=
+  -- let val := "zoink"
+  -- let isNE := (_ : "zoink".length ≠ 0)
+  -- let onlyLegal := (_ : val.data.all isIdChar)
+  -- { val, isNE, onlyLegal }
+  -- Name.mk "zoink" (_ : "zoink".length ≠ 0)
 
-#eval hello.val
+-- #eval zoink.val
+
+-- def hello : Name "hello" := {}
+
+-- #eval hello.val
 
 -- wrap : n m | n > m
 -- extend : n m | n < m
