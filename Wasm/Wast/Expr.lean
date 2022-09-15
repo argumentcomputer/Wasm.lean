@@ -65,7 +65,6 @@ structure Name (x : String) where
   onlyLegal : x.data.all isIdChar
   deriving Repr
 
-
 def mkName (xs : String) : Option (Name xs) :=
   let xs' := xs.data
   if isNE : xs.length = 0 then
@@ -80,18 +79,12 @@ def mkName (xs : String) : Option (Name xs) :=
 #eval 5 + (BitSize.sixtyFour : Nat)
 #eval (Ord.compare BitSize.sixtyFour BitSize.thirtyTwo) == Ordering.gt
 
--- def zoink : Name "zoink" :=
-  -- let val := "zoink"
-  -- let isNE := (_ : "zoink".length ≠ 0)
-  -- let onlyLegal := (_ : val.data.all isIdChar)
-  -- { val, isNE, onlyLegal }
-  -- Name.mk "zoink" (_ : "zoink".length ≠ 0)
+theorem zoink_is_NE : "zoink".length ≠ 0 := by
+  simp
 
--- #eval zoink.val
+theorem zoink_is_legal : "zoink".data.all isIdChar := by
+  simp
 
--- def hello : Name "hello" := {}
+def zoink : Name "zoink" := Name.mk "zoink" zoink_is_NE zoink_is_legal
 
--- #eval hello.val
-
--- wrap : n m | n > m
--- extend : n m | n < m
+#eval zoink.val
