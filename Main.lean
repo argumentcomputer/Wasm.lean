@@ -3,8 +3,9 @@ import Wasm.Wast.Expr
 
 open  Wasm.Wast.Expr
 
-def sameName (_n₁ : Name x) (_n₂ : Name x) : Name "Слава Україні" := {}
-#eval sameName ({} : Name "lol") ({} : Name "lol")
+def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name "kek") := mkName "kek"
+#eval sameName (mkName "lol") (mkName "lol")
+-- #eval sameName (mkName "lol") (mkName "kek")
 
 def main : IO Unit :=
-  IO.println "(3) WASM demo coming soon."
+  IO.println "(4) WASM demo coming soon."
