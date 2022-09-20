@@ -1,5 +1,15 @@
 /- WAST expressions as seen in the official test suite. -/
 
+import Megaparsec.Char
+import Megaparsec.Common
+import Megaparsec.String
+import Megaparsec.Parsec
+
+open Megaparsec.Char
+open Megaparsec.Common
+open Megaparsec.String
+open Megaparsec.Parsec
+
 namespace Wasm.Wast.Expr
 
 /-- `Fin n` is a natural number `i` with the constraint that `0 ≤ i < n`.
@@ -54,6 +64,33 @@ inductive NumType :=
 | int : BitSize → NumType
 | float : BitSize → NumType
 
+def isDigit (x : Char) : Bool :=
+  x.isDigit
+
+def isHexdigit (x : Char) : Bool :=
+  isDigit x || "AaBbCcDdEeFf".data.elem x
+
+def s := string_simple_pure
+def c := char_simple_pure
+
+private def parseDigit (p : Char → Bool) : Parsec Char String Unit (List Nat × Nat × Nat) := do
+   let accradmul ← s.getParserState
+   let y ← c.satisfy p
+  --  let a := c2ia y accradmul
+   sorry
+
+private def parseRadixNat'Do (x : String) (radix : Nat) : (List Nat × Nat × Nat) :=
+  ([0], radix, 0)
+
+def parseRadixNat' (x : String) (radix := 10) : Nat :=
+  List.foldl (fun x y => x + y) 0 (parseRadixNat'Do ((String.mk ∘ List.reverse) x.data) radix).1
+
+def isHex (x : String) : Bool :=
+  parses? (s.lookAhead $ s.stringP "0x") x
+
+structure Nat' (x : String) :=
+  val : Nat := parseRadixNat' x (if isHex x then 16 else 10)
+
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
 
@@ -74,17 +111,3 @@ def mkName (xs : String) : Option (Name xs) :=
       .some { isNE, onlyLegal }
     else
       .none
-
-#eval (5 : Nat) + BitSize.thirtyTwo
-#eval 5 + (BitSize.sixtyFour : Nat)
-#eval (Ord.compare BitSize.sixtyFour BitSize.thirtyTwo) == Ordering.gt
-
-theorem zoink_is_NE : "zoink".length ≠ 0 := by
-  simp
-
-theorem zoink_is_legal : "zoink".data.all isIdChar := by
-  simp
-
-def zoink : Name "zoink" := Name.mk "zoink" zoink_is_NE zoink_is_legal
-
-#eval zoink.val
