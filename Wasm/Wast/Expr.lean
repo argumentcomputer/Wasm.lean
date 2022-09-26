@@ -2,11 +2,13 @@
 
 import Megaparsec.Char
 import Megaparsec.Common
+import Megaparsec.Errors.Bundle
 import Megaparsec.String
 import Megaparsec.Parsec
 
 open Megaparsec.Char
 open Megaparsec.Common
+open Megaparsec.Errors.Bundle
 open Megaparsec.String
 open Megaparsec.Parsec
 
@@ -73,23 +75,93 @@ def isHexdigit (x : Char) : Bool :=
 def s := string_simple_pure
 def c := char_simple_pure
 
+/-
+
+def isInr (x : PSum α β) : Prop :=
+  match x with
+  | .inr _ => True
+  | .inl _ => False
+
+theorem extrr (x : PSum α β) (hE : ∃ y : β, x = .inr y) : isInr x :=
+  Exists.elim hE
+    (fun _ =>
+      fun xeq =>
+        xeq ▸ trivial
+    )
+
+theorem extrr1 (x : PSum α β) (hI : isInr x) : ∃ y : β, x = .inr y :=
+  match x with
+  | .inr yy =>
+    Exists.intro yy rfl
+  | .inl _ =>
+    False.elim hI
+
+theorem extrr2 (x : PSum α β) : (isInr x) ↔ (∃ y : β, x = .inr y) :=
+  Iff.intro
+    (extrr1 x)
+    (extrr x)
+
+-/
+
 private def parseDigit (p : Char → Bool) : Parsec Char String Unit (List Nat × Nat × Nat) := do
    let accradmul ← s.getParserState
    let y ← c.satisfy p
   --  let a := c2ia y accradmul
    sorry
 
-private def parseRadixNat'Do (x : String) (radix : Nat) : (List Nat × Nat × Nat) :=
-  ([0], radix, 0)
+private def parseRadixNat'Do (radix : Nat)
+                            --  : Parsec Char String Unit (List Nat × Nat × Nat) :=
+                             : Parsec Char String Unit Nat := do
+  let _x ← s.stringP "23"
+  pure 100
 
-def parseRadixNat' (x : String) (radix := 10) : Nat :=
-  List.foldl (fun x y => x + y) 0 (parseRadixNat'Do ((String.mk ∘ List.reverse) x.data) radix).1
-
-def isHex (x : String) : Bool :=
+def isHex? (x : String) : Bool :=
   parses? (s.lookAhead $ s.stringP "0x") x
 
+def hod (x : String) : Nat :=
+  if isHex? x then 16 else 10
+
+private def extractNat' -- (x : String)
+                  --  (pr : Either (ParseErrorBundle Char String Unit) Nat)-- := parse (parseRadixNat'Do $ hod x) x)
+                   (pr : Either String Nat)-- := parse (parseRadixNat'Do $ hod x) x)
+                   (doesParse : Either.isRight $ pr)
+                   : Nat :=
+  match pr with
+  | .right y => y
+  | .left _ => by
+    unfold Either.isRight at doesParse
+    simp at doesParse
+
+private def parseRadixNat'Do' (_radix : Nat) (input : String) : Either String Nat :=
+  if input == "23" then
+    .right 100
+  else
+    .left "Menzoberranzan"
+
+private def demoParse (φ : String → Either String Nat) (x : String) : Either String Nat :=
+  φ x
+
 structure Nat' (x : String) :=
-  val : Nat := parseRadixNat' x (if isHex x then 16 else 10)
+  -- radix := hod x
+  radix := 10
+  valE := demoParse (parseRadixNat'Do' radix) x
+  doesParse : Either.isRight $ demoParse (parseRadixNat'Do' radix) x
+  val : Nat := extractNat' (demoParse (parseRadixNat'Do' radix) x) doesParse
+
+structure Nat'Buggy (x : String) :=
+  -- radix := hod x
+  radix := 10
+  valE := demoParse (parseRadixNat'Do' radix) x
+  doesParse : Either.isRight valE
+  val : Nat := extractNat' valE doesParse
+
+theorem high_five : Either.isRight $ demoParse (parseRadixNat'Do' $ hod "23") "23" := by
+  simp
+
+def bug : Nat'Buggy "228" :=
+  { doesParse := high_five }
+#check bug
+#eval bug.val
 
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
