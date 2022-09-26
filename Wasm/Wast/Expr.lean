@@ -148,20 +148,39 @@ structure Nat' (x : String) :=
   doesParse : Either.isRight $ demoParse (parseRadixNat'Do' radix) x
   val : Nat := extractNat' (demoParse (parseRadixNat'Do' radix) x) doesParse
 
-structure Nat'Buggy (x : String) :=
+def Cached {α : Type u} (a : α) := { cached : α // cached = a }
+
+instance : EmptyCollection (Cached a) where emptyCollection := ⟨a, rfl⟩
+instance : Inhabited (Cached a) where default := {}
+instance : Subsingleton (Cached a) where
+  allEq := fun ⟨b, hb⟩ ⟨c, hc⟩ => by subst hb; subst hc; rfl
+instance : DecidableEq (Cached a) := fun _ _ => isTrue (Subsingleton.allEq ..)
+
+structure Nat'' (x : String) :=
+  radix : Cached (hod x) := {}
+  valE : Cached (demoParse (parseRadixNat'Do' radix.val) x) := {}
+  doesParse : Either.isRight valE.val := by simp
+  val : Cached (extractNat' valE.val doesParse) := {}
   -- radix := hod x
-  radix := 10
-  valE := demoParse (parseRadixNat'Do' radix) x
-  doesParse : Either.isRight valE
-  val : Nat := extractNat' valE doesParse
+  -- valE := demoParse (parseRadixNat'Do' radix) x
+  -- doesParse : Either.isRight $ demoParse (parseRadixNat'Do' radix) x
+  -- val : Nat := extractNat' (demoParse (parseRadixNat'Do' radix) x) doesParse
+  deriving DecidableEq
+
+def nobug : Nat'' "23" := {}
+-- def bug : Nat'' "45" := {}
+#eval nobug.val
+
+#eval nobug = nobug
+
+-- @[simp] theorem eq_of_subsingleton [Subsingleton α] {a b : α} : (a = b) = True := by
+--   simp [Subsingleton.allEq a b]
+
+-- theorem extIff {a b : Nat'' x} : a = b ↔ x = x :=
+--    ⟨fun h => by subst h; rfl, by cases a; cases b; intro h; cases h; simp⟩
 
 theorem high_five : Either.isRight $ demoParse (parseRadixNat'Do' $ hod "23") "23" := by
   simp
-
-def bug : Nat'Buggy "228" :=
-  { doesParse := high_five }
-#check bug
-#eval bug.val
 
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
