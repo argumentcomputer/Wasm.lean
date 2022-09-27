@@ -121,6 +121,21 @@ def isHex? (x : String) : Bool :=
 def hod (x : String) : Nat :=
   if isHex? x then 16 else 10
 
+inductive Exp
+  | var (i : Nat)
+  | app (a b : Exp)
+with
+  @[computedField] hash : Exp → Nat
+    | .var i => i
+    | .app a b => a.hash * b.hash + 1
+
+structure Memo {α : Type u} {β : Type u} (a : α) (f : α → β) (b : β) :=
+  val : β
+  proof : f a = b
+
+instance : EmptyCollection (Memo a f (f a)) where emptyCollection := ⟨f a, rfl⟩
+instance : Inhabited (Memo a f (f a)) where default := {}
+
 private def extractNat' -- (x : String)
                   --  (pr : Either (ParseErrorBundle Char String Unit) Nat)-- := parse (parseRadixNat'Do $ hod x) x)
                    (pr : Either String Nat)-- := parse (parseRadixNat'Do $ hod x) x)
@@ -135,6 +150,8 @@ private def extractNat' -- (x : String)
 private def parseRadixNat'Do' (_radix : Nat) (input : String) : Either String Nat :=
   if input == "23" then
     .right 100
+  else if input == "55" then
+    .right 55
   else
     .left "Menzoberranzan"
 
@@ -148,20 +165,27 @@ structure Nat' (x : String) :=
   doesParse : Either.isRight $ demoParse (parseRadixNat'Do' radix) x
   val : Nat := extractNat' (demoParse (parseRadixNat'Do' radix) x) doesParse
 
-structure Nat'Buggy (x : String) :=
-  -- radix := hod x
-  radix := 10
-  valE := demoParse (parseRadixNat'Do' radix) x
-  doesParse : Either.isRight valE
-  val : Nat := extractNat' valE doesParse
+def ff y := do
+  dbg_trace "."
+  demoParse (parseRadixNat'Do' $ hod y) y
 
-theorem high_five : Either.isRight $ demoParse (parseRadixNat'Do' $ hod "23") "23" := by
-  simp
+structure Nat'' (x : String) :=
+  valE : Memo x ff (ff x) := {}
+  doesParse (arg : Memo x ff (ff x)) : Either.isRight $ arg.val := sorry
+  val (arg : Memo x ff (ff x)) : Nat := extractNat' arg.val $ doesParse arg
 
-def bug : Nat'Buggy "228" :=
+def five : Memo "23" ff (ff "23") := {}
+-- def seven : Memo "55" ff (ff "55") := {}
+-- theorem high_five : fun _ => Either.isRight $ five.val := by
+--   simp
+def high_five (arg : Memo "23" ff (ff "23")) : Either.isRight arg.val := sorry
+
+
+def bug : Nat'' "23" :=
   { doesParse := high_five }
 #check bug
-#eval bug.val
+#eval bug.val five
+-- #eval bug.val seven
 
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
