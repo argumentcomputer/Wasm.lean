@@ -129,23 +129,15 @@ with
     | .var i => i
     | .app a b => a.hash * b.hash + 1
 
-structure Memo {α : Type u} {β : Type u} (a : α) (f : α → β) (b : β) :=
-  val : β
-  proof : f a = b
+structure Memo {α : Type u} (a : α) :=
+  val : α
+  proof : val = a
 
-instance : EmptyCollection (Memo a f (f a)) where emptyCollection := ⟨f a, rfl⟩
-instance : Inhabited (Memo a f (f a)) where default := {}
-
-private def extractNat' -- (x : String)
-                  --  (pr : Either (ParseErrorBundle Char String Unit) Nat)-- := parse (parseRadixNat'Do $ hod x) x)
-                   (pr : Either String Nat)-- := parse (parseRadixNat'Do $ hod x) x)
-                   (doesParse : Either.isRight $ pr)
-                   : Nat :=
-  match pr with
-  | .right y => y
-  | .left _ => by
-    unfold Either.isRight at doesParse
-    simp at doesParse
+instance : EmptyCollection (Memo a) where emptyCollection := ⟨a, rfl⟩
+instance : Inhabited (Memo a) where default := {}
+instance : Subsingleton (Memo a) where
+  allEq := fun ⟨b, hb⟩ ⟨c, hc⟩ => by subst hb; subst hc; rfl
+instance : DecidableEq (Memo a) := fun _ _ => isTrue (Subsingleton.allEq ..)
 
 private def parseRadixNat'Do' (_radix : Nat) (input : String) : Either String Nat :=
   if input == "23" then
@@ -158,34 +150,53 @@ private def parseRadixNat'Do' (_radix : Nat) (input : String) : Either String Na
 private def demoParse (φ : String → Either String Nat) (x : String) : Either String Nat :=
   φ x
 
-structure Nat' (x : String) :=
-  -- radix := hod x
-  radix := 10
-  valE := demoParse (parseRadixNat'Do' radix) x
-  doesParse : Either.isRight $ demoParse (parseRadixNat'Do' radix) x
-  val : Nat := extractNat' (demoParse (parseRadixNat'Do' radix) x) doesParse
-
 def ff y := do
   dbg_trace "."
   demoParse (parseRadixNat'Do' $ hod y) y
 
-structure Nat'' (x : String) :=
-  valE : Memo x ff (ff x) := {}
-  doesParse (arg : Memo x ff (ff x)) : Either.isRight $ arg.val := sorry
-  val (arg : Memo x ff (ff x)) : Nat := extractNat' arg.val $ doesParse arg
+private def extractNat' (pr : Memo (ff x))-- := parse (parseRadixNat'Do $ hod x) x)
+                        (doesParse : ∃ arg : Memo (ff x), Either.isRight arg.val)
+                        -- (doesParse : ∃ arg : Memo (ff x), isR arg.val)
+                        : Nat :=
+  match h : pr.val with
+  | .right y => y
+  | .left _ => by
+      have : False :=
+        Exists.elim doesParse (fun earg =>
+          fun isRightHypothesis => by
+            -- have : earg = pr := Subsingleton.elim earg pr
+            -- rw [this, h] at isRightHypothesis
+            -- unfold Either.isRight at isRightHypothesis
+            simp only [Subsingleton.elim earg pr, h, Either.isRight] at isRightHypothesis
+          )
+      contradiction
 
-def five : Memo "23" ff (ff "23") := {}
--- def seven : Memo "55" ff (ff "55") := {}
+structure Nat'' (x : String) :=
+  parsed : Memo (ff x) := {}
+  doesParse : (∃ arg : Memo (ff x), Either.isRight arg.val)
+  val (arg : Memo (ff x)) : Nat := extractNat' arg doesParse
+
+def five : Memo (ff "23") := {}
+def seven : Memo (ff "55") := {}
 -- theorem high_five : fun _ => Either.isRight $ five.val := by
 --   simp
-def high_five (arg : Memo "23" ff (ff "23")) : Either.isRight arg.val := sorry
+-- def high_five (arg : Memo (ff "23")) : Either.isRight arg.val := by sorry
+  -- match arg.val with
+  -- | .right y => trivial
+  -- | .left a => ???
 
-
-def bug : Nat'' "23" :=
-  { doesParse := high_five }
-#check bug
-#eval bug.val five
+-- def bug : Nat'' "23" :=
+--   { doesParse := high_five }
+-- #check bug
+-- #eval bug.val five
 -- #eval bug.val seven
+
+def demo : Nat'' "23" := {
+  doesParse := Exists.intro five $ by
+    trivial
+}
+
+#eval demo.val demo.parsed
 
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
