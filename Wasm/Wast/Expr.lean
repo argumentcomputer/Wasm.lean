@@ -159,20 +159,23 @@ private def extractNat' -- (x : String)
 private def parseRadixNat'Do' (_radix : Nat) (input : String) : Either String Nat :=
   if input == "23" then
     .right 100
-  else if input == "45" then .right 45
+  else if input == "55" then .right 55
   else
     .left "Menzoberranzan"
 
 private def demoParse (φ : String → Either String Nat) (x : String) : Either String Nat :=
   φ x
 
+def ff y := do
+  dbg_trace "."
+  demoParse (parseRadixNat'Do' $ hod y) y
 
 structure Nat'' (x : String) :=
-  radix : Cached (hod x) := {}
-  valE : Cached (demoParse (parseRadixNat'Do' radix.val) x) := {}
+  -- valE : Cached (demoParse (parseRadixNat'Do' radix.val) x) := {}
+  valE : Cached (ff x) := {}
   doesParse : Either.isRight valE.val := by simp
   val : Cached (extractNat' valE.val doesParse) := {}
-  deriving DecidableEq
+  deriving DecidableEq, Repr
 
 def nobug : Nat'' "23" := {}
 
