@@ -2,25 +2,35 @@
 
 import Megaparsec.Char
 import Megaparsec.Common
+import Megaparsec.Errors
 import Megaparsec.Errors.Bundle
 import Megaparsec.String
 import Megaparsec.Parsec
+import Megaparsec.MonadParsec
+import YatimaStdLib.NonEmpty
 
 open Megaparsec.Char
 open Megaparsec.Common
+open Megaparsec.Errors
 open Megaparsec.Errors.Bundle
 open Megaparsec.String
 open Megaparsec.Parsec
+open MonadParsec
+open List
 
 namespace Wasm.Wast.Expr
 
-/-- `Fin n` is a natural number `i` with the constraint that `0 ≤ i < n`.
-structure Fin (n : Nat) where
-  val  : Nat
-  isLt : LT.lt val n
--/
+/- TODO: Move to SDLIB -/
+/- TODO: Make MemoF which memoises a function call so that we have the result available without re-computing. -/
+structure Memo {α : Type u} (a : α) :=
+  val : α
+  proof : val = a
 
--- add
+instance : EmptyCollection (Memo a) where emptyCollection := ⟨a, rfl⟩
+instance : Inhabited (Memo a) where default := {}
+instance : Subsingleton (Memo a) where
+  allEq := fun ⟨b, hb⟩ ⟨c, hc⟩ => by subst hb; subst hc; rfl
+instance : DecidableEq (Memo a) := fun _ _ => isTrue (Subsingleton.allEq ..)
 
 /- Webassembly works on 32 and 64 bit ints and floats.
 We define BitSize inductive to then combine it with respective constructors. -/
@@ -28,7 +38,6 @@ inductive BitSize :=
 | thirtyTwo
 | sixtyFour
 deriving BEq
-
 
 -- Boring instances
 
@@ -66,97 +75,162 @@ inductive NumType :=
 | int : BitSize → NumType
 | float : BitSize → NumType
 
+/- Webassembly supports two radixes: 10 and 16, which we naively implement here by force. -/
+inductive Radix :=
+| ten
+| sixteen
+
+/- 10 *is* .ten -/
+instance : OfNat Radix 10 where
+  ofNat := .ten
+
+/- 16 *is* .sixteen -/
+instance : OfNat Radix 16 where
+  ofNat := .sixteen
+
+/- For something to depend on .ten means that it can just as well depend on 10. -/
+instance : CoeDep Radix Radix.ten Nat where
+  coe := 10
+
+/- For something to depend on .sixteen means that it can just as well depend on 16. -/
+instance : CoeDep Radix Radix.sixteen Nat where
+  coe := 16
+
+/- 10 *is* .ten and 16 *is* .sixteen -/
+instance : Coe Radix Nat where
+  coe x := match x with
+  | .ten => 10
+  | .sixteen => 16
+
+/- We rely on numeric ordering rather than on derived ordering based on the order of constructors. -/
+instance : Ord Radix where
+  compare x y := Ord.compare (x : Nat) (y : Nat)
+
+/- Decimal digits -/
 def isDigit (x : Char) : Bool :=
   x.isDigit
 
+/- Hexadecimal digits -/
 def isHexdigit (x : Char) : Bool :=
   isDigit x || "AaBbCcDdEeFf".data.elem x
 
+/- Oldschool megaparsec bundles. TODO: Refactor to ergonomic version. -/
 def s := string_simple_pure
+/- Oldschool megaparsec bundles. TODO: Refactor to ergonomic version. -/
 def c := char_simple_pure
 
-/-
-
-def isInr (x : PSum α β) : Prop :=
+/- Terminal parser for digits. -/
+private def parseDigit (x : Char) : Option Nat :=
   match x with
-  | .inr _ => True
-  | .inl _ => False
+  | '0' => .some 0
+  | '1' => .some 1
+  | '2' => .some 2
+  | '3' => .some 3
+  | '4' => .some 4
+  | '5' => .some 5
+  | '6' => .some 6
+  | '7' => .some 7
+  | '8' => .some 8
+  | '9' => .some 9
+  | 'a' => .some 10
+  | 'A' => .some 10
+  | 'b' => .some 11
+  | 'B' => .some 11
+  | 'c' => .some 12
+  | 'C' => .some 12
+  | 'd' => .some 13
+  | 'D' => .some 13
+  | 'e' => .some 14
+  | 'E' => .some 14
+  | 'f' => .some 15
+  | 'F' => .some 15
+  | _ => .none
 
-theorem extrr (x : PSum α β) (hE : ∃ y : β, x = .inr y) : isInr x :=
-  Exists.elim hE
-    (fun _ =>
-      fun xeq =>
-        xeq ▸ trivial
-    )
+private def extractDigit (pr : Memo (parseDigit x))
+                         (doesParse : ∃ arg : Memo (parseDigit x), Option.isSome arg.val)
+                         : Nat :=
+  match prBranch : pr.val with
+  | .some y => y
+  | .none => by
+    have : False :=
+      Exists.elim doesParse (fun earg =>
+        fun isSomeHypothesis => by
+          simp only [Subsingleton.elim earg pr, prBranch, Option.isSome] at isSomeHypothesis
+      )
+    contradiction
 
-theorem extrr1 (x : PSum α β) (hI : isInr x) : ∃ y : β, x = .inr y :=
-  match x with
-  | .inr yy =>
-    Exists.intro yy rfl
-  | .inl _ =>
-    False.elim hI
+/- Verifiably parsed digit. I don't think we need it, but it's nice to have. -/
+structure Digit (x : Char) :=
+  parsed : Memo (parseDigit x) := {}
+  doesParse : (∃ arg : Memo (parseDigit x), Option.isSome arg.val)
+  vall (arg : Memo (parseDigit x)) : Nat := extractDigit arg doesParse
 
-theorem extrr2 (x : PSum α β) : (isInr x) ↔ (∃ y : β, x = .inr y) :=
-  Iff.intro
-    (extrr1 x)
-    (extrr x)
+def digitP : Parsec Char String Unit Nat := do
+  let ps ← s.getParserState
+  let x ← c.satisfy isHexdigit
+  match parseDigit x with
+  | .some y => pure y
+  | .none => s.parseError $ .trivial ps.offset .none [] -- Impossible, but it's easier than proving that c.satisfy isHexdigit → doesParse ⋯
 
--/
+def decDigitP : Parsec Char String Unit Nat := do
+  let ps ← s.getParserState
+  let y ← digitP
+  if y ≥ 10 then
+    s.parseError $ .trivial ps.offset .none [.tokens (toNEList '0' ['1', '2', '3', '4', '5', '6', '7', '8', '9'])]
+  else
+    pure y
 
-private def parseDigit (p : Char → Bool) : Parsec Char String Unit (List Nat × Nat × Nat) := do
-   let accradmul ← s.getParserState
-   let y ← c.satisfy p
-  --  let a := c2ia y accradmul
-   sorry
+def hexDigitP : Parsec Char String Unit Nat := digitP
 
-private def parseRadixNat'Do (radix : Nat)
-                            --  : Parsec Char String Unit (List Nat × Nat × Nat) :=
-                             : Parsec Char String Unit Nat := do
-  let _x ← s.stringP "23"
-  pure 100
+def radDigitP (radix : Radix) : Parsec Char String Unit Nat :=
+  match radix with
+  | .ten => decDigitP
+  | .sixteen => hexDigitP
+
+-- https://github.com/leanprover/lean4/issues/1573
+mutual
+  partial def someP (p : Parsec Char String Unit γ) : Parsec Char String Unit (List γ) := do
+    let y ← p
+    let ys ← manyP p
+    pure $ y :: ys
+  partial def manyP (p : Parsec Char String Unit γ) : Parsec Char String Unit (List γ) := do
+    someP p <|> pure []
+  partial def sepEndBy1P (p : Parsec Char String Unit γ) (sep : Parsec Char String Unit γ') := do
+    let y ← p
+    let ys ← (sep *> sepEndByP p sep)
+    pure $ y :: ys
+  partial def sepEndByP (p : Parsec Char String Unit γ) (sep : Parsec Char String Unit γ') :=
+    sepEndBy1P p sep <|> pure []
+end
+
+def radDigitPrefixP (radix : Radix) : Parsec Char String Unit String :=
+  match radix with
+  | .ten => pure $ ""
+  | .sixteen => s.stringP "0x"
+
+def radixP (radix : Radix) : Parsec Char String Unit Nat := do
+  let _prefix ← radDigitPrefixP radix
+  let digits ← someP $ radDigitP radix
+  pure $ foldl (fun a x => radix * a + x) 0 digits
+
+def decimalP : Parsec Char String Unit Nat := radixP .ten
+def hexP : Parsec Char String Unit Nat := radixP .sixteen
 
 def isHex? (x : String) : Bool :=
   parses? (s.lookAhead $ s.stringP "0x") x
 
-def hod (x : String) : Nat :=
-  if isHex? x then 16 else 10
+def hod (x : String) : Radix :=
+  if isHex? x then .sixteen else .ten
 
-inductive Exp
-  | var (i : Nat)
-  | app (a b : Exp)
-with
-  @[computedField] hash : Exp → Nat
-    | .var i => i
-    | .app a b => a.hash * b.hash + 1
-
-structure Memo {α : Type u} (a : α) :=
-  val : α
-  proof : val = a
-
-instance : EmptyCollection (Memo a) where emptyCollection := ⟨a, rfl⟩
-instance : Inhabited (Memo a) where default := {}
-instance : Subsingleton (Memo a) where
-  allEq := fun ⟨b, hb⟩ ⟨c, hc⟩ => by subst hb; subst hc; rfl
-instance : DecidableEq (Memo a) := fun _ _ => isTrue (Subsingleton.allEq ..)
-
-private def parseRadixNat'Do' (_radix : Nat) (input : String) : Either String Nat :=
-  if input == "23" then
-    .right 100
-  else if input == "55" then
-    .right 55
-  else
-    .left "Menzoberranzan"
-
-private def demoParse (φ : String → Either String Nat) (x : String) : Either String Nat :=
-  φ x
+private def demoParse (φ : Parsec Char String Unit Nat) (x : String) : Either (ParseErrorBundle Char String Unit) Nat :=
+  runParserP φ "" x
 
 def ff y := do
-  dbg_trace "."
-  demoParse (parseRadixNat'Do' $ hod y) y
+  -- dbg_trace "."
+  demoParse (radixP $ hod y) y
 
-private def extractNat' (pr : Memo (ff x))-- := parse (parseRadixNat'Do $ hod x) x)
+private def extractNat' (pr : Memo (ff x))
                         (doesParse : ∃ arg : Memo (ff x), Either.isRight arg.val)
-                        -- (doesParse : ∃ arg : Memo (ff x), isR arg.val)
                         : Nat :=
   match h : pr.val with
   | .right y => y
@@ -164,9 +238,6 @@ private def extractNat' (pr : Memo (ff x))-- := parse (parseRadixNat'Do $ hod x)
       have : False :=
         Exists.elim doesParse (fun earg =>
           fun isRightHypothesis => by
-            -- have : earg = pr := Subsingleton.elim earg pr
-            -- rw [this, h] at isRightHypothesis
-            -- unfold Either.isRight at isRightHypothesis
             simp only [Subsingleton.elim earg pr, h, Either.isRight] at isRightHypothesis
           )
       contradiction
@@ -176,30 +247,26 @@ structure Nat'' (x : String) :=
   doesParse : (∃ arg : Memo (ff x), Either.isRight arg.val)
   val (arg : Memo (ff x)) : Nat := extractNat' arg doesParse
 
-def five : Memo (ff "23") := {}
-def seven : Memo (ff "55") := {}
--- theorem high_five : fun _ => Either.isRight $ five.val := by
---   simp
--- def high_five (arg : Memo (ff "23")) : Either.isRight arg.val := by sorry
-  -- match arg.val with
-  -- | .right y => trivial
-  -- | .left a => ???
-
--- def bug : Nat'' "23" :=
---   { doesParse := high_five }
--- #check bug
--- #eval bug.val five
--- #eval bug.val seven
-
-def demo : Nat'' "23" := {
-  doesParse := Exists.intro five $ by
-    trivial
-}
-
-#eval demo.val demo.parsed
-
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
+
+def tt := ff "0xff"
+#eval match tt with
+| .left x => s!"{x}"
+| .right y => s!"{y}"
+
+def mtt : Memo (ff "23") := {}
+#eval match mtt.val with
+| .right x => s!"{x}"
+| .left y => s!"{y}"
+
+def proofMtt : ∃ arg : Memo (ff "23"), Either.isRight arg.val :=
+  Exists.intro mtt $ match mttBranch : mtt.val with
+  | .right y => by trivial
+  | .left _ => by sorry
+
+def ntt : Nat'' "23" := { doesParse := proofMtt }
+#eval ntt.val ntt.parsed
 
 /- Captures a valid identifier.
 -/
