@@ -36,6 +36,7 @@ instance : DecidableEq (Cached a) := fun _ _ => isTrue (Subsingleton.allEq ..)
 structure Memo {α : Type u} {β : Type v} (x : α) (f : α → β) :=
   val : β
   isFX : f x = val
+  deriving Repr
 
 instance : EmptyCollection (Memo x f) where emptyCollection := ⟨ f x, rfl ⟩
 instance : Inhabited (Memo x f) where default := {}
@@ -176,10 +177,17 @@ private def parseDigit (x : Char) : Option Nat :=
   | 'F' => .some 15
   | _ => .none
 
+/- Verifiably parsed digit.
+TODO: Coco!? / Coe?! -/
+structure Digit (x : Char) :=
+  parsed : Memo x parseDigit := {}
+  doesParse : (∃ arg : Memo x parseDigit, Option.isSome arg.val)
+
 /- Give me a parse result `pr` of parsing out a digit and a proof that it's `isSome`, and I'll give you back a natural number this digit represents. -/
-def extractDigit (pr : Memo x parseDigit)
-                 (doesParse : ∃ arg : Memo x parseDigit, Option.isSome arg.val)
+def extractDigit (d : Digit x)
                  : Nat :=
+  let doesParse := d.doesParse
+  let pr := d.parsed
   match prBranch : pr.val with
   | .some y => y
   | .none => by
@@ -189,12 +197,6 @@ def extractDigit (pr : Memo x parseDigit)
           simp only [Subsingleton.elim earg pr, prBranch, Option.isSome] at isSomeHypothesis
       )
     contradiction
-
-/- Verifiably parsed digit. -/
-structure Digit (x : Char) :=
-  parsed : Memo x parseDigit := {}
-  doesParse : (∃ arg : Memo x parseDigit, Option.isSome arg.val)
-  val (arg : Memo x parseDigit) : Nat := extractDigit arg doesParse
 
 /- Parse out a digit up to `f`. Case-insensitive. -/
 def digitP : Parsec Char String Unit Nat := do
@@ -274,51 +276,49 @@ private def demoParse (φ : Parsec Char String Unit Nat) (x : String) : Either (
 def natMaybe y := do
   demoParse (radixP $ hod y) y
 
+def parseNat' (label : String) (x : String)
+  := runParserP (radixP $ hod x) label x
+
+/- Captures a valid Natural.
+If you're parsing from a file with name `name`, set `label := name`. -/
+structure Nat' (x : String) where
+  label : String := ""
+  parsed : (Memo x $ parseNat' label) := {}
+  doesParse : Either.isRight parsed.val
+
 /- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Nat`. -/
-def extractNat (pr : Cached (natMaybe x))
-               (doesParse : ∃ arg : Cached (natMaybe x), Either.isRight arg.val)
+def extractNat (n : Nat' x)
                : Nat :=
-  match h : pr.val with
+  let pr := n.parsed
+  let doesParse := n.doesParse
+  match prBranch : pr.val with
   | .right y => y
   | .left _ => by
-      have : False :=
-        Exists.elim doesParse (fun earg =>
-          fun isRightHypothesis => by
-            simp only [Subsingleton.elim earg pr, h, Either.isRight] at isRightHypothesis
-          )
-      contradiction
+    -- unfold Either.isRight at doesParse
+    -- rw [prBranch] at doesParse
+    simp only [Either.isRight, prBranch] at doesParse
 
-/- An un-verified way to parse out a natural number. -/
--- structure PNat' (x : String) :=
---   parsed : Cached (natMaybe x) := {}
---   val : Nat
-
-/- Captures a valid Natural. -/
-structure Nat' (xs : String) where
-
+/- Perhaps, construct a valid Natural.
+If you're parsing from a file with name `name`, set `label := name`. -/
+def mkNat' (x : String) (label : String := "") : Option (Nat' x) :=
+  let pr : (Memo x (parseNat' label)) := {}
+  if isOk : Either.isRight pr.val then
+    .some $ ⟨ label, pr, isOk ⟩
+  else
+    .none
 
 /- Chars that are allowed in WASM ids. -/
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
 
--- def tt := natMaybe "0xff"
--- #eval match tt with
--- | .left x => s!"{x}"
--- | .right y => s!"{y}"
-
--- def mtt : Cached (natMaybe "23") := {}
--- #eval match mtt.val with
--- | .right x => s!"{x}"
--- | .left y => s!"{y}"
-
-/- Captures a valid identifier.
--/
+/- Captures a valid WAST identifier. -/
 structure Name (x : String) where
-  val : (Cached x) := {}
+  val : (Memo x id) := {}
   isNE : x.length ≠ 0 := by trivial
   onlyLegal : x.data.all isIdChar := by trivial
   deriving Repr
 
+/- Perhaps, construct a valid WAST identifier. -/
 def mkName (xs : String) : Option (Name xs) :=
   let xs' := xs.data
   if isNE : xs.length = 0 then
