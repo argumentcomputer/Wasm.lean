@@ -22,15 +22,44 @@ namespace Wasm.Wast.Expr
 
 /- TODO: Move to SDLIB -/
 /- TODO: Make MemoF which memoises a function call so that we have the result available without re-computing. -/
-structure Memo {α : Type u} (a : α) :=
+structure Cached {α : Type u} (a : α) :=
   val : α
   proof : val = a
+  deriving Repr
 
-instance : EmptyCollection (Memo a) where emptyCollection := ⟨a, rfl⟩
-instance : Inhabited (Memo a) where default := {}
-instance : Subsingleton (Memo a) where
+instance : EmptyCollection (Cached a) where emptyCollection := ⟨a, rfl⟩
+instance : Inhabited (Cached a) where default := {}
+instance : Subsingleton (Cached a) where
   allEq := fun ⟨b, hb⟩ ⟨c, hc⟩ => by subst hb; subst hc; rfl
-instance : DecidableEq (Memo a) := fun _ _ => isTrue (Subsingleton.allEq ..)
+instance : DecidableEq (Cached a) := fun _ _ => isTrue (Subsingleton.allEq ..)
+
+structure Memo {α : Type u} {β : Type v} (x : α) (f : α → β) :=
+  y : β
+  isFX : f x = y
+
+instance : EmptyCollection (Memo x f) where emptyCollection := ⟨ f x, rfl ⟩
+instance : Inhabited (Memo x f) where default := {}
+instance : Subsingleton (Memo x f) where
+  allEq := fun ⟨b, hb⟩ ⟨c, hc⟩ => by subst hb; subst hc; rfl
+instance : DecidableEq (Cached a) := fun _ _ => isTrue (Subsingleton.allEq ..)
+
+structure X (xx : Nat) where
+  y : Memo xx (fun x => Id.run do
+    dbg_trace "п"
+    (42 - 6) + x
+  ) := {}
+  g (t : Memo xx (fun x => Id.run do
+    dbg_trace "x"
+    36 + x
+  )) := t.y
+
+def fff x := Id.run do
+  dbg_trace "o"
+  42 - 6 + x
+
+structure Xf (x : Nat) where
+  y : Memo x fff := {}
+  g (t : Memo x fff) : Nat := t.y
 
 /- Webassembly works on 32 and 64 bit ints and floats.
 We define BitSize inductive to then combine it with respective constructors. -/
@@ -146,9 +175,10 @@ private def parseDigit (x : Char) : Option Nat :=
   | 'F' => .some 15
   | _ => .none
 
-private def extractDigit (pr : Memo (parseDigit x))
-                         (doesParse : ∃ arg : Memo (parseDigit x), Option.isSome arg.val)
-                         : Nat :=
+/- Give me a parse result `pr` of parsing out a digit and a proof that it's `isSome`, and I'll give you back a natural number this digit represents. -/
+def extractDigit (pr : Cached (parseDigit x))
+                 (doesParse : ∃ arg : Cached (parseDigit x), Option.isSome arg.val)
+                 : Nat :=
   match prBranch : pr.val with
   | .some y => y
   | .none => by
@@ -159,12 +189,13 @@ private def extractDigit (pr : Memo (parseDigit x))
       )
     contradiction
 
-/- Verifiably parsed digit. I don't think we need it, but it's nice to have. -/
+/- Verifiably parsed digit. -/
 structure Digit (x : Char) :=
-  parsed : Memo (parseDigit x) := {}
-  doesParse : (∃ arg : Memo (parseDigit x), Option.isSome arg.val)
-  vall (arg : Memo (parseDigit x)) : Nat := extractDigit arg doesParse
+  parsed : Cached (parseDigit x) := {}
+  doesParse : (∃ arg : Cached (parseDigit x), Option.isSome arg.val)
+  vall (arg : Cached (parseDigit x)) : Nat := extractDigit arg doesParse
 
+/- Parse out a digit up to `f`. Case-insensitive. -/
 def digitP : Parsec Char String Unit Nat := do
   let ps ← s.getParserState
   let x ← c.satisfy isHexdigit
@@ -172,6 +203,7 @@ def digitP : Parsec Char String Unit Nat := do
   | .some y => pure y
   | .none => s.parseError $ .trivial ps.offset .none [] -- Impossible, but it's easier than proving that c.satisfy isHexdigit → doesParse ⋯
 
+/- Parse out a decimal digit. -/
 def decDigitP : Parsec Char String Unit Nat := do
   let ps ← s.getParserState
   let y ← digitP
@@ -180,8 +212,10 @@ def decDigitP : Parsec Char String Unit Nat := do
   else
     pure y
 
+/- An alias for `digitP`. -/
 def hexDigitP : Parsec Char String Unit Nat := digitP
 
+/- Match some `Radix` with an invocation of either `hexDigitP` or `decDigitP`. -/
 def radDigitP (radix : Radix) : Parsec Char String Unit Nat :=
   match radix with
   | .ten => decDigitP
@@ -203,35 +237,46 @@ mutual
     sepEndBy1P p sep <|> pure []
 end
 
+/- Match some `Radix` with the string prefix denoting that radix. -/
 def radDigitPrefixP (radix : Radix) : Parsec Char String Unit String :=
   match radix with
   | .ten => pure $ ""
   | .sixteen => s.stringP "0x"
 
+/- Parse a natural out of a string of some `Radix`. -/
 def radixP (radix : Radix) : Parsec Char String Unit Nat := do
   let _prefix ← radDigitPrefixP radix
   let digits ← someP $ radDigitP radix
   pure $ foldl (fun a x => radix * a + x) 0 digits
 
+/- Parse a decimal. -/
 def decimalP : Parsec Char String Unit Nat := radixP .ten
+
+/- Parse a hexadecimal. -/
 def hexP : Parsec Char String Unit Nat := radixP .sixteen
 
+/- If something starts with "0x", then it's a hex. -/
 def isHex? (x : String) : Bool :=
   parses? (s.lookAhead $ s.stringP "0x") x
 
+/-
+A `Radix` constructor from `String`.
+
+Get a string, and if it starts with "0x", return `Radix.sixteen`, otherwise, return `Radix.ten`. -/
 def hod (x : String) : Radix :=
   if isHex? x then .sixteen else .ten
 
 private def demoParse (φ : Parsec Char String Unit Nat) (x : String) : Either (ParseErrorBundle Char String Unit) Nat :=
   runParserP φ "" x
 
-def ff y := do
-  -- dbg_trace "."
+/- Run a parser against `String` `y` and return a parse result. -/
+def natMaybe y := do
   demoParse (radixP $ hod y) y
 
-private def extractNat' (pr : Memo (ff x))
-                        (doesParse : ∃ arg : Memo (ff x), Either.isRight arg.val)
-                        : Nat :=
+/- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Nat`. -/
+def extractNat (pr : Cached (natMaybe x))
+               (doesParse : ∃ arg : Cached (natMaybe x), Either.isRight arg.val)
+               : Nat :=
   match h : pr.val with
   | .right y => y
   | .left _ => by
@@ -242,38 +287,35 @@ private def extractNat' (pr : Memo (ff x))
           )
       contradiction
 
-structure Nat'' (x : String) :=
-  parsed : Memo (ff x) := {}
-  doesParse : (∃ arg : Memo (ff x), Either.isRight arg.val)
-  val (arg : Memo (ff x)) : Nat := extractNat' arg doesParse
+/- An un-verified way to parse out a natural number. -/
+-- structure PNat' (x : String) :=
+--   parsed : Cached (natMaybe x) := {}
+--   val : Nat
 
+/- Captures a valid Natural. -/
+structure Nat' (xs : String) where
+
+
+/- Chars that are allowed in WASM ids. -/
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
 
-def tt := ff "0xff"
+def tt := natMaybe "0xff"
 #eval match tt with
 | .left x => s!"{x}"
 | .right y => s!"{y}"
 
-def mtt : Memo (ff "23") := {}
+def mtt : Cached (natMaybe "23") := {}
 #eval match mtt.val with
 | .right x => s!"{x}"
 | .left y => s!"{y}"
 
-def proofMtt : ∃ arg : Memo (ff "23"), Either.isRight arg.val :=
-  Exists.intro mtt $ match mttBranch : mtt.val with
-  | .right y => by trivial
-  | .left _ => by sorry
-
-def ntt : Nat'' "23" := { doesParse := proofMtt }
-#eval ntt.val ntt.parsed
-
 /- Captures a valid identifier.
 -/
 structure Name (x : String) where
-  val : String := x
-  isNE : x.length ≠ 0
-  onlyLegal : x.data.all isIdChar
+  val : (Cached x) := {}
+  isNE : x.length ≠ 0 := by trivial
+  onlyLegal : x.data.all isIdChar := by trivial
   deriving Repr
 
 def mkName (xs : String) : Option (Name xs) :=
