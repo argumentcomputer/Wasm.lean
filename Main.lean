@@ -8,7 +8,7 @@ def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name 
 -- #eval sameName (mkName "lol") (mkName "kek")
 
 def main : IO Unit := do
-  IO.println "(8) WASM demo coming soon."
+  IO.println "(9) WASM demo coming soon."
 
   IO.println "Let's count the dots (should be two for constructing and zero for extracting Nat with .g)!"
   let x23 : Xf 23 := {}
@@ -23,5 +23,9 @@ def main : IO Unit := do
   IO.println s!"Such reduction: {xx23.g xx23.y}"
   IO.println s!"Much techmology: {xx23.g xx23.y}"
   IO.println s!"Wow: {xx23.g xx23.y}"
+
+  IO.println s!"Digits also parse rather efficiently!"
+  let d11 : Digit 'b' := {doesParse := Exists.intro {} $ by trivial}
+  IO.println s!"{d11.val d11.parsed} == 11"
 
   pure ()

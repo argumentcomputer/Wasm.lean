@@ -34,8 +34,8 @@ instance : Subsingleton (Cached a) where
 instance : DecidableEq (Cached a) := fun _ _ => isTrue (Subsingleton.allEq ..)
 
 structure Memo {α : Type u} {β : Type v} (x : α) (f : α → β) :=
-  y : β
-  isFX : f x = y
+  val : β
+  isFX : f x = val
 
 instance : EmptyCollection (Memo x f) where emptyCollection := ⟨ f x, rfl ⟩
 instance : Inhabited (Memo x f) where default := {}
@@ -51,7 +51,7 @@ structure X (xx : Nat) where
   g (t : Memo xx (fun x => Id.run do
     dbg_trace "x"
     36 + x
-  )) := t.y
+  )) := t.val
 
 def fff x := Id.run do
   dbg_trace "o"
@@ -59,7 +59,7 @@ def fff x := Id.run do
 
 structure Xf (x : Nat) where
   y : Memo x fff := {}
-  g (t : Memo x fff) : Nat := t.y
+  g (t : Memo x fff) : Nat := t.val
 
 /- Webassembly works on 32 and 64 bit ints and floats.
 We define BitSize inductive to then combine it with respective constructors. -/
@@ -150,6 +150,7 @@ def c := char_simple_pure
 
 /- Terminal parser for digits. -/
 private def parseDigit (x : Char) : Option Nat :=
+  dbg_trace "d"
   match x with
   | '0' => .some 0
   | '1' => .some 1
@@ -176,8 +177,8 @@ private def parseDigit (x : Char) : Option Nat :=
   | _ => .none
 
 /- Give me a parse result `pr` of parsing out a digit and a proof that it's `isSome`, and I'll give you back a natural number this digit represents. -/
-def extractDigit (pr : Cached (parseDigit x))
-                 (doesParse : ∃ arg : Cached (parseDigit x), Option.isSome arg.val)
+def extractDigit (pr : Memo x parseDigit)
+                 (doesParse : ∃ arg : Memo x parseDigit, Option.isSome arg.val)
                  : Nat :=
   match prBranch : pr.val with
   | .some y => y
@@ -191,9 +192,9 @@ def extractDigit (pr : Cached (parseDigit x))
 
 /- Verifiably parsed digit. -/
 structure Digit (x : Char) :=
-  parsed : Cached (parseDigit x) := {}
-  doesParse : (∃ arg : Cached (parseDigit x), Option.isSome arg.val)
-  vall (arg : Cached (parseDigit x)) : Nat := extractDigit arg doesParse
+  parsed : Memo x parseDigit := {}
+  doesParse : (∃ arg : Memo x parseDigit, Option.isSome arg.val)
+  val (arg : Memo x parseDigit) : Nat := extractDigit arg doesParse
 
 /- Parse out a digit up to `f`. Case-insensitive. -/
 def digitP : Parsec Char String Unit Nat := do
@@ -300,15 +301,15 @@ structure Nat' (xs : String) where
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
 
-def tt := natMaybe "0xff"
-#eval match tt with
-| .left x => s!"{x}"
-| .right y => s!"{y}"
+-- def tt := natMaybe "0xff"
+-- #eval match tt with
+-- | .left x => s!"{x}"
+-- | .right y => s!"{y}"
 
-def mtt : Cached (natMaybe "23") := {}
-#eval match mtt.val with
-| .right x => s!"{x}"
-| .left y => s!"{y}"
+-- def mtt : Cached (natMaybe "23") := {}
+-- #eval match mtt.val with
+-- | .right x => s!"{x}"
+-- | .left y => s!"{y}"
 
 /- Captures a valid identifier.
 -/
