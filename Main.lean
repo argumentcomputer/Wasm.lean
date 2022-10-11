@@ -26,6 +26,18 @@ def main : IO Unit := do
 
   IO.println s!"Digits also parse rather efficiently!"
   let d11 : Digit 'b' := {doesParse := Exists.intro {} $ by trivial}
-  IO.println s!"{d11.val d11.parsed} == 11"
+  IO.println s!"{extractDigit d11} == 11"
+
+  IO.println s!"We have numbers!"
+  let n22 : Option $ Nat' "22" := mkNat' "22"
+  let nHd : Option $ Nat' "Herder" := mkNat' "Herder"
+
+  match n22 with
+  | .some sn22 => IO.println s!"{extractNat sn22} == 22"
+  | .none => IO.println "/_!_\\ BUG IN Nat' \"22\" clause /_!_\\"
+
+  match nHd with
+  | .some _ => IO.println "/_!_\\ BUG IN Nat' \"Herder\" clause /_!_\\"
+  | .none => IO.println s!":thumbs_up:"
 
   pure ()
