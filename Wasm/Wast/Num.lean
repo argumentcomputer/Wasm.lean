@@ -146,6 +146,7 @@ def radDigitPrefixP (radix : Radix) : Parsec Char String Unit String :=
 def radixP (radix : Radix) : Parsec Char String Unit Nat := do
   let _prefix ← radDigitPrefixP radix
   let digits ← some' $ radDigitP radix
+  let _eof ← eof
   pure $ List.foldl (fun a x => radix * a + x) 0 digits
 
 /- Parse a decimal. -/
