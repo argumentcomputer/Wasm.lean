@@ -1,7 +1,13 @@
 import Wasm
 import Wasm.Wast.Expr
+import Wasm.Wast.Name
+import Wasm.Wast.Num
 
 open  Wasm.Wast.Expr
+open  Wasm.Wast.Name
+open  Wasm.Wast.Num
+open  Num.Digit
+open  Num.Nat
 
 def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name "kek") := mkName "kek"
 #eval sameName (mkName "lol") (mkName "lol")
