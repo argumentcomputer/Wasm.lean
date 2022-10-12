@@ -70,8 +70,7 @@ private def parseDigit (x : Char) : Option Nat :=
   | 'F' => .some 15
   | _ => .none
 
-/- Verifiably parsed digit.
-TODO: Coco!? / Coe?! -/
+/- Verifiably parsed digit. -/
 structure Digit (x : Char) :=
   parsed : Cached parseDigit x := {}
   doesParse : (∃ arg : Cached parseDigit x, Option.isSome arg.val)
@@ -88,6 +87,13 @@ def extractDigit (d : Digit x)
           simp only [Subsingleton.elim earg d.parsed, prBranch, Option.isSome] at isSomeHypothesis
       )
     contradiction
+
+instance : Coe (Digit x) Nat where
+  coe d := extractDigit d
+
+--
+-- Digit parsers
+--
 
 /- Parse out a digit up to `f`. Case-insensitive. -/
 def digitP : Parsec Char String Unit Nat := do
@@ -125,6 +131,10 @@ end Num.Digit
 namespace Num.Nat
 
 open Digit
+
+--
+-- Nat parsers
+--
 
 /- Match some `Radix` with the string prefix denoting that radix. -/
 def radDigitPrefixP (radix : Radix) : Parsec Char String Unit String :=
@@ -170,6 +180,9 @@ def extractNat (n : Nat' x) : Nat :=
     -- unfold Either.isRight at doesParse
     -- rw [prBranch] at doesParse
     simp only [Either.isRight, prBranch] at doesParse
+
+instance : Coe (Nat' x) Nat where
+  coe n := extractNat n
 
 /- Perhaps, construct a valid Natural.
 If you're parsing from a file with name `name`, set `label := name`. -/
