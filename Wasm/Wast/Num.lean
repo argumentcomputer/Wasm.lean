@@ -90,26 +90,18 @@ instance : Coe (Digit x) Nat where
 -- Digit parsers
 --
 
-/- Parse out a digit up to `f`. Case-insensitive. -/
-def digitP : Parsec Char String Unit Nat := do
+def withRangeDigitP (sat : Char → Bool) : Parsec Char String Unit Nat := do
   let ps ← getParserState
-  let x ← satisfy isHexdigit
+  let x ← satisfy sat
   match parseDigit x with
   | .some y => pure y
   | .none => parseError $ .trivial ps.offset .none [] -- Impossible, but it's easier than proving that c.satisfy isHexdigit → doesParse ⋯
 
 /- Parse out a decimal digit. -/
-def decDigitP : Parsec Char String Unit Nat := do
-  let ps ← getParserState
-  let y ← digitP
-  if y ≥ 10 then
-    parseError $ .trivial ps.offset .none
-      [.tokens (⟦'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'⟧)]
-  else
-    pure y
+def decDigitP : Parsec Char String Unit Nat := withRangeDigitP isDigit
 
-/- An alias for `digitP`. -/
-def hexDigitP : Parsec Char String Unit Nat := digitP
+/- Parse out a digit up to `f`. Case-insensitive. -/
+def hexDigitP : Parsec Char String Unit Nat := withRangeDigitP isHexdigit
 
 /- Match some `Radix` with an invocation of either `hexDigitP` or `decDigitP`. -/
 def radDigitP (radix : Radix) : Parsec Char String Unit Nat :=
@@ -132,16 +124,21 @@ open Digit
 --
 
 /- Match some `Radix` with the string prefix denoting that radix. -/
-def radDigitPrefixP (radix : Radix) : Parsec Char String Unit String :=
+def radPrefixP (radix : Radix) : Parsec Char String Unit String :=
   match radix with
   | .ten => pure $ ""
   | .sixteen => string "0x"
 
+/- Parses a number with some decorations as per spec. -/
+def radNumP (radix : Radix) : Parsec Char String Unit (List Nat) := do
+  let d0 ← radDigitP radix
+  let dr ← many' $ (option (oneOf ['_']) *> pure 0) *> radDigitP radix
+  pure $ d0 :: dr
+
 /- Parse a natural out of a string of some `Radix`. -/
 def radixP (radix : Radix) : Parsec Char String Unit Nat := do
-  let _prefix ← radDigitPrefixP radix
-  let digits ← some' $ radDigitP radix
-  let _eof ← eof
+  let _prefix ← radPrefixP radix
+  let digits ← radNumP radix
   pure $ List.foldl (fun a x => radix * a + x) 0 digits
 
 /- Parse a decimal. -/
@@ -185,10 +182,76 @@ If you're parsing from a file with name `name`, set `label := name`. -/
 def mkNat' (x : String) (label : String := "") : Option (Nat' x) :=
   let pr : Cached (parseNat' label) x := {}
   if isOk : Either.isRight pr.val then
-    .some {parsed := pr}
+    .some {parsed := pr, label := label}
   else
     .none
 
 end Num.Nat
+
+----------------------------------------------------
+--------------------- FLOATS -----------------------
+----------------------------------------------------
+
+namespace Num.Float
+
+open Nat
+open Digit
+
+#eval (Radix.sixteen : Nat).toFloat
+
+def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
+  let _prefix ← radPrefixP radix
+  let an ← radixP radix
+  let af := an.toFloat
+  let _dot ← oneOf ['.']
+  let obs ← option $ radNumP radix
+  let significand := af + match obs with
+    | .none => 0
+    | .some bs => List.foldr (fun b acc => Id.run $ do
+      let rf := (radix : Nat).toFloat
+      (acc / rf) + b.toFloat / rf)  0.0 bs
+  let exponent ← match radix with
+    | .ten => option $ oneOf "eE".data *> radDigitP .ten
+    | .sixteen => option $ oneOf "pP".data *> radDigitP .ten -- I know, right? https://webassembly.github.io/spec/core/text/values.html#floating-point
+  pure $ match exponent with
+    | .none => significand
+    | .some exp => significand * 10^(exp.toFloat)
+
+------------------------------------------------------------------------
+-- TODO: Code generation for auxiliary structures and functions?!?!?! --
+------------------------------------------------------------------------
+
+def parseFloat' (label : String) (input : String) :=
+  runParserP (floatRadixP $ hod input) label input
+
+structure Float' (x : String) where
+  label : String := ""
+  parsed : Cached (parseFloat' label) x := {}
+  doesParse : Either.isRight parsed.val := by trivial
+
+def extractFloat (n : Float' x) : Float :=
+  let doesParse := n.doesParse
+  match npBranch : n.parsed.val with
+  | .right y => y
+  | .left _ => by
+    simp only [Either.isRight, npBranch] at doesParse
+
+instance : Coe (Float' x) Float where
+  coe n := extractFloat n
+
+/- Perhaps, construct a valid Float.
+If you're parsing from a file with name `name`, set `label := name`. -/
+def mkFloat' (x : String) (label : String := "") : Option (Float' x) :=
+  let pr : Cached (parseFloat' label) x := {}
+  if isOk : Either.isRight pr.val then
+    .some {parsed := pr, label := label}
+  else
+    .none
+
+------------------------------------------------------------------------
+-- TODO: Code generation for auxiliary structures and functions?!?!?! --
+------------------------------------------------------------------------
+
+end Num.Float
 
 end Wasm.Wast.Num
