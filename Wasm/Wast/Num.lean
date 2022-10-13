@@ -44,7 +44,6 @@ def isHexdigit (x : Char) : Bool :=
 
 /- Terminal parser for digits. -/
 private def parseDigit (x : Char) : Option Nat :=
-  dbg_trace "d"
   match x with
   | '0' => .some 0
   | '1' => .some 1
@@ -166,7 +165,7 @@ If you're parsing from a file with name `name`, set `label := name`. -/
 structure Nat' (x : String) where
   label : String := ""
   parsed : Cached (parseNat' label) x := {}
-  doesParse : Either.isRight parsed.val
+  doesParse : Either.isRight parsed.val := by trivial
 
 /- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Nat`. -/
 def extractNat (n : Nat' x) : Nat :=
@@ -186,7 +185,7 @@ If you're parsing from a file with name `name`, set `label := name`. -/
 def mkNat' (x : String) (label : String := "") : Option (Nat' x) :=
   let pr : Cached (parseNat' label) x := {}
   if isOk : Either.isRight pr.val then
-    .some $ ⟨ label, pr, isOk ⟩
+    .some {parsed := pr}
   else
     .none
 
