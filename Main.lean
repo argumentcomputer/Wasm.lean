@@ -31,8 +31,8 @@ def main : IO Unit := do
   IO.println s!"Much techmology: {xx23.g xx23.y}"
   IO.println s!"Wow: {xx23.g xx23.y}"
 
-  IO.println s!"Digits also parse rather efficiently!"
-  let d11 : Digit 'b' := {doesParse := Exists.intro {} $ by trivial}
+  IO.println s!"Digits also parse rather efficiently! And now, ergonomically!"
+  let d11 : Digit 'b' := {}
   IO.println s!"{(d11 : Nat)} == 11" -- We can 'Coe'rce!
 
   IO.println s!"We have numbers!"

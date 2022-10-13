@@ -73,20 +73,16 @@ private def parseDigit (x : Char) : Option Nat :=
 /- Verifiably parsed digit. -/
 structure Digit (x : Char) :=
   parsed : Cached parseDigit x := {}
-  doesParse : (∃ arg : Cached parseDigit x, Option.isSome arg.val)
+  doesParse : Option.isSome parsed.val := by trivial
+  deriving Repr
 
 /- Give me a parse result `pr` of parsing out a digit and a proof that it's `isSome`, and I'll give you back a natural number this digit represents. -/
 def extractDigit (d : Digit x)
                  : Nat :=
+  let doesParse := d.doesParse
   match prBranch : d.parsed.val with
   | .some y => y
-  | .none => by
-    have : False :=
-      Exists.elim d.doesParse (fun earg =>
-        fun isSomeHypothesis => by
-          simp only [Subsingleton.elim earg d.parsed, prBranch, Option.isSome] at isSomeHypothesis
-      )
-    contradiction
+  | .none => by simp only [prBranch] at doesParse
 
 instance : Coe (Digit x) Nat where
   coe d := extractDigit d
