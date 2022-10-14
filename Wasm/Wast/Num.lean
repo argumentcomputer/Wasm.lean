@@ -1,5 +1,6 @@
 import Wasm.Wast.BitSize
 import Wasm.Wast.Radix
+import Wasm.Wast.Sign
 
 import Megaparsec.Common
 import Megaparsec.Errors
@@ -115,6 +116,15 @@ end Num.Digit
 ---------------------- NATS ------------------------
 ----------------------------------------------------
 
+/-
+
+Reference:
+https://webassembly.github.io/spec/core/text/values.html#floating-point
+
+`Nat'`s are unsigned.
+
+-/
+
 namespace Num.Nat
 
 open Digit
@@ -147,7 +157,7 @@ def decimalP : Parsec Char String Unit Nat := radixP .ten
 /- Parse a hexadecimal. -/
 def hexP : Parsec Char String Unit Nat := radixP .sixteen
 
-private def demoParse (φ : Parsec Char String Unit Nat) (x : String) : Either (ParseErrorBundle Char String Unit) Nat :=
+private def demoParse (φ : Parsec Char String Unit γ) (x : String) : Either (ParseErrorBundle Char String Unit) γ :=
   runParserP φ "" x
 
 /- Run a parser against `String` `y` and return a parse result. -/
@@ -189,33 +199,103 @@ def mkNat' (x : String) (label : String := "") : Option (Nat' x) :=
 end Num.Nat
 
 ----------------------------------------------------
+---------------------- INTS ------------------------
+----------------------------------------------------
+
+/-
+
+Reference:
+https://webassembly.github.io/spec/core/text/values.html#integers
+
+`Int'` is just a signed `Nat'`.
+
+-/
+
+namespace Num.Int
+
+open Num.Nat
+
+def parseInt' (label : String) (x : String) :=
+  let intP := do
+    let sign ← signP
+    let n ← radixP (hod x)
+    pure $ signum sign * n
+  runParserP intP label x
+
+/- Captures a valid signed Integer.
+If you're parsing from a file with name `name`, set `label := name`. -/
+structure Int' (x : String) where
+  label : String := ""
+  parsed : Cached (parseInt' label) x := {}
+  doesParse : Either.isRight parsed.val := by trivial
+
+/- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Int`. -/
+def extractInt (n : Int' x) : Int :=
+  let doesParse := n.doesParse
+  match prBranch : n.parsed.val with
+  | .right y => y
+  | .left _ => by
+    -- unfold Either.isRight at doesParse
+    -- rw [prBranch] at doesParse
+    simp only [Either.isRight, prBranch] at doesParse
+
+instance : Coe (Int' x) Int where
+  coe n := extractInt n
+
+/- Perhaps, construct a valid Integer.
+If you're parsing from a file with name `name`, set `label := name`. -/
+def mkInt' (x : String) (label : String := "") : Option (Int' x) :=
+  let pr : Cached (parseInt' label) x := {}
+  if isOk : Either.isRight pr.val then
+    .some {parsed := pr, label := label}
+  else
+    .none
+
+end Num.Int
+
+----------------------------------------------------
 --------------------- FLOATS -----------------------
 ----------------------------------------------------
+
+/-
+
+Reference:
+https://webassembly.github.io/spec/core/text/values.html#floating-point
+
+TODO: represent `inf`, `nan`, and `nan:0x...`
+
+-/
 
 namespace Num.Float
 
 open Nat
 open Digit
 
-#eval (Radix.sixteen : Nat).toFloat
+def exponentP (radix : Radix) : Parsec Char String Unit Int := do
+  let _l ← match radix with
+    | .ten => oneOf "eE".data
+    | .sixteen => oneOf "pP".data
+  let expsign ← signP
+  let exponent ← radDigitP .ten -- Yes, in case of both radices
+  pure $ signum expsign * exponent
 
 def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
   let _prefix ← radPrefixP radix
+  let sign ← signP
+  let s := Float.ofInt $ signum sign
   let an ← radixP radix
-  let af := an.toFloat
-  let _dot ← oneOf ['.']
+  let _dot ← option $ string "."
   let obs ← option $ radNumP radix
-  let significand := af + match obs with
+  let significand := s * (an.toFloat + match obs with
     | .none => 0
     | .some bs => List.foldr (fun b acc => Id.run $ do
       let rf := (radix : Nat).toFloat
-      (acc / rf) + b.toFloat / rf)  0.0 bs
-  let exponent ← match radix with
-    | .ten => option $ oneOf "eE".data *> radDigitP .ten
-    | .sixteen => option $ oneOf "pP".data *> radDigitP .ten -- I know, right? https://webassembly.github.io/spec/core/text/values.html#floating-point
-  pure $ match exponent with
-    | .none => significand
-    | .some exp => significand * 10^(exp.toFloat)
+      (acc / rf) + b.toFloat / rf)  0.0 bs)
+  let exponent ← option $ exponentP radix
+  pure $ match exponent, radix with
+    | .none, _ => significand
+    | .some exp, .ten => significand * 10^(Float.ofInt exp)
+    | .some exp, .sixteen => significand * 2^(Float.ofInt exp)
 
 ------------------------------------------------------------------------
 -- TODO: Code generation for auxiliary structures and functions?!?!?! --
