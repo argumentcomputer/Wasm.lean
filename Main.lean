@@ -28,7 +28,7 @@ def main : IO Unit := do
   let nHd : Option $ Nat' "Herder" := mkNat' "Herder"
 
   match n222 with
-  | .some sn222 => IO.println s!"{(sn222 : Nat)} == 222"
+  | .some sn222 => IO.println s!"{(sn222 : Nat)} == 2222"
   | .none => IO.println "/_!_\\ BUG IN Nat' \"22\" clause /_!_\\"
 
   match nHd with
