@@ -276,7 +276,7 @@ def exponentP (radix : Radix) : Parsec Char String Unit Int := do
     | .ten => oneOf "eE".data
     | .sixteen => oneOf "pP".data
   let expsign ← signP
-  let exponent ← radDigitP .ten -- Yes, in case of both radices
+  let exponent ← radDigitP .ten
   pure $ signum expsign * exponent
 
 def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
