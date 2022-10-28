@@ -1,3 +1,5 @@
+import Std.Data.RBMap
+
 import Wasm.Wast.BitSize
 import Wasm.Wast.Radix
 import Wasm.Wast.Sign
@@ -91,12 +93,14 @@ instance : Coe (Digit x) Nat where
 -- Digit parsers
 --
 
+def blah : Ord (ErrorItem Char) := inferInstance
+
 def withRangeDigitP (sat : Char → Bool) : Parsec Char String Unit Nat := do
   let ps ← getParserState
   let x ← satisfy sat
   match parseDigit x with
   | .some y => pure y
-  | .none => parseError $ .trivial ps.offset .none [] -- Impossible, but it's easier than proving that c.satisfy isHexdigit → doesParse ⋯
+  | .none => parseError $ .trivial ps.offset .none (@Std.RBMap.empty (ErrorItem Char) Unit blah.compare) -- Impossible, but it's easier than proving that c.satisfy isHexdigit → doesParse ⋯
 
 /- Parse out a decimal digit. -/
 def decDigitP : Parsec Char String Unit Nat := withRangeDigitP isDigit
