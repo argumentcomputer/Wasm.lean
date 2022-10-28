@@ -1,4 +1,5 @@
 *.olean
 result*
 build/
-lean_packages/
+/lean_packages/*
+!/lean_packages/manifest.json
