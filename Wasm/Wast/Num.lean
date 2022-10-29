@@ -1,6 +1,7 @@
 import Wasm.Wast.BitSize
 import Wasm.Wast.Radix
 import Wasm.Wast.Sign
+import Wasm.Wast.Parser.Common
 
 import Megaparsec.Common
 import Megaparsec.Errors
@@ -8,6 +9,8 @@ import Megaparsec.Errors.Bundle
 import Megaparsec.Parsec
 import Megaparsec.MonadParsec
 import YatimaStdLib.NonEmpty
+
+open Wasm.Wast.Parser.Common
 
 open Megaparsec
 open Megaparsec.Common
@@ -251,6 +254,37 @@ def mkInt' (x : String) (label : String := "") : Option (Int' x) :=
   else
     .none
 
+structure ConstInt where
+  bs : BitSize
+  val : Int
+  deriving BEq
+
+instance : ToString ConstInt where
+  toString x := "(ConstInt " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
+
+def i32P : Parsec Char String Unit ConstInt := do
+    discard $ string "i32.const"
+    ignoreP
+    let ps ← getParserState
+    let ds ← many1' notSpecialP
+    let dss : String := String.mk ds
+    -- TODO: CHECK THAT PARSED INT FITS 32 BITS
+    match mkInt' dss with
+    | .some i => pure $ ConstInt.mk 32 $ extractInt i
+    | .none => parseError $ .trivial ps.offset .none []
+
+-- TODO: copypasta is bad
+def i64P : Parsec Char String Unit ConstInt := do
+    discard $ string "i64.const"
+    ignoreP
+    let ps ← getParserState
+    let ds ← many1' notSpecialP
+    let dss : String := String.mk ds
+    -- TODO: CHECK THAT PARSED INT FITS 32 BITS
+    match mkInt' dss with
+    | .some i => pure $ ConstInt.mk 64 $ extractInt i
+    | .none => parseError $ .trivial ps.offset .none []
+
 end Num.Int
 
 ----------------------------------------------------
@@ -327,6 +361,41 @@ def mkFloat' (x : String) (label : String := "") : Option (Float' x) :=
     .some {parsed := pr, label := label}
   else
     .none
+
+structure ConstFloat where
+  bs : BitSize
+  val : Float
+  deriving BEq
+
+instance : ToString ConstFloat where
+  toString x := "(ConstFloat " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
+
+-- TODO: copypasta is bad
+def f32P : Parsec Char String Unit ConstFloat := do
+  discard $ string "f32.const"
+  ignoreP
+  let ps ← getParserState
+  let ds ← many1' notSpecialP
+  let dss : String := String.mk ds
+  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
+  match mkFloat' dss with
+  | .some f => pure $ ConstFloat.mk 32 $ extractFloat f
+  | .none => parseError $ .trivial ps.offset .none []
+
+-- TODO: copypasta is bad
+def f64P : Parsec Char String Unit ConstFloat := do
+  discard $ string "f64.const"
+  ignoreP
+  let ps ← getParserState
+  let ds ← many1' notSpecialP
+  let dss : String := String.mk ds
+  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
+  match mkFloat' dss with
+  | .some f => pure $ ConstFloat.mk 64 $ extractFloat f
+  | .none => parseError $ .trivial ps.offset .none []
+
+instance : ToString ConstFloat where
+  toString x := "(ConstFloat (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"
 
 ------------------------------------------------------------------------
 -- TODO: Code generation for auxiliary structures and functions?!?!?! --
