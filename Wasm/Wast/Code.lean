@@ -41,18 +41,36 @@ structure Local where
 
 end Local
 
+namespace Instruction
+
+/- TODO: Instructions are rigid WAT objects. If we choose to only support
+S-Expressions at this point, we don't need this concept. -/
+
+end Instruction
+
+namespace Operation
+
+/- TODO: decide if we only support strict S-Exprs.
+See here: https://zulip.yatima.io/#narrow/stream/20-meta/topic/WAST.20pair.20prog/near/30282 -/
+structure Operation where
+
+end Operation
+
 namespace Func
 
 open Name
 open Type'
+open Local
+open Operation
 
 structure Func where
     name : (x : String) → Option $ Name x
     export_ : Option String
-    params : List Local.Local
+    params : List Local
     result : Option Type'
-    locals : List Local.Local
-
+    locals : List Local
+    /- TODO -/
+    ops : List Operation
 
 end Func
 
@@ -83,12 +101,14 @@ namespace Module
 
 open Name
 open Type'
+open Func
 
 structure Module where
     name : (x : String) → Option $ Name x
-    func : List Func.Func
+    func : List Func
 
 -- def moduleP : StateT Context (Parsec Char String Unit) Module := sorry
+-- ^ we won't do single-pass evaluation, because the industrial standard is not to.
 def moduleP : Parsec Char String Unit Module := sorry
 
 end Module
