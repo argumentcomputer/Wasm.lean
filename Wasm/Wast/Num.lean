@@ -257,6 +257,7 @@ structure Const where
 
 def i32P : Parsec Char String Unit Const := do
     discard $ string "i32.const"
+    -- TODO: tokenise
     let ps ← getParserState
     let ds ← many1' (satisfy $ fun x => x ≠ ' ')
     let dss : String := String.mk ds
