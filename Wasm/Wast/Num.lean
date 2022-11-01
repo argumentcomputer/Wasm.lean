@@ -251,6 +251,22 @@ def mkInt' (x : String) (label : String := "") : Option (Int' x) :=
   else
     .none
 
+structure Const where
+  bs : BitSize
+  val : Int
+
+def i32P : Parsec Char String Unit Const := do
+    discard $ string "i32.const"
+    let ps ← getParserState
+    let ds ← many1' (satisfy $ fun x => x ≠ ' ')
+    let dss : String := String.mk ds
+    -- TODO: CHECK THAT PARSED INT FITS 32 BITS
+    match mkInt' dss with
+    | .some i => pure $ Const.mk 32 $ extractInt i
+    | .none => parseError $ .trivial ps.offset .none []
+
+-- TODO: Inductive "Getter" that branches over const, local_i, local_n, stack
+
 end Num.Int
 
 ----------------------------------------------------

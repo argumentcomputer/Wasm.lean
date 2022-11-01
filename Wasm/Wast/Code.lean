@@ -18,6 +18,7 @@ namespace Type'
 inductive Type' where
 | f : BitSize → Type'
 | i : BitSize → Type'
+| v : BitSizeSIMD → Type'
 
 def typeP : Parsec Char String Unit Type' := do
     let ps ← getParserState
@@ -64,7 +65,7 @@ open Local
 open Operation
 
 structure Func where
-    name : (x : String) → Option $ Name x
+    name : Option $ (x : String) → Option $ Name x
     export_ : Option String
     params : List Local
     result : Option Type'
@@ -104,7 +105,7 @@ open Type'
 open Func
 
 structure Module where
-    name : (x : String) → Option $ Name x
+    name : Option $ (x : String) → Option $ Name x
     func : List Func
 
 -- def moduleP : StateT Context (Parsec Char String Unit) Module := sorry
