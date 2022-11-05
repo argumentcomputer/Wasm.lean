@@ -49,13 +49,7 @@ def o_something (x : String) : Option (Int' x) := mkInt' x
   between "(" ")"
     $ i32P
 
-  i32P : (Parsec ... (Int'.Const)) :=
-    discard $ string "i32.const"
-    let ps ← getParserState
-    let ds ← string "i32.const" *> many1 dP
-    match mkInt' ds with
-    | .some i => Int'.Const 32 i
-    | .none => parseError $ .trivial ps.offset .none []
+
 -/
 
 def o_getter_i : Getter (Type'.i 32) ((x : String) → (Option $ Int' x)) :=
