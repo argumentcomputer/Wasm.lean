@@ -55,6 +55,6 @@ def main : IO Unit := do
 
   let mut x := 0
   x := 1
-  IO.println s!"Thanks for using Megaparsec, you're #{x}!"
+  IO.println s!"Thanks for using Webassembly with Lean, you're #{x}!"
 
   pure ()
