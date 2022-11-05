@@ -69,6 +69,12 @@ instance : Ord BitSize where
 instance : Ord BitSizeSIMD where
   compare x y := Ord.compare (x : Nat) (y : Nat)
 
+instance : ToString BitSize where
+  toString x := "(" ++ toString (x : Nat) ++ " : BitSize)"
+
+instance : ToString BitSizeSIMD where
+  toString x := "(" ++ toString (x : Nat) ++ " : BitSizeSIMD)"
+
 -- End of boring instances
 
 def bitSizeP : Parsec Char String Unit BitSize :=

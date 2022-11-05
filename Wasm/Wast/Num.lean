@@ -1,6 +1,7 @@
 import Wasm.Wast.BitSize
 import Wasm.Wast.Radix
 import Wasm.Wast.Sign
+import Wasm.Wast.Parser.Common
 
 import Megaparsec.Common
 import Megaparsec.Errors
@@ -8,6 +9,8 @@ import Megaparsec.Errors.Bundle
 import Megaparsec.Parsec
 import Megaparsec.MonadParsec
 import YatimaStdLib.NonEmpty
+
+open Wasm.Wast.Parser.Common
 
 open Megaparsec
 open Megaparsec.Common
@@ -251,22 +254,32 @@ def mkInt' (x : String) (label : String := "") : Option (Int' x) :=
   else
     .none
 
-structure Const where
+structure ConstInt where
   bs : BitSize
   val : Int
 
-def i32P : Parsec Char String Unit Const := do
+def i32P : Parsec Char String Unit ConstInt := do
     discard $ string "i32.const"
-    -- TODO: tokenise
+    ignoreP
     let ps ← getParserState
     let ds ← many1' (satisfy $ fun x => x ≠ ' ')
     let dss : String := String.mk ds
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
     match mkInt' dss with
-    | .some i => pure $ Const.mk 32 $ extractInt i
+    | .some i => pure $ ConstInt.mk 32 $ extractInt i
     | .none => parseError $ .trivial ps.offset .none []
 
--- TODO: Inductive "Getter" that branches over const, local_i, local_n, stack
+-- TODO: copypasta is bad
+def i64P : Parsec Char String Unit ConstInt := do
+    discard $ string "i64.const"
+    ignoreP
+    let ps ← getParserState
+    let ds ← many1' (satisfy $ fun x => x ≠ ' ')
+    let dss : String := String.mk ds
+    -- TODO: CHECK THAT PARSED INT FITS 32 BITS
+    match mkInt' dss with
+    | .some i => pure $ ConstInt.mk 64 $ extractInt i
+    | .none => parseError $ .trivial ps.offset .none []
 
 end Num.Int
 

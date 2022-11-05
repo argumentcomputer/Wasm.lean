@@ -1,15 +1,21 @@
 import Wasm
+import Wasm.Wast.Code
 import Wasm.Wast.Expr
 import Wasm.Wast.Name
 import Wasm.Wast.Num
 
-open  Wasm.Wast.Expr
-open  Wasm.Wast.Name
-open  Wasm.Wast.Num
-open  Num.Digit
-open  Num.Nat
-open  Num.Int
-open  Num.Float
+import Megaparsec.Parsec
+
+open Wasm.Wast.Code
+open Wasm.Wast.Expr
+open Wasm.Wast.Name
+open Wasm.Wast.Num
+open Num.Digit
+open Num.Nat
+open Num.Int
+open Num.Float
+
+open Megaparsec.Parsec
 
 def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name "kek") := mkName "kek"
 #eval sameName (mkName "lol") (mkName "lol")
@@ -52,6 +58,12 @@ def main : IO Unit := do
   match mkFloat' fls with
   | .some fl => IO.println s!"{fls} == {(fl : Float)} == -1.2345"
   | .none => IO.println s!"Oh no, bug in {fls} parsing!"
+
+  IO.println "* * *"
+  IO.println "f32 is represented as:"
+  void $ parseTestP Type'.typeP "f32"
+  let _x := (32 : BitSize)
+  IO.println "* * *"
 
   let mut x := 0
   x := 1

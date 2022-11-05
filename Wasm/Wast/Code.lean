@@ -19,6 +19,13 @@ inductive Type' where
 | f : BitSize → Type'
 | i : BitSize → Type'
 | v : BitSizeSIMD → Type'
+    deriving BEq
+
+instance : ToString Type' where
+    toString x := match x with
+    | .f y => "(Type'.f " ++ toString y ++ ")"
+    | .i y => "(Type'.i " ++ toString y ++ ")"
+    | .v y => "(Type'.v " ++ toString y ++ ")"
 
 def typeP : Parsec Char String Unit Type' := do
     let ps ← getParserState
@@ -36,11 +43,30 @@ namespace Local
 open Name
 open Type'
 
-structure Local where
+structure LocalName where
     name : (x : String) → Option $ Name x
-    type : Type'
+
+structure LocalIndex where
+    index : Nat
+
+inductive Local where
+| name : LocalName → Local
+| index : LocalIndex → Local
 
 end Local
+
+namespace Get
+
+open Type'
+
+inductive Get (x : Type') where
+| from_stack
+| by_name : LocalName → Get x
+| by_index : LocalIndex → Get x
+-- TODO: replace "Unit" placeholder with ConstFloat ⊕ ConstVec when implemented
+| const : ConstInt ⊕ Unit → Get x
+
+end Get
 
 namespace Instruction
 
@@ -83,12 +109,12 @@ namespace Module
     (func)
     (func $f (export "(module (func))") (param $y f32) (param $y1 f32) (result f32)
         (local $dummy i32)
-        i32.const 42
+        (i32.const 42)
         (local.set 2)
-        local.get $y1
+        (local.get $y1)
         (f32.add (local.get $y1))
-        local.get $y
-        f32.add
+        (local.get $y)
+        (f32.add)
     )
     (func (export "main") (result f32)
         (local $x f32) (local $y f32)
@@ -108,8 +134,6 @@ structure Module where
     name : Option $ (x : String) → Option $ Name x
     func : List Func
 
--- def moduleP : StateT Context (Parsec Char String Unit) Module := sorry
--- ^ we won't do single-pass evaluation, because the industrial standard is not to.
 def moduleP : Parsec Char String Unit Module := sorry
 
 end Module
