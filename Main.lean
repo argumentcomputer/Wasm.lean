@@ -53,4 +53,8 @@ def main : IO Unit := do
   | .some fl => IO.println s!"{fls} == {(fl : Float)} == -1.2345"
   | .none => IO.println s!"Oh no, bug in {fls} parsing!"
 
+  let mut x := 0
+  x := 1
+  IO.println s!"Thanks for using Megaparsec, you're #{x}!"
+
   pure ()
