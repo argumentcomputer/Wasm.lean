@@ -62,7 +62,11 @@ def main : IO Unit := do
   IO.println "* * *"
   IO.println "f32 is represented as:"
   void $ parseTestP Type'.typeP "f32"
-  let _x := (32 : BitSize)
+  IO.println "* * *"
+
+  IO.println "* * *"
+  IO.println "i32.const 42 is represented as:"
+  void $ parseTestP i32P "i32.const 42"
   IO.println "* * *"
 
   let mut x := 0

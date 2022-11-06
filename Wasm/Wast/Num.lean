@@ -257,6 +257,10 @@ def mkInt' (x : String) (label : String := "") : Option (Int' x) :=
 structure ConstInt where
   bs : BitSize
   val : Int
+  deriving BEq
+
+instance : ToString ConstInt where
+  toString x := "(ConstInt (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"
 
 def i32P : Parsec Char String Unit ConstInt := do
     discard $ string "i32.const"
