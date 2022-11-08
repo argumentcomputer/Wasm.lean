@@ -260,13 +260,13 @@ structure ConstInt where
   deriving BEq
 
 instance : ToString ConstInt where
-  toString x := "(ConstInt (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"
+  toString x := "(ConstInt " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
 
 def i32P : Parsec Char String Unit ConstInt := do
     discard $ string "i32.const"
     ignoreP
     let ps ← getParserState
-    let ds ← many1' (satisfy $ fun x => x ≠ ' ')
+    let ds ← many1' notSpecialP
     let dss : String := String.mk ds
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
     match mkInt' dss with
@@ -278,7 +278,7 @@ def i64P : Parsec Char String Unit ConstInt := do
     discard $ string "i64.const"
     ignoreP
     let ps ← getParserState
-    let ds ← many1' (satisfy $ fun x => x ≠ ' ')
+    let ds ← many1' notSpecialP
     let dss : String := String.mk ds
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
     match mkInt' dss with
@@ -361,6 +361,41 @@ def mkFloat' (x : String) (label : String := "") : Option (Float' x) :=
     .some {parsed := pr, label := label}
   else
     .none
+
+structure ConstFloat where
+  bs : BitSize
+  val : Float
+  deriving BEq
+
+instance : ToString ConstFloat where
+  toString x := "(ConstFloat " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
+
+-- TODO: copypasta is bad
+def f32P : Parsec Char String Unit ConstFloat := do
+  discard $ string "f32.const"
+  ignoreP
+  let ps ← getParserState
+  let ds ← many1' notSpecialP
+  let dss : String := String.mk ds
+  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
+  match mkFloat' dss with
+  | .some f => pure $ ConstFloat.mk 32 $ extractFloat f
+  | .none => parseError $ .trivial ps.offset .none []
+
+-- TODO: copypasta is bad
+def f64P : Parsec Char String Unit ConstFloat := do
+  discard $ string "f64.const"
+  ignoreP
+  let ps ← getParserState
+  let ds ← many1' notSpecialP
+  let dss : String := String.mk ds
+  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
+  match mkFloat' dss with
+  | .some f => pure $ ConstFloat.mk 64 $ extractFloat f
+  | .none => parseError $ .trivial ps.offset .none []
+
+instance : ToString ConstFloat where
+  toString x := "(ConstFloat (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"
 
 ------------------------------------------------------------------------
 -- TODO: Code generation for auxiliary structures and functions?!?!?! --

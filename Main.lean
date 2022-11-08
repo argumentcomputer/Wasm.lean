@@ -7,6 +7,7 @@ import Wasm.Wast.Num
 import Megaparsec.Parsec
 
 open Wasm.Wast.Code
+open Wasm.Wast.Code.Operation
 open Wasm.Wast.Expr
 open Wasm.Wast.Name
 open Wasm.Wast.Num
@@ -67,6 +68,11 @@ def main : IO Unit := do
   IO.println "* * *"
   IO.println "i32.const 42 is represented as:"
   void $ parseTestP i32P "i32.const 42"
+  IO.println "* * *"
+
+  IO.println "* * *"
+  IO.println "(i32.add (i32.const 42)) is represented as:"
+  void $ parseTestP addP "(i32.add (i32.const 42))"
   IO.println "* * *"
 
   let mut x := 0
