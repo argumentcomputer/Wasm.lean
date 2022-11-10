@@ -99,7 +99,10 @@ def withRangeDigitP (sat : Char → Bool) : Parsec Char String Unit Nat := do
   let x ← satisfy sat
   match parseDigit x with
   | .some y => pure y
-  | .none => parseError $ .trivial ps.offset .none [] -- Impossible, but it's easier than proving that c.satisfy isHexdigit → doesParse ⋯
+  | .none => @parseError (Parsec Char String Unit)
+                        String String Unit Char
+                        theInstance Nat
+                        $ .trivial ps.offset .none $ hints0 Char
 
 /- Parse out a decimal digit. -/
 def decDigitP : Parsec Char String Unit Nat := withRangeDigitP isDigit
@@ -160,7 +163,7 @@ def decimalP : Parsec Char String Unit Nat := radixP .ten
 /- Parse a hexadecimal. -/
 def hexP : Parsec Char String Unit Nat := radixP .sixteen
 
-private def demoParse (φ : Parsec Char String Unit γ) (x : String) : Either (ParseErrorBundle Char String Unit) γ :=
+private def demoParse (φ : Parsec Char String Unit γ) (x : String) : Except (ParseErrorBundle Char String Unit) γ :=
   runParserP φ "" x
 
 /- Run a parser against `String` `y` and return a parse result. -/
@@ -175,17 +178,18 @@ If you're parsing from a file with name `name`, set `label := name`. -/
 structure Nat' (x : String) where
   label : String := ""
   parsed : Cached (parseNat' label) x := {}
-  doesParse : Either.isRight parsed.val := by trivial
+  doesParse : Except.isOk parsed.val := by trivial
 
 /- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Nat`. -/
 def extractNat (n : Nat' x) : Nat :=
   let doesParse := n.doesParse
   match prBranch : n.parsed.val with
-  | .right y => y
-  | .left _ => by
-    -- unfold Either.isRight at doesParse
-    -- rw [prBranch] at doesParse
-    simp only [Either.isRight, prBranch] at doesParse
+  | .ok y => y
+  | .error _ => by
+    unfold Except.isOk at doesParse
+    rw [prBranch] at doesParse
+    -- simp only [isOk, prBranch] at doesParse
+    contradiction
 
 instance : Coe (Nat' x) Nat where
   coe n := extractNat n
@@ -194,7 +198,7 @@ instance : Coe (Nat' x) Nat where
 If you're parsing from a file with name `name`, set `label := name`. -/
 def mkNat' (x : String) (label : String := "") : Option (Nat' x) :=
   let pr : Cached (parseNat' label) x := {}
-  if isOk : Either.isRight pr.val then
+  if isOk : Except.isOk pr.val then
     .some {parsed := pr, label := label}
   else
     .none
@@ -230,17 +234,18 @@ If you're parsing from a file with name `name`, set `label := name`. -/
 structure Int' (x : String) where
   label : String := ""
   parsed : Cached (parseInt' label) x := {}
-  doesParse : Either.isRight parsed.val := by trivial
+  doesParse : Except.isOk parsed.val := by trivial
 
 /- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Int`. -/
 def extractInt (n : Int' x) : Int :=
   let doesParse := n.doesParse
   match prBranch : n.parsed.val with
-  | .right y => y
-  | .left _ => by
-    -- unfold Either.isRight at doesParse
-    -- rw [prBranch] at doesParse
-    simp only [Either.isRight, prBranch] at doesParse
+  | .ok y => y
+  | .error _ => by
+    unfold Except.isOk at doesParse
+    rw [prBranch] at doesParse
+    contradiction
+    -- simp only [Either.isRight, prBranch] at doesParse
 
 instance : Coe (Int' x) Int where
   coe n := extractInt n
@@ -249,7 +254,7 @@ instance : Coe (Int' x) Int where
 If you're parsing from a file with name `name`, set `label := name`. -/
 def mkInt' (x : String) (label : String := "") : Option (Int' x) :=
   let pr : Cached (parseInt' label) x := {}
-  if isOk : Either.isRight pr.val then
+  if isOk : Except.isOk pr.val then
     .some {parsed := pr, label := label}
   else
     .none
@@ -271,7 +276,10 @@ def i32P : Parsec Char String Unit ConstInt := do
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
     match mkInt' dss with
     | .some i => pure $ ConstInt.mk 32 $ extractInt i
-    | .none => parseError $ .trivial ps.offset .none []
+    | .none => @parseError (Parsec Char String Unit)
+                           String String Unit Char
+                           theInstance ConstInt
+                           $ .trivial ps.offset .none $ hints0 Char
 
 -- TODO: copypasta is bad
 def i64P : Parsec Char String Unit ConstInt := do
@@ -283,7 +291,10 @@ def i64P : Parsec Char String Unit ConstInt := do
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
     match mkInt' dss with
     | .some i => pure $ ConstInt.mk 64 $ extractInt i
-    | .none => parseError $ .trivial ps.offset .none []
+    | .none => @parseError (Parsec Char String Unit)
+                           String String Unit Char
+                           theInstance ConstInt
+                           $ .trivial ps.offset .none $ hints0 Char
 
 end Num.Int
 
@@ -341,14 +352,16 @@ def parseFloat' (label : String) (input : String) :=
 structure Float' (x : String) where
   label : String := ""
   parsed : Cached (parseFloat' label) x := {}
-  doesParse : Either.isRight parsed.val := by trivial
+  doesParse : Except.isOk parsed.val := by trivial
 
 def extractFloat (n : Float' x) : Float :=
   let doesParse := n.doesParse
   match npBranch : n.parsed.val with
-  | .right y => y
-  | .left _ => by
-    simp only [Either.isRight, npBranch] at doesParse
+  | .ok y => y
+  | .error _ => by
+    unfold Except.isOk at doesParse
+    rw [npBranch] at doesParse
+    contradiction
 
 instance : Coe (Float' x) Float where
   coe n := extractFloat n
@@ -357,7 +370,7 @@ instance : Coe (Float' x) Float where
 If you're parsing from a file with name `name`, set `label := name`. -/
 def mkFloat' (x : String) (label : String := "") : Option (Float' x) :=
   let pr : Cached (parseFloat' label) x := {}
-  if isOk : Either.isRight pr.val then
+  if isOk : Except.isOk pr.val then
     .some {parsed := pr, label := label}
   else
     .none
@@ -380,7 +393,10 @@ def f32P : Parsec Char String Unit ConstFloat := do
   -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
   match mkFloat' dss with
   | .some f => pure $ ConstFloat.mk 32 $ extractFloat f
-  | .none => parseError $ .trivial ps.offset .none []
+  | .none => @parseError (Parsec Char String Unit)
+                        String String Unit Char
+                        theInstance ConstFloat
+                        $ .trivial ps.offset .none $ hints0 Char
 
 -- TODO: copypasta is bad
 def f64P : Parsec Char String Unit ConstFloat := do
@@ -392,7 +408,10 @@ def f64P : Parsec Char String Unit ConstFloat := do
   -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
   match mkFloat' dss with
   | .some f => pure $ ConstFloat.mk 64 $ extractFloat f
-  | .none => parseError $ .trivial ps.offset .none []
+  | .none => @parseError (Parsec Char String Unit)
+                        String String Unit Char
+                        theInstance ConstFloat
+                        $ .trivial ps.offset .none $ hints0 Char
 
 instance : ToString ConstFloat where
   toString x := "(ConstFloat (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"
