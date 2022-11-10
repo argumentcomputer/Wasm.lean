@@ -12,6 +12,7 @@ open Megaparsec
 open Megaparsec.Common
 open Megaparsec.Errors.Bundle
 open Megaparsec.Parsec
+open MonadParsec
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int
@@ -40,7 +41,10 @@ def typeP : Parsec Char String Unit Type' := do
     match iorf with
     | "i" => pure $ Type'.i bits
     | "f" => pure $ Type'.f bits
-    | _ => parseError $ .trivial ps.offset .none [] -- Impossible, but it's easier to write and more performant.
+    | _ => @parseError (Parsec Char String Unit)
+                        String String Unit Char
+                        theInstance Type'
+                        $ .trivial ps.offset .none $ hints0 Char
 
 end Type'
 

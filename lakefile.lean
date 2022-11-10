@@ -3,6 +3,7 @@ open Lake DSL
 
 package Wasm
 
+@[default_target]
 lean_lib Wasm
 
 require LSpec from git
@@ -14,7 +15,7 @@ require YatimaStdLib from git
 require Megaparsec from git
   "https://github.com/yatima-inc/Megaparsec.lean.git/" @ "eb89cf8c50dcecc454639fb5c9e2f6444aa37d21"
 
--- @[defaultTarget]
+@[default_target]
 lean_exe wasm {
   supportInterpreter := true
   root := "Main"

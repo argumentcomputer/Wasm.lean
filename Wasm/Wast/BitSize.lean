@@ -1,13 +1,11 @@
 import Megaparsec
 import Megaparsec.Char
 import Megaparsec.Common
-import Megaparsec.String
 import Megaparsec.Parsec
 
 open Megaparsec
 open Megaparsec.Char
 open Megaparsec.Common
-open Megaparsec.String
 open Megaparsec.Parsec
 
 
