@@ -2,6 +2,7 @@ import Megaparsec.MonadParsec
 import Megaparsec.Common
 import Megaparsec.Errors
 
+open MonadParsec
 open Megaparsec.Parsec
 open Megaparsec.Common
 open Megaparsec.Errors

@@ -95,15 +95,27 @@ def main : IO Unit := do
   IO.println "* * *"
 
   IO.println "* * *"
-  let i := "(param i32) (param $coocoo f32)  ( param i64 )"
+  let i := "(param i32) (param $coocoo f32)  ( param i64 ) ( something_else )"
   IO.println s!"{i} is represented as:"
   void $ parseTestP nilParamsP i
   IO.println "* * *"
 
   IO.println "* * *"
+  let i := "( result i32)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP brResultP i
+  IO.println "* * *"
+
+  -- IO.println "* * *"
+  -- let i := "(func (param $x i32) (param $y i32) (result i32)
+  --   (i32.add (local.get $y) (local.get $x))
+  -- )"
+  -- IO.println s!"{i} is represented as:"
+  -- void $ parseTestP funcP i
+  -- IO.println "* * *"
+
+  IO.println "* * *"
   let i := "(func (param $x i32) (param $y i32) (result i32)
-    (local.get 0)
-    (i32.add (local.get $y))
   )"
   IO.println s!"{i} is represented as:"
   void $ parseTestP funcP i
