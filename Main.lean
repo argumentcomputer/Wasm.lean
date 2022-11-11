@@ -128,6 +128,30 @@ def main : IO Unit := do
   void $ parseTestP funcP i
   IO.println "* * *"
 
+  IO.println "* * *"
+  let i := "(func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
+  /-
+  (Func.mk
+    none
+    none
+    [ (Local.name (LocalName.mk x (Type'.i (32 : BitSize))))
+    , (Local.index (LocalIndex.mk 1 (Type'.i (32 : BitSize)))) ]
+    (some (Type'.i (32 : BitSize)))
+    []
+    [
+      (Operation.add
+        (Add'.i32
+          (Get.const (Sum.inl (ConstInt (32 : BitSize) 40)) : Get (Type'.i (32 : BitSize)))
+          (Get.const (Sum.inl (ConstInt (32 : BitSize)  2)) : Get (Type'.i (32 : BitSize)))
+        )
+    ]
+  )
+  -/
+  IO.println "* * *"
+
   let mut x := 0
   x := 1
   IO.println s!"Thanks for using Webassembly with Lean, you're #{x}!"

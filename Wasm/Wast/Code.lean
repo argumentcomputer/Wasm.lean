@@ -244,6 +244,9 @@ def resultP : Parsec Char String Unit Type' :=
 def brResultP : Parsec Char String Unit Type' :=
     string "(" *> owP *> resultP <* owP <* string ")"
 
+def opsP : Parsec Char String Unit (List Add') := do
+    sepEndBy' addP owP
+
 def optional (x : Option α) (d : α) : α :=
     match x with
     | .none => d
@@ -263,9 +266,10 @@ def funcP : Parsec Char String Unit Func := do
         let ols ← option' (attempt $ owP *> nilLocalsP)
         let ls := optional ols []
         let ls := reindexLocals psn ls
-        -- let oops ← option' (attempt $ ignoreP *> many' addP)
+        let oops ← option' (attempt $ owP *> opsP)
+        let ops := List.map (Operation.add) $ optional oops []
         owP
-        pure $ Func.mk oname oexp ps rtype ls []
+        pure $ Func.mk oname oexp ps rtype ls ops
 
 end Func
 
