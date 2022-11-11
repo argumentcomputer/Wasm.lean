@@ -8,6 +8,7 @@ import Megaparsec.Parsec
 
 open Wasm.Wast.Code
 open Wasm.Wast.Code.Func
+open Wasm.Wast.Code.Module
 open Wasm.Wast.Code.Operation
 open Wasm.Wast.Expr
 open Wasm.Wast.Name
@@ -151,6 +152,14 @@ def main : IO Unit := do
   )
   -/
   IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(module
+    (func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))
+  )"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP moduleP i
 
   let mut x := 0
   x := 1

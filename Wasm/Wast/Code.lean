@@ -247,11 +247,6 @@ def brResultP : Parsec Char String Unit Type' :=
 def opsP : Parsec Char String Unit (List Add') := do
     sepEndBy' addP owP
 
-def optional (x : Option α) (d : α) : α :=
-    match x with
-    | .none => d
-    | .some y => y
-
 def funcP : Parsec Char String Unit Func := do
     Seq.between (string "(") (string ")") do
         owP <* (string "func")
@@ -301,12 +296,24 @@ namespace Module
 open Name
 open Type'
 open Func
+open Operation
 
 structure Module where
-    name : Option $ (x : String) → Option $ Name x
+    name : Option String
     func : List Func
 
-def moduleP : Parsec Char String Unit Module := sorry
+instance : ToString Module where
+    toString x := s!"(Module.mk {x.name} {x.func})"
+
+def moduleP : Parsec Char String Unit Module := do
+    Seq.between (string "(") (string ")") do
+        owP <* (string "module")
+        let oname ← option' (attempt $ ignoreP *> nameP)
+        let ofuns ← option' (attempt $ ignoreP *> sepEndBy' funcP owP)
+        let funs := optional ofuns []
+        owP
+        pure $ Module.mk oname funs
+
 
 end Module
 
