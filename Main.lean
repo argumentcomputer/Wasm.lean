@@ -7,6 +7,8 @@ import Wasm.Wast.Num
 import Megaparsec.Parsec
 
 open Wasm.Wast.Code
+open Wasm.Wast.Code.Func
+open Wasm.Wast.Code.Module
 open Wasm.Wast.Code.Operation
 open Wasm.Wast.Expr
 open Wasm.Wast.Name
@@ -74,6 +76,90 @@ def main : IO Unit := do
   IO.println "(i32.add (i32.const 42)) is represented as:"
   void $ parseTestP addP "(i32.add (i32.const 42))"
   IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(func)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "param $t i32"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP paramP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(param $t i32) (param $coocoo f32)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP nilParamsP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(param i32) (param $coocoo f32)  ( param i64 ) ( something_else )"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP nilParamsP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "( result i32)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP brResultP i
+  IO.println "* * *"
+
+  -- IO.println "* * *"
+  -- let i := "(func (param $x i32) (param $y i32) (result i32)
+  --   (i32.add (local.get $y) (local.get $x))
+  -- )"
+  -- IO.println s!"{i} is represented as:"
+  -- void $ parseTestP funcP i
+  -- IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(func (param $x i32) (param $y i32) (result i32)
+  )"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(func (param $x i32) (param i32) (result i32))"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
+  /-
+  (Func.mk
+    none
+    none
+    [ (Local.name (LocalName.mk x (Type'.i (32 : BitSize))))
+    , (Local.index (LocalIndex.mk 1 (Type'.i (32 : BitSize)))) ]
+    (some (Type'.i (32 : BitSize)))
+    []
+    [
+      (Operation.add
+        (Add'.i32
+          (Get.const (Sum.inl (ConstInt (32 : BitSize) 40)) : Get (Type'.i (32 : BitSize)))
+          (Get.const (Sum.inl (ConstInt (32 : BitSize)  2)) : Get (Type'.i (32 : BitSize)))
+        )
+    ]
+  )
+  -/
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(module
+    (func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))
+  )"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP moduleP i
 
   let mut x := 0
   x := 1

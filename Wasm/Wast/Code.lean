@@ -55,21 +55,29 @@ open Type'
 
 structure LocalName where
     name : String
+    type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
     deriving BEq
 
 instance : ToString LocalName where
-    toString x := "(LocalName.mk " ++ x.name ++ ")"
+    toString x := s!"(LocalName.mk {x.name} {x.type})"
 
 structure LocalIndex where
     index : Nat
+    type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
     deriving BEq
 
 instance : ToString LocalIndex where
-    toString x := "(LocalIndex.mk " ++ toString x.index ++ ")"
+    toString x := s!"(LocalIndex.mk {x.index} {x.type})"
 
 inductive Local where
 | name : LocalName → Local
 | index : LocalIndex → Local
+    deriving BEq
+
+instance : ToString Local where
+    toString x := match x with
+    | .name y => s!"(Local.name {y})"
+    | .index n => s!"(Local.index {n})"
 
 end Local
 
@@ -123,10 +131,6 @@ end Instruction
 
 namespace Operation
 
-/- TODO: decide if we only support strict S-Exprs.
-See here: https://zulip.yatima.io/#narrow/stream/20-meta/topic/WAST.20pair.20prog/near/30282 -/
-structure Operation where
-
 open Type'
 open Get
 
@@ -165,6 +169,15 @@ def addP : Parsec Char String Unit Add' := do
         | .f 32 => pure $ Add'.f32 arg_1 arg_2
         | .f 64 => pure $ Add'.f64 arg_1 arg_2
 
+/- TODO: decide if we only support strict S-Exprs.
+See here: https://zulip.yatima.io/#narrow/stream/20-meta/topic/WAST.20pair.20prog/near/30282 -/
+inductive Operation where
+| add : Add' → Operation
+
+instance : ToString Operation where
+    toString x := match x with
+    | .add y => s!"(Operation.add {y})"
+
 end Operation
 
 namespace Func
@@ -175,13 +188,83 @@ open Local
 open Operation
 
 structure Func where
-    name : Option $ (x : String) → Option $ Name x
+    name : Option String
     export_ : Option String
+    -- TODO: Heterogenous lists so that we can promote Type'?
     params : List Local
     result : Option Type'
     locals : List Local
-    /- TODO -/
     ops : List Operation
+
+instance : ToString Func where
+    toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.result} {x.locals} {x.ops})"
+
+def exportP : Parsec Char String Unit String := do
+    void $ string "export"
+    ignoreP
+    -- TODO: are escaped quotation marks legal export names?
+    let export_label ← Seq.between (string "\"") (string "\"") $ many' $ noneOf "\"".data
+    pure $ String.mk export_label
+
+def genLocalP (x : String) : Parsec Char String Unit Local := do
+    void $ string x
+    let olabel ← (option' ∘ attempt) (ignoreP *> nameP)
+    let typ ← ignoreP *> typeP
+    pure $ match olabel with
+    | .none => Local.index $ LocalIndex.mk 0 typ
+    | .some l => Local.name $ LocalName.mk l typ
+
+def paramP : Parsec Char String Unit Local :=
+    genLocalP "param"
+
+def localP : Parsec Char String Unit Local :=
+    genLocalP "local"
+
+def nilParamsP : Parsec Char String Unit (List Local) := do
+    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
+
+def nilLocalsP : Parsec Char String Unit (List Local) :=
+    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
+
+def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
+    (List.reverse ∘ Prod.snd) (
+        List.foldl (
+            fun acc x =>
+                match x with
+                | .name keep =>
+                    Prod.mk (Prod.fst acc + 1) ((.name keep) :: Prod.snd acc)
+                | .index ln =>
+                    Prod.mk (Prod.fst acc + 1) ((.index $ LocalIndex.mk (Prod.fst acc) (ln.type)) :: Prod.snd acc)
+        ) ((start, List.nil)) ps
+    )
+
+def resultP : Parsec Char String Unit Type' :=
+    string "result" *> ignoreP *> typeP
+
+def brResultP : Parsec Char String Unit Type' :=
+    string "(" *> owP *> resultP <* owP <* string ")"
+
+def opsP : Parsec Char String Unit (List Add') := do
+    sepEndBy' addP owP
+
+def funcP : Parsec Char String Unit Func := do
+    Seq.between (string "(") (string ")") do
+        owP <* (string "func")
+        -- let oname ← option' (ignoreP *> nameP)
+        let oname ← option' (attempt $ ignoreP *> nameP)
+        let oexp ← option' (attempt $ owP *> exportP)
+        let ops ← option' (attempt $ owP *> nilParamsP)
+        let ps := optional ops []
+        let ps := reindexLocals 0 ps
+        let psn := ps.length
+        let rtype ← option' (attempt $ owP *> brResultP)
+        let ols ← option' (attempt $ owP *> nilLocalsP)
+        let ls := optional ols []
+        let ls := reindexLocals psn ls
+        let oops ← option' (attempt $ owP *> opsP)
+        let ops := List.map (Operation.add) $ optional oops []
+        owP
+        pure $ Func.mk oname oexp ps rtype ls ops
 
 end Func
 
@@ -213,12 +296,24 @@ namespace Module
 open Name
 open Type'
 open Func
+open Operation
 
 structure Module where
-    name : Option $ (x : String) → Option $ Name x
+    name : Option String
     func : List Func
 
-def moduleP : Parsec Char String Unit Module := sorry
+instance : ToString Module where
+    toString x := s!"(Module.mk {x.name} {x.func})"
+
+def moduleP : Parsec Char String Unit Module := do
+    Seq.between (string "(") (string ")") do
+        owP <* (string "module")
+        let oname ← option' (attempt $ ignoreP *> nameP)
+        let ofuns ← option' (attempt $ ignoreP *> sepEndBy' funcP owP)
+        let funs := optional ofuns []
+        owP
+        pure $ Module.mk oname funs
+
 
 end Module
 
