@@ -7,6 +7,7 @@ import Wasm.Wast.Num
 import Megaparsec.Parsec
 
 open Wasm.Wast.Code
+open Wasm.Wast.Code.Func
 open Wasm.Wast.Code.Operation
 open Wasm.Wast.Expr
 open Wasm.Wast.Name
@@ -73,6 +74,39 @@ def main : IO Unit := do
   IO.println "* * *"
   IO.println "(i32.add (i32.const 42)) is represented as:"
   void $ parseTestP addP "(i32.add (i32.const 42))"
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(func)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "param $t i32"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP paramP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(param $t i32) (param $coocoo f32)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP nilParamsP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(param i32) (param $coocoo f32)  ( param i64 )"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP nilParamsP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(func (param $x i32) (param $y i32) (result i32)
+    (local.get 0)
+    (i32.add (local.get $y))
+  )"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
   IO.println "* * *"
 
   let mut x := 0

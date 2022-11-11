@@ -1,12 +1,19 @@
 import YatimaStdLib
+import Megaparsec.Common
+import Megaparsec.Parsec
 
 open Cached
+open Megaparsec.Common
+open Megaparsec.Parsec
 
 namespace Wasm.Wast.Name
 
 /- Chars that are allowed in WASM ids. -/
 def isIdChar (x : Char) : Bool :=
   x.isAlphanum || "_.+-*/\\^~=<>!?@#$%&|:'`".data.elem x
+
+def nameP : Parsec Char String Unit String :=
+  string "$" *> ((many' $ satisfy isIdChar) >>= (pure ∘ String.mk))
 
 /- Captures a valid WAST identifier. -/
 structure Name (x : String) where
