@@ -207,13 +207,9 @@ def exportP : Parsec Char String Unit String := do
     pure $ String.mk export_label
 
 def genLocalP (x : String) : Parsec Char String Unit Local := do
-    dbg_trace s!"111 <> {x}"
     void $ string x
-    dbg_trace "222"
     let olabel ← (option' ∘ attempt) (ignoreP *> nameP)
-    dbg_trace "333 {olabel}"
     let typ ← ignoreP *> typeP
-    dbg_trace "444 {typ}"
     pure $ match olabel with
     | .none => Local.index $ LocalIndex.mk 0 typ
     | .some l => Local.name $ LocalName.mk l typ
@@ -225,18 +221,13 @@ def localP : Parsec Char String Unit Local :=
     genLocalP "local"
 
 def nilParamsP : Parsec Char String Unit (List Local) := do
-    dbg_trace "11"
-    let x ← sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
-    dbg_trace "22"
-    dbg_trace s!"{x}"
-    pure x
+    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
 
 def nilLocalsP : Parsec Char String Unit (List Local) :=
-    dbg_trace "99"
-    sepEndBy' (string "(" *> owP *> paramP <* owP <* string ")") owP
+    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
 
 def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
-    Prod.snd (
+    (List.reverse ∘ Prod.snd) (
         List.foldl (
             fun acc x =>
                 match x with
@@ -260,29 +251,20 @@ def optional (x : Option α) (d : α) : α :=
 
 def funcP : Parsec Char String Unit Func := do
     Seq.between (string "(") (string ")") do
-        dbg_trace "1"
         owP <* (string "func")
-        dbg_trace "2"
         -- let oname ← option' (ignoreP *> nameP)
         let oname ← option' (attempt $ ignoreP *> nameP)
-        dbg_trace "3"
         let oexp ← option' (attempt $ owP *> exportP)
-        dbg_trace "4"
         let ops ← option' (attempt $ owP *> nilParamsP)
         let ps := optional ops []
         let ps := reindexLocals 0 ps
-        dbg_trace s!"5 {ps}"
         let psn := ps.length
         let rtype ← option' (attempt $ owP *> brResultP)
-        dbg_trace s!"6 {rtype}"
         let ols ← option' (attempt $ owP *> nilLocalsP)
         let ls := optional ols []
         let ls := reindexLocals psn ls
-        dbg_trace "7"
         -- let oops ← option' (attempt $ ignoreP *> many' addP)
-        dbg_trace "8"
         owP
-        dbg_trace "9"
         pure $ Func.mk oname oexp ps rtype ls []
 
 end Func

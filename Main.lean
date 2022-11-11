@@ -121,6 +121,13 @@ def main : IO Unit := do
   void $ parseTestP funcP i
   IO.println "* * *"
 
+  IO.println "* * *"
+  let i := "(func (param $x i32) (param i32) (result i32))"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP funcP i
+  IO.println "* * *"
+
   let mut x := 0
   x := 1
   IO.println s!"Thanks for using Webassembly with Lean, you're #{x}!"
