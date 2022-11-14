@@ -156,6 +156,7 @@ def main : IO Unit := do
   IO.println "* * *"
 
   IO.println "* * *"
+
   let i := "(module
     (func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))
   )"
@@ -166,13 +167,57 @@ def main : IO Unit := do
   | .error _ => IO.println "FAIL"
   | .ok parsed_module => do
     IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
-    IO.println "It's recorded to disk at /tmp/mtob.wasm"
-    let f := System.mkFilePath ["/tmp", "mtob.wasm"]
+    IO.println "It's recorded to disk at /tmp/mtob.47.wasm"
+    let f := System.mkFilePath ["/tmp", "mtob.47.wasm"]
     let h ← IO.FS.Handle.mk f IO.FS.Mode.write
     h.write $ mtob parsed_module
-  IO.println "* * *"
 
-  IO.println "* * *"
+  -- NAKED CONST IS NOT IMPLEMENTED YET: https://zulip.yatima.io/#narrow/stream/20-meta/topic/WAST.20pair.20prog/near/32237
+  -- let i := "(module
+  --   (func (param $x i32) (param i32) (result i32) (i32.const 42))
+  -- )"
+  -- -- unnamed param should have id 1
+  -- IO.println s!"{i} is represented as:"
+  -- let o_parsed_module ← parseTestP moduleP i
+  -- match o_parsed_module.2 with
+  -- | .error _ => IO.println "FAIL"
+  -- | .ok parsed_module => do
+  --   IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
+  --   IO.println "It's recorded to disk at /tmp/mtob.44.wasm"
+  --   let f := System.mkFilePath ["/tmp", "mtob.44.wasm"]
+  --   let h ← IO.FS.Handle.mk f IO.FS.Mode.write
+  --   h.write $ mtob parsed_module
+
+  let i := "(module
+    ( func (param $x i32) (param i32) )
+  )"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  let o_parsed_module ← parseTestP moduleP i
+  match o_parsed_module.2 with
+  | .error _ => IO.println "FAIL"
+  | .ok parsed_module => do
+    IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
+    IO.println "It's recorded to disk at /tmp/mtob.41.wasm"
+    let f := System.mkFilePath ["/tmp", "mtob.41.wasm"]
+    let h ← IO.FS.Handle.mk f IO.FS.Mode.write
+    h.write $ mtob parsed_module
+
+  let i := "(module
+    (func (param $x i32))
+  )"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  let o_parsed_module ← parseTestP moduleP i
+  match o_parsed_module.2 with
+  | .error _ => IO.println "FAIL"
+  | .ok parsed_module => do
+    IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
+    IO.println "It's recorded to disk at /tmp/mtob.40.wasm"
+    let f := System.mkFilePath ["/tmp", "mtob.40.wasm"]
+    let h ← IO.FS.Handle.mk f IO.FS.Mode.write
+    h.write $ mtob parsed_module
+
   let i := "(module
     ( func )
   )"
@@ -183,8 +228,8 @@ def main : IO Unit := do
   | .error _ => IO.println "FAIL"
   | .ok parsed_module => do
     IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
-    IO.println "It's recorded to disk at /tmp/mtob.0.wasm"
-    let f := System.mkFilePath ["/tmp", "mtob.0.wasm"]
+    IO.println "It's recorded to disk at /tmp/mtob.24.wasm"
+    let f := System.mkFilePath ["/tmp", "mtob.24.wasm"]
     let h ← IO.FS.Handle.mk f IO.FS.Mode.write
     h.write $ mtob parsed_module
   IO.println "* * *"

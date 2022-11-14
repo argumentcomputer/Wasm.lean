@@ -79,6 +79,11 @@ instance : ToString Local where
     | .name y => s!"(Local.name {y})"
     | .index n => s!"(Local.index {n})"
 
+def localToType (l : Local) : Type' :=
+    match l with
+    | .name ln => ln.type
+    | .index li => li.type
+
 end Local
 
 namespace Get
