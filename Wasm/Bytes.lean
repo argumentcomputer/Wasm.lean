@@ -34,9 +34,9 @@ def extractTypes (m : Module) : ByteArray :=
     let params := x.params.map $ (b ∘ ttoi ∘ localToType)
     let header := ByteArray.mk #[0x60, params.length.toUInt8]
     let res := params.foldl Append.append header
-    res ++ b (match x.result with --TODO: figure out and support multi-output functions
-    | .none => 0x00
-    | .some t => ttoi t
+    res ++ (match x.result with --TODO: figure out and support multi-output functions
+    | .none => b 0x00
+    | .some t => ByteArray.mk #[1, ttoi t]
     )
   sigs.foldl
     Append.append $
