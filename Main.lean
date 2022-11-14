@@ -3,9 +3,11 @@ import Wasm.Wast.Code
 import Wasm.Wast.Expr
 import Wasm.Wast.Name
 import Wasm.Wast.Num
+import Wasm.Bytes
 
 import Megaparsec.Parsec
 
+open Wasm.Bytes
 open Wasm.Wast.Code
 open Wasm.Wast.Code.Func
 open Wasm.Wast.Code.Module
@@ -159,7 +161,16 @@ def main : IO Unit := do
   )"
   -- unnamed param should have id 1
   IO.println s!"{i} is represented as:"
-  void $ parseTestP moduleP i
+  let o_parsed_module ← parseTestP moduleP i
+  match o_parsed_module.2 with
+  | .error _ => IO.println "FAIL"
+  | .ok parsed_module => do
+    IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
+    IO.println "It's recorded to disk at /tmp/mtob.wasm"
+    let f := System.mkFilePath ["/tmp", "mtob.wasm"]
+    let h ← IO.FS.Handle.mk f IO.FS.Mode.write
+    h.write $ mtob parsed_module
+  IO.println "* * *"
 
   let mut x := 0
   x := 1

@@ -314,7 +314,6 @@ def moduleP : Parsec Char String Unit Module := do
         owP
         pure $ Module.mk oname funs
 
-
 end Module
 
 namespace Block
