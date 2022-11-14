@@ -172,6 +172,23 @@ def main : IO Unit := do
     h.write $ mtob parsed_module
   IO.println "* * *"
 
+  IO.println "* * *"
+  let i := "(module
+    ( func )
+  )"
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  let o_parsed_module ← parseTestP moduleP i
+  match o_parsed_module.2 with
+  | .error _ => IO.println "FAIL"
+  | .ok parsed_module => do
+    IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
+    IO.println "It's recorded to disk at /tmp/mtob.0.wasm"
+    let f := System.mkFilePath ["/tmp", "mtob.0.wasm"]
+    let h ← IO.FS.Handle.mk f IO.FS.Mode.write
+    h.write $ mtob parsed_module
+  IO.println "* * *"
+
   let mut x := 0
   x := 1
   IO.println s!"Thanks for using Webassembly with Lean, you're #{x}!"
