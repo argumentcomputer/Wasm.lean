@@ -234,8 +234,19 @@ def main : IO Unit := do
     h.write $ mtob parsed_module
   IO.println "* * *"
 
+  -- TODO: pack more ascii into the easter egg with i64
   let i := "(module
-    (func (param $x i32) (param i32) (result i32) (i32.add (i32.const 1499550000) (i32.const 9017)))
+    (func
+      (param $x i32)
+      (param i32)
+      (result i32)
+
+      (i32.add
+        (i32.const 1499550000)
+        (i32.add (i32.const 9000) (i32.const 17))
+      )
+
+    )
   )"
   -- unnamed param should have id 1
   IO.println s!"{i} is represented as:"
@@ -253,5 +264,8 @@ def main : IO Unit := do
   let mut x := 0
   x := 1
   IO.println s!"Thanks for using Webassembly with Lean, you're #{x}!"
+  let x1 := 1499559017
+  IO.println s!"BE who you want to be: {x1.toByteArrayBE}..."
+  IO.println s!"LEarn lean for fun and profit: {x1.toByteArrayLE}!"
 
   pure ()

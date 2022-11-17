@@ -108,7 +108,7 @@ instance : ToString (Get α) where
         | .const ifu => "Get.const " ++ (match ifu with
             | .inl i => "(Sum.inl " ++ toString i ++ ")"
             | .inr $ .inl f => "(Sum.inr $ Sum.inl " ++ toString f ++ ")"
-            | .inr $ .inr () => "(Sum.inr $ Sum.inr ())"
+            | .inr $ .inr () => sorry
         )
     ) ++ " : Get " ++ toString α ++ ")"
 
@@ -138,50 +138,101 @@ namespace Operation
 
 open Type'
 open Get
+open Local
 
-inductive Add' where
-| f32 : Get (.f 32) → Get (.f 32) → Add'
-| f64 : Get (.f 64) → Get (.f 64) → Add'
-| i32 : Get (.i 32) → Get (.i 32) → Add'
-| i64 : Get (.i 64) → Get (.i 64) → Add'
+mutual
+    -- Sadge
+    inductive Get' where
+    | from_stack
+    | from_operation : Operation → Get'
+    | by_name : LocalName → Get'
+    | by_index : LocalIndex → Get'
+    | i_const : ConstInt → Get'
+    | f_const : ConstFloat → Get'
+
+    inductive Add' where
+    | add : Type' → Get' → Get' → Add'
+
+    inductive Operation where
+    | add : Add' → Operation
+end
+
+mutual
+    partial def getToString (x : Get') : String :=
+        "(Get'" ++ (
+            match x with
+            | .from_stack => ".from_stack"
+            | .from_operation o => s!".from_operation {operationToString o}"
+            | .by_name n => ".by_name " ++ toString n
+            | .by_index i => ".by_index " ++ toString i
+            | .i_const i => s!".i_const {i}"
+            | .f_const f => s!".f_const {f}"
+        ) ++ ")"
+
+    partial def operationToString (x : Operation) : String :=
+        "(Operation" ++ (
+            match x with
+            | .add y => s!".add {addToString y}"
+        ) ++ ")"
+
+    partial def addToString (x : Add') : String :=
+        "(Add'" ++ (
+            match x with
+            | .add t g1 g2 => s!".add {t} {getToString g1} {getToString g2}"
+        ) ++ ")"
+end
 
 instance : ToString Add' where
-    toString x := "(Add'." ++ match x with
-    | .f32 u v => "f32 " ++ toString u ++ " " ++ toString v
-    | .f64 u v => "f64 " ++ toString u ++ " " ++ toString v
-    | .i32 u v => "i32 " ++ toString u ++ " " ++ toString v
-    | .i64 u v => "i32 " ++ toString u ++ " " ++ toString v
-    ++ ")"
+    toString := addToString
 
-def addP : Parsec Char String Unit Add' := do
-    Seq.between (string "(") (string ")") do
-        owP
-        -- TODO: we'll use ps when we'll add more types into `Type'`.
-        let _ps ← getParserState
-        let add_t : Type' ←
-            (string "i32.add" *> (pure $ .i 32) <|>
-             string "i64.add" *> (pure $ .i 64) <|>
-             string "f32.add" *> (pure $ .f 32) <|>
-             string "f64.add" *> (pure $ .f 64))
-        ignoreP
-        let (arg_1 : Get add_t) ← getP
-        owP
-        let (arg_2 : Get add_t) ← getP
-        owP
-        match add_t with
-        | .i 32 => pure $ Add'.i32 arg_1 arg_2
-        | .i 64 => pure $ Add'.i64 arg_1 arg_2
-        | .f 32 => pure $ Add'.f32 arg_1 arg_2
-        | .f 64 => pure $ Add'.f64 arg_1 arg_2
-
-/- TODO: decide if we only support strict S-Exprs.
-See here: https://zulip.yatima.io/#narrow/stream/20-meta/topic/WAST.20pair.20prog/near/30282 -/
-inductive Operation where
-| add : Add' → Operation
+instance : ToString Get' where
+    toString := getToString
 
 instance : ToString Operation where
-    toString x := match x with
-    | .add y => s!"(Operation.add {y})"
+    toString := operationToString
+
+def stripGet (α : Type') (x : Get α) : Get' :=
+    match x with
+    | .from_stack => Get'.from_stack
+    | .by_name n => Get'.by_name n
+    | .by_index i => Get'.by_index i
+    | .const ifu => match ifu with
+        | .inl i => Get'.i_const i
+        | .inr $ .inl f => Get'.f_const f
+        | _ => sorry
+
+mutual
+
+    partial def get'ViaGetP (α  : Type') : Parsec Char String Unit Get' :=
+        attempt (opP >>= (pure ∘ Get'.from_operation)) <|>
+        (getP >>= (pure ∘ stripGet α))
+
+    partial def opP : Parsec Char String Unit Operation :=
+        addP >>= pure ∘ Operation.add
+
+    partial def opsP : Parsec Char String Unit (List Operation) := do
+        sepEndBy' opP owP
+
+    partial def addP : Parsec Char String Unit Add' := do
+        dbg_trace "Entering addP."
+        Seq.between (string "(") (string ")") do
+            owP
+            -- TODO: we'll use ps when we'll add more types into `Type'`.
+            -- let _ps ← getParserState
+            dbg_trace "Running add_t."
+            let add_t : Type' ←
+                (string "i32.add" *> (pure $ .i 32) <|>
+                string "i64.add" *> (pure $ .i 64) <|>
+                string "f32.add" *> (pure $ .f 32) <|>
+                string "f64.add" *> (pure $ .f 64))
+            dbg_trace s!"Win. {add_t}"
+            ignoreP
+            let (arg_1 : Get') ← get'ViaGetP add_t
+            owP
+            let (arg_2 : Get') ← get'ViaGetP add_t
+            owP
+            pure $ Add'.add add_t arg_1 arg_2
+end
 
 end Operation
 
@@ -249,9 +300,6 @@ def resultP : Parsec Char String Unit Type' :=
 def brResultP : Parsec Char String Unit Type' :=
     string "(" *> owP *> resultP <* owP <* string ")"
 
-def opsP : Parsec Char String Unit (List Add') := do
-    sepEndBy' addP owP
-
 def funcP : Parsec Char String Unit Func := do
     Seq.between (string "(") (string ")") do
         owP <* (string "func")
@@ -267,7 +315,7 @@ def funcP : Parsec Char String Unit Func := do
         let ls := optional ols []
         let ls := reindexLocals psn ls
         let oops ← option' (attempt $ owP *> opsP)
-        let ops := List.map (Operation.add) $ optional oops []
+        let ops := optional oops []
         owP
         pure $ Func.mk oname oexp ps rtype ls ops
 

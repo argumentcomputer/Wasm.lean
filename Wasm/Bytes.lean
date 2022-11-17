@@ -5,6 +5,7 @@ open Wasm.Wast.Code.Module
 open Wasm.Wast.Code.Type'
 open Wasm.Wast.Code.Local
 open Wasm.Wast.Code.Operation
+open Wasm.Wast.Code.Func
 open Wasm.Wast.Code.Get
 open ByteArray
 open Nat
@@ -58,26 +59,32 @@ def extractFuns (m : Module) : ByteArray :=
     m.func.foldl (fun acc _x => ((b ∘ Nat.toUInt8) acc.data.size) ++ acc) b0
   ByteArray.mk #[0x03, funs.data.size.toUInt8] ++ funs
 
-def extractGet (t : Type') (x : Get t) : ByteArray :=
+-- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
+def extractGet' (x : Get') : ByteArray :=
   match x with
   | .from_stack => b0
   | _ => b0 -- TODO: we need to handle local.get and the horrid i32.const
+
+def extractAdd (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6a
+  | .i 64 => 0x7c
+  | .f 32 => 0x92
+  | .f 64 => 0xa0
 
 def extractOps (ops : List Operation) : List ByteArray :=
   ops.map (fun x =>
     match x with
     | .add a => match a with
-      -- Enter stackman
-      | .i32 op1 op2 => (extractGet (.i 32) op1) ++ (extractGet (.i 32) op2) ++ b 0x6a
-      | .i64 op1 op2 => (extractGet (.i 64) op1) ++ (extractGet (.i 64) op2) ++ b 0x7c
-      | .f32 op1 op2 => (extractGet (.f 32) op1) ++ (extractGet (.f 32) op2) ++ b 0x92
-      | .f64 op1 op2 => (extractGet (.f 64) op1) ++ (extractGet (.f 64) op2) ++ b 0xa0
+      | .add t g1 g2 =>
+        -- Enter stackman
+        extractGet' g1 ++ extractGet' g2 ++ extractAdd t
   )
 
-def extractCode (m : Module) : ByteArray :=
+def extractFuncs (fs : List Func) : ByteArray :=
   let header := b 0x0a -- ← here we'll add the whole size of the section.
-  let fn := b $ m.func.length.toUInt8
-  let fbs := flatten $ m.func.map (fun x =>
+  let fn := b $ fs.length.toUInt8
+  let fbs := flatten $ fs.map (fun x =>
     -- ← now for each function's code section, we'll add its size after we do all the other
     --   computations.
 
@@ -96,4 +103,4 @@ def mtob (m : Module) : ByteArray :=
   version ++
   (extractTypes m) ++
   (extractFuns m) ++
-  (extractCode m)
+  (extractFuncs m.func)
