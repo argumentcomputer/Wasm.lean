@@ -4,6 +4,7 @@ import Wasm.Wast.Expr
 import Wasm.Wast.Name
 import Wasm.Wast.Num
 import Wasm.Bytes
+import Wasm.Leb128
 
 import Megaparsec.Parsec
 
@@ -15,6 +16,8 @@ open Wasm.Wast.Code.Operation
 open Wasm.Wast.Expr
 open Wasm.Wast.Name
 open Wasm.Wast.Num
+open Wasm.Leb128
+
 open Num.Digit
 open Num.Nat
 open Num.Int
@@ -260,6 +263,45 @@ def main : IO Unit := do
     let h ← IO.FS.Handle.mk f IO.FS.Mode.write
     h.write $ mtob parsed_module
   IO.println "* * *"
+
+  -- LEB128 TESTS
+  let lebx := 624485
+  let blebx := itob lebx
+  /-
+  5> erlang:length( "000010011000011101100101" ).
+  24
+  8> erlang:length("00001001").
+  8
+  9> erlang:length("10000111").
+  8
+  10> erlang:length("01100101").
+  8
+  11> [ 2#00001001, 2#10000111, 2#01100101 ].
+  -/
+  IO.println s!"{blebx} should be [9,135,101]"
+  let bilebx := ByteArray.toBits blebx
+  IO.println s!"{bilebx} should be 000010011000011101100101"
+  let ulebx := unlead bilebx
+  IO.println s!"{ulebx} should be 10011000011101100101"
+  let plebx := pad7 ulebx
+  IO.println s!"{plebx} should be 010011000011101100101"
+  let pp := ipad7 lebx
+  IO.println s!"{pp} should be {plebx}"
+  let fin := uLeb128 lebx
+  IO.println s!"{fin} should be 229, 142, 38"
+  IO.println s!"{uLeb128 1} should be 1"
+  -- LE Long
+  --- 00000101 11001011 10000101 11101000 11101001
+  --- becomes in LE:
+  --- 11101001 11101000 10000101 11001011 00000101
+  ---- 233
+  ---- 232
+  ---- 133
+  ---- 203
+  ---- 5
+  let bigN := 1499559017
+  IO.println s!"{uLeb128 bigN} should be 233 232 133 203 5"
+  IO.println s!"{reassemble $ ipad7 bigN} should be 00000101 11001011 10000101 11101000 11101001"
 
   let mut x := 0
   x := 1
