@@ -28,6 +28,33 @@ def unlead (xs : List Bit) : List Bit :=
 
 def ipad7 := pad7 ∘ unlead ∘ ByteArray.toBits ∘ itob
 
+def bitNot (x : Bit) : Bit :=
+  match x with
+  | .one => .zero
+  | .zero => .one
+
+def onesComplement (xs : List Bit) : List Bit :=
+  xs.map bitNot
+
+def summator (x y : Bit) : (Bit × Bit) :=
+  match (x, y) with
+  | (.one, .one) => (.one, .zero)
+  | (.zero, .one) => (.zero, .one)
+  | (.one, .zero) => (.zero, .one)
+  | (.zero, .zero) => (.zero, .zero)
+
+def plusOne (xs : List Bit) : List Bit :=
+  (xs.foldr (fun x acc =>
+    let res := summator x acc.1
+    (res.1, res.2 :: acc.2)
+    -- match (x, acc.1) with
+    -- (.one, .one)
+  ) (Bit.one, [])).2
+
+def twosComplement := plusOne ∘ onesComplement
+
+def spad7 := twosComplement ∘ ipad7
+
 def reassemble (xs : List Bit) : List Bit :=
   (xs.foldl (fun acc x =>
     let leading_bit := if acc.1 then Bit.zero else Bit.one
@@ -41,3 +68,6 @@ def reassemble (xs : List Bit) : List Bit :=
 
 def uLeb128 : Nat → ByteArray :=
   Nat.toByteArrayLE ∘ Bit.bitsToNat ∘ reassemble ∘ ipad7
+
+def sLeb128 : Nat → ByteArray :=
+  Nat.toByteArrayLE ∘ Bit.bitsToNat ∘ reassemble ∘ spad7
