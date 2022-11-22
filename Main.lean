@@ -304,6 +304,18 @@ def main : IO Unit := do
   IO.println s!"{reassemble $ npad7 bigN} should be 00000101 11001011 10000101 11101000 11101001"
   IO.println s!"= = = = SIGNED LEB128 TEST = = = ="
   IO.println s!"{sLeb128 (-123456)} should be [192, 187, 120]"
+  IO.println s!"{sLeb128 (1)} should be [1]"
+  /-
+                4> 2#0000001.
+                1
+                5> 2#1111110.
+                126
+                6> 2#1111111.
+                127
+                7> 2#01111111.
+                127
+  -/
+  IO.println s!"{sLeb128 (-1)} should be [127]"
   IO.println s!"= = END OF SIGNED LEB128 TEST! = ="
 
   let mut x := 0
