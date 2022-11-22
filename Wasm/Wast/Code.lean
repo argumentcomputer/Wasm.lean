@@ -217,18 +217,15 @@ mutual
         sepEndBy' opP owP
 
     partial def addP : Parsec Char String Unit Add' := do
-        dbg_trace "Entering addP."
         Seq.between (string "(") (string ")") do
             owP
             -- TODO: we'll use ps when we'll add more types into `Type'`.
             -- let _ps ← getParserState
-            dbg_trace "Running add_t."
             let add_t : Type' ←
                 (string "i32.add" *> (pure $ .i 32) <|>
                 string "i64.add" *> (pure $ .i 64) <|>
                 string "f32.add" *> (pure $ .f 32) <|>
                 string "f64.add" *> (pure $ .f 64))
-            dbg_trace s!"Win. {add_t}"
             ignoreP
             let (arg_1 : Get') ← get'ViaGetP add_t
             owP
