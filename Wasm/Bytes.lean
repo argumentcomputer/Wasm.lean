@@ -56,7 +56,7 @@ def extractTypes (m : Module) : ByteArray :=
     Append.append $
     ByteArray.mk #[0x01, 1 + (Nat.toUInt8 ∘ totalLength) sigs, sigs.length.toUInt8]
 
-def extractFuns (m : Module) : ByteArray :=
+def extractFuncIds (m : Module) : ByteArray :=
   let funs :=
     b m.func.length.toUInt8 ++
     m.func.foldl (fun acc _x => ((b ∘ Nat.toUInt8) acc.data.size) ++ acc) b0
@@ -69,7 +69,7 @@ mutual
     | .from_stack => b0
     | .from_operation o => extractOp o
     -- TODO: signed consts exist??? We should check the spec carefully.
-    | .i_const i => b0
+    | .i_const i => ByteArray.mk #[0x41] ++ sLeb128 i.val
     -- TODO: handle locals
     | _ => b0
 
@@ -111,5 +111,5 @@ def mtob (m : Module) : ByteArray :=
   magic ++
   version ++
   (extractTypes m) ++
-  (extractFuns m) ++
+  (extractFuncIds m) ++
   (extractFuncs m.func)
