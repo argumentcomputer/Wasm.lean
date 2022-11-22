@@ -2,32 +2,6 @@ import YatimaStdLib
 
 namespace Wasm.Leb128
 
-def itob (x : Nat) (endianness : Endian := .big) : ByteArray :=
-  match endianness with
-  | .big => x.toByteArrayBE
-  | .little => x.toByteArrayLE
-
-def pad7 (xs : List Bit) : List Bit := Id.run $ do
-  let mut ys := xs
-  let w := xs.length % 7
-  let m := if w == 0 then 7 else w
-  for _ in [m:7] do
-    ys := 0 :: ys
-  pure ys
-
-def unlead (xs : List Bit) : List Bit :=
-  (xs.foldl (fun acc x =>
-    if acc.1 then
-      if x == Bit.zero then
-        (true, acc.2)
-      else
-        (false, acc.2 ++ [x])
-    else
-      (false, acc.2 ++ [x])
-  ) (true, [])).2
-
-def ipad7 := pad7 ∘ unlead ∘ ByteArray.toBits ∘ itob
-
 def bitNot (x : Bit) : Bit :=
   match x with
   | .one => .zero
@@ -53,7 +27,53 @@ def plusOne (xs : List Bit) : List Bit :=
 
 def twosComplement := plusOne ∘ onesComplement
 
-def spad7 := twosComplement ∘ ipad7
+def nattob (x : Nat) (endianness : Endian := .big) : ByteArray :=
+  match endianness with
+  | .big => x.toByteArrayBE
+  | .little => x.toByteArrayLE
+
+def modPad (modulo : Nat) (bs : List Bit)
+           (padWith : Bit := .zero) (endianness : Endian := .big)
+           : List Bit := Id.run $ do
+  let l := bs.length
+  let rem := l % modulo
+  let to_replicate := if rem == 0 then
+    0
+  else
+    modulo - rem
+  let pad := List.replicate to_replicate padWith
+  match endianness with
+  | .big => pad ++ bs
+  | .little => bs ++ pad
+
+def ntob (n : Nat) (endianness : Endian := .big) : ByteArray :=
+  match endianness with
+  | .big => n.toByteArrayBE
+  | .little => n.toByteArrayLE
+
+def pad7 (xs : List Bit) : List Bit := Id.run $ do
+  modPad 7 xs
+
+/- Remove all the leading zeroes -/
+def unlead (xs : List Bit) : List Bit :=
+  (xs.foldl (fun acc x =>
+    if acc.1 then
+      if x == Bit.zero then
+        (true, acc.2)
+      else
+        (false, acc.2 ++ [x])
+    else
+      (false, acc.2 ++ [x])
+  ) (true, [])).2
+
+def npad7 := pad7 ∘ unlead ∘ ByteArray.toBits ∘ ntob
+
+def spad7 (x : Int) : List Bit :=
+  let go := npad7 ∘ Int.natAbs
+  (if x >= 0 then
+    go
+  else
+    twosComplement ∘ go) x
 
 def reassemble (xs : List Bit) : List Bit :=
   (xs.foldl (fun acc x =>
@@ -66,8 +86,11 @@ def reassemble (xs : List Bit) : List Bit :=
     (false, acc2', acc3')
   ) (true, 0, [])).2.2
 
-def uLeb128 : Nat → ByteArray :=
-  Nat.toByteArrayLE ∘ Bit.bitsToNat ∘ reassemble ∘ ipad7
+def LebCore : List Bit → ByteArray :=
+  Nat.toByteArrayLE ∘ Bit.bitsToNat ∘ reassemble
 
-def sLeb128 : Nat → ByteArray :=
-  Nat.toByteArrayLE ∘ Bit.bitsToNat ∘ reassemble ∘ spad7
+def uLeb128 : Nat → ByteArray :=
+  LebCore ∘ npad7
+
+def sLeb128 : Int → ByteArray :=
+  LebCore ∘ spad7

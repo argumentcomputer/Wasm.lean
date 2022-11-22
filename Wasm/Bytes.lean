@@ -1,12 +1,15 @@
 import Wasm.Wast.Code
 import YatimaStdLib
+import Wasm.Leb128
 
+open Wasm.Leb128
 open Wasm.Wast.Code.Module
 open Wasm.Wast.Code.Type'
 open Wasm.Wast.Code.Local
 open Wasm.Wast.Code.Operation
 open Wasm.Wast.Code.Func
 open Wasm.Wast.Code.Get
+
 open ByteArray
 open Nat
 
@@ -59,27 +62,34 @@ def extractFuns (m : Module) : ByteArray :=
     m.func.foldl (fun acc _x => ((b ∘ Nat.toUInt8) acc.data.size) ++ acc) b0
   ByteArray.mk #[0x03, funs.data.size.toUInt8] ++ funs
 
--- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
-def extractGet' (x : Get') : ByteArray :=
-  match x with
-  | .from_stack => b0
-  | _ => b0 -- TODO: we need to handle local.get and the horrid i32.const
+mutual
+  -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
+  partial def extractGet' (x : Get') : ByteArray :=
+    match x with
+    | .from_stack => b0
+    | .from_operation o => extractOp o
+    -- TODO: signed consts exist??? We should check the spec carefully.
+    | .i_const i => b0
+    -- TODO: handle locals
+    | _ => b0
 
-def extractAdd (α : Type') : ByteArray :=
-  b $ match α with
-  | .i 32 => 0x6a
-  | .i 64 => 0x7c
-  | .f 32 => 0x92
-  | .f 64 => 0xa0
+  partial def extractAdd (α : Type') : ByteArray :=
+    b $ match α with
+    | .i 32 => 0x6a
+    | .i 64 => 0x7c
+    | .f 32 => 0x92
+    | .f 64 => 0xa0
 
-def extractOps (ops : List Operation) : List ByteArray :=
-  ops.map (fun x =>
+  partial def extractOp (x : Operation) : ByteArray :=
     match x with
     | .add a => match a with
       | .add t g1 g2 =>
         -- Enter stackman
         extractGet' g1 ++ extractGet' g2 ++ extractAdd t
-  )
+end
+
+def extractOps (ops : List Operation) : List ByteArray :=
+  ops.map extractOp
 
 def extractFuncs (fs : List Func) : ByteArray :=
   let header := b 0x0a -- ← here we'll add the whole size of the section.
@@ -95,7 +105,6 @@ def extractFuncs (fs : List Func) : ByteArray :=
 
     lindex $ locals ++ obs
   )
-
   header ++ (lindex $ fn ++ fbs)
 
 def mtob (m : Module) : ByteArray :=

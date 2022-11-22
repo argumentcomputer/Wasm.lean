@@ -2,10 +2,12 @@ import Megaparsec
 import Megaparsec.Common
 import Megaparsec.Errors.Bundle
 import Megaparsec.Parsec
+
 import Wasm.Wast.BitSize
 import Wasm.Wast.Name
 import Wasm.Wast.Num
 import Wasm.Wast.Parser.Common
+
 import YatimaStdLib
 
 open Megaparsec
@@ -13,6 +15,7 @@ open Megaparsec.Common
 open Megaparsec.Errors.Bundle
 open Megaparsec.Parsec
 open MonadParsec
+
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int

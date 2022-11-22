@@ -266,7 +266,7 @@ def main : IO Unit := do
 
   -- LEB128 TESTS
   let lebx := 624485
-  let blebx := itob lebx
+  let blebx := ntob lebx
   /-
   5> erlang:length( "000010011000011101100101" ).
   24
@@ -285,7 +285,7 @@ def main : IO Unit := do
   IO.println s!"{ulebx} should be 10011000011101100101"
   let plebx := pad7 ulebx
   IO.println s!"{plebx} should be 010011000011101100101"
-  let pp := ipad7 lebx
+  let pp := npad7 lebx
   IO.println s!"{pp} should be {plebx}"
   let fin := uLeb128 lebx
   IO.println s!"{fin} should be 229, 142, 38"
@@ -301,9 +301,9 @@ def main : IO Unit := do
   ---- 5
   let bigN := 1499559017
   IO.println s!"{uLeb128 bigN} should be 233 232 133 203 5"
-  IO.println s!"{reassemble $ ipad7 bigN} should be 00000101 11001011 10000101 11101000 11101001"
+  IO.println s!"{reassemble $ npad7 bigN} should be 00000101 11001011 10000101 11101000 11101001"
   IO.println s!"= = = = SIGNED LEB128 TEST = = = ="
-  IO.println s!"{sLeb128 123456} should be [192, 187, 120]"
+  IO.println s!"{sLeb128 (-123456)} should be [192, 187, 120]"
   IO.println s!"= = END OF SIGNED LEB128 TEST! = ="
 
   let mut x := 0
