@@ -61,7 +61,7 @@ def extractTypes (m : Module) : ByteArray :=
 def extractFuncIds (m : Module) : ByteArray :=
   let funs :=
     b m.func.length.toUInt8 ++
-    m.func.foldl (fun acc _x => ((b ∘ Nat.toUInt8) acc.data.size) ++ acc) b0
+    m.func.foldl (fun acc _x => (acc ++ (b ∘ Nat.toUInt8) acc.data.size)) b0
   b 0x03 ++ uLeb128 funs.data.size ++ funs
 
 mutual

@@ -161,8 +161,27 @@ def main : IO Unit := do
   IO.println "* * *"
 
   let i := "(module
+        (func (param $x_one i32) (param $three i32) (param $y_one i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))
+        (func (param $x_two f32) (param f32) (param f32) (result i32) (i32.add (i32.const 12) (i32.const 30)))
+  )"
+
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  let o_parsed_module ← parseTestP moduleP i
+  match o_parsed_module.2 with
+  | .error _ => IO.println "FAIL"
+  | .ok parsed_module => do
+    IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
+    IO.println "It's recorded to disk at /tmp/mtob.91.wasm"
+    let f := System.mkFilePath ["/tmp", "mtob.91.wasm"]
+    let h ← IO.FS.Handle.mk f IO.FS.Mode.write
+    h.write $ mtob parsed_module
+
+
+  let i := "(module
     (func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))
   )"
+
   -- unnamed param should have id 1
   IO.println s!"{i} is represented as:"
   let o_parsed_module ← parseTestP moduleP i
