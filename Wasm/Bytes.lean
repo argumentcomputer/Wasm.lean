@@ -41,11 +41,12 @@ def totalLength (bss : List ByteArray) : Nat :=
   bss.foldl (fun acc x => acc + x.data.size) 0
 
 def lindex (bss : ByteArray) : ByteArray :=
-  b bss.data.size.toUInt8 ++ bss
+  uLeb128 bss.data.size ++ bss
 
 def extractTypes (m : Module) : ByteArray :=
   let sigs := m.func.map $ fun x =>
     let params := x.params.map $ (b ∘ ttoi ∘ localToType)
+    -- TODO: check if we support > 255 params. Do the same for each length and size entries!
     let header := ByteArray.mk #[0x60, params.length.toUInt8]
     let res := params.foldl Append.append header
     res ++ (match x.result with --TODO: figure out and support multi-output functions
@@ -60,7 +61,7 @@ def extractFuncIds (m : Module) : ByteArray :=
   let funs :=
     b m.func.length.toUInt8 ++
     m.func.foldl (fun acc _x => ((b ∘ Nat.toUInt8) acc.data.size) ++ acc) b0
-  ByteArray.mk #[0x03, funs.data.size.toUInt8] ++ funs
+  b 0x03 ++ uLeb128 funs.data.size ++ funs
 
 mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
@@ -103,13 +104,17 @@ def extractFuncs (fs : List Func) : ByteArray :=
 
     let obs := (flatten ∘ extractOps) x.ops
 
-    lindex $ locals ++ obs
+    lindex $ locals ++ obs ++ b 0x0b
   )
   header ++ (lindex $ fn ++ fbs)
+
+def extractNames (m : Module) : ByteArray :=
+  sorry
 
 def mtob (m : Module) : ByteArray :=
   magic ++
   version ++
   (extractTypes m) ++
   (extractFuncIds m) ++
-  (extractFuncs m.func)
+  (extractFuncs m.func) -- ++
+  -- (extractNames m)
