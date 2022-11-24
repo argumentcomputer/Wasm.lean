@@ -361,7 +361,7 @@ def main : IO Unit := do
                 127
   -/
   IO.println s!"{sLeb128 (-1)} should be [127]"
-  IO.println s!"{sLeb128 9000} should be 70, 168"
+  IO.println s!"{sLeb128 9000} should be 168, 198, 0 (because it's signed!)"
   IO.println s!"{uLeb128 9000} should be 70, 168"
   IO.println s!"{sLeb128 8787} should be 211, 196, 00"
   IO.println s!"= = END OF SIGNED LEB128 TEST! = ="
