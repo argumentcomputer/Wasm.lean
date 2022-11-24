@@ -256,11 +256,12 @@ instance : ToString Func where
     toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.result} {x.locals} {x.ops})"
 
 def exportP : Parsec Char String Unit String := do
-    void $ string "export"
-    ignoreP
-    -- TODO: are escaped quotation marks legal export names?
-    let export_label ← Seq.between (string "\"") (string "\"") $ many' $ noneOf "\"".data
-    pure $ String.mk export_label
+    Seq.between (string "(") (string ")") do
+        void $ string "export"
+        ignoreP
+        -- TODO: are escaped quotation marks legal export names?
+        let export_label ← Seq.between (string "\"") (string "\"") $ many' $ noneOf "\"".data
+        pure $ String.mk export_label
 
 def genLocalP (x : String) : Parsec Char String Unit Local := do
     void $ string x

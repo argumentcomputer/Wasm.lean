@@ -42,6 +42,7 @@ def modPad (modulo : Nat) (bs : List Bit)
   else
     modulo - rem
   let pad := List.replicate to_replicate padWith
+  dbg_trace s!"PADDING {bs} {pad}"
   match endianness with
   | .big => pad ++ bs
   | .little => bs ++ pad
@@ -68,6 +69,12 @@ def unlead (xs : List Bit) : List Bit :=
 
 def npad7 := pad7 ∘ unlead ∘ ByteArray.toBits ∘ ntob
 
+def sDisambiguatePosInt (xs : List Bit) : ByteArray :=
+  let go := (Nat.toByteArrayLE ∘ Bit.bitsToNat)
+  (match xs with
+  | Bit.zero :: Bit.one :: rest => (go (Bit.one :: Bit.one :: rest)) ++ ByteArray.mk #[0]
+  | _ => go xs)
+
 def spad7 (x : Int) : List Bit :=
   let go := npad7 ∘ Int.natAbs
   (if x >= 0 then
@@ -75,8 +82,10 @@ def spad7 (x : Int) : List Bit :=
   else
     twosComplement ∘ go) x
 
-def reassemble (xs : List Bit) : List Bit :=
+def reassemble (xs : List Bit) : List Bit := Id.run $ do
+  dbg_trace s!"{xs}"
   (xs.foldl (fun acc x =>
+    dbg_trace s!"STEP ------------------ {acc} <<<<<<< {x}"
     let leading_bit := if acc.1 then Bit.zero else Bit.one
     let acc2' := if acc.2.1 == 6 then 0 else acc.2.1 + 1
     let acc3' := if acc.2.1 == 0 then
@@ -92,5 +101,8 @@ def LebCore : List Bit → ByteArray :=
 def uLeb128 : Nat → ByteArray :=
   LebCore ∘ npad7
 
-def sLeb128 : Int → ByteArray :=
-  LebCore ∘ spad7
+def sLeb128 (x : Int) : ByteArray :=
+  (if x ≥ 0 then
+    sDisambiguatePosInt ∘ reassemble ∘ spad7
+  else
+    LebCore ∘ spad7) x

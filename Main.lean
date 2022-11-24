@@ -161,6 +161,31 @@ def main : IO Unit := do
   IO.println "* * *"
 
   let i := "(module
+        (func (export \"main\")
+            (result i32)
+
+            (i32.add
+                (i32.const 1499550000)
+                (i32.add (i32.const 9000) (i32.const 17))
+            )
+        )
+    )"
+
+  -- unnamed param should have id 1
+  IO.println s!"{i} is represented as:"
+  let o_parsed_module ← parseTestP moduleP i
+  match o_parsed_module.2 with
+  | .error _ => IO.println "FAIL"
+  | .ok parsed_module => do
+    IO.println s!">>> !!! >>> It is converted to bytes as: {mtob parsed_module}"
+    IO.println "It's recorded to disk at /tmp/special.wasm"
+    let f := System.mkFilePath ["/tmp", "special.wasm"]
+    let h ← IO.FS.Handle.mk f IO.FS.Mode.write
+    h.write $ mtob parsed_module
+
+
+
+  let i := "(module
         (func (param $x_one i32) (param $three i32) (param $y_one i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))
         (func (param $x_two f32) (param f32) (param f32) (result i32) (i32.add (i32.const 12) (i32.const 30)))
   )"
@@ -324,6 +349,7 @@ def main : IO Unit := do
   IO.println s!"= = = = SIGNED LEB128 TEST = = = ="
   IO.println s!"{sLeb128 (-123456)} should be [192, 187, 120]"
   IO.println s!"{sLeb128 (1)} should be [1]"
+  IO.println s!"{sLeb128 (624485)} should be 229, 142, 38"
   /-
                 4> 2#0000001.
                 1
@@ -335,6 +361,9 @@ def main : IO Unit := do
                 127
   -/
   IO.println s!"{sLeb128 (-1)} should be [127]"
+  IO.println s!"{sLeb128 9000} should be 70, 168"
+  IO.println s!"{uLeb128 9000} should be 70, 168"
+  IO.println s!"{sLeb128 8787} should be 211, 196, 00"
   IO.println s!"= = END OF SIGNED LEB128 TEST! = ="
 
   let mut x := 0

@@ -58,6 +58,7 @@ def extractTypes (m : Module) : ByteArray :=
     Append.append $
     ByteArray.mk #[0x01, 1 + (Nat.toUInt8 ∘ totalLength) sigs, sigs.length.toUInt8]
 
+/- Function section -/
 def extractFuncIds (m : Module) : ByteArray :=
   let funs :=
     b m.func.length.toUInt8 ++
@@ -71,11 +72,14 @@ mutual
     | .from_stack => b0
     | .from_operation o => extractOp o
     -- TODO: signed consts exist??? We should check the spec carefully.
-    | .i_const i => ByteArray.mk #[0x41] ++ sLeb128 i.val
+    | .i_const i => Id.run $ do
+      dbg_trace s!"EXTRACTING I32 CONST {i}"
+      ByteArray.mk #[0x41] ++ sLeb128 i.val
     -- TODO: handle locals
     | _ => b0
 
   partial def extractAdd (α : Type') : ByteArray :=
+    dbg_trace "EXTRACTING ADD !"
     b $ match α with
     | .i 32 => 0x6a
     | .i 64 => 0x7c
@@ -101,7 +105,8 @@ def extractFuncs (fs : List Func) : ByteArray :=
     --   computations.
 
     -- TODO: handle Locals!
-    let locals := b 0x0
+    -- let locals := b 0x0
+    let locals := b 0x00
 
     let obs := (flatten ∘ extractOps) x.ops
 
@@ -117,7 +122,7 @@ def extractFuncNames (_ : List Func) := b0
 /-
                        ___________________________________________________
                       /                                                   \
-   _            _    |    _                                               |
+                     |                                                    |
                      |            (_) __ _  ___| | ____ _| |              |
                      |            | |/ _` |/ __| |/ / _` | |              |
                      |            | | (_| | (__|   < (_| | |              |
@@ -167,6 +172,13 @@ def indexFunctionsWithNamedLocals (fs : List Func) : List (Nat × List (Nat × L
       (i + 1, acc.2)
   (fs.foldl go (0, [])).2.reverse
 
+def indexFuncs (fs : List Func) : List (Nat × Func) :=
+  let go (acc : List (Nat × Func)) (f : Func) :=
+    match acc with
+    | j :: _ => (j.1, f) :: acc
+    | [] => (0, f) :: acc
+  (fs.foldl go []).reverse
+
 def encodeLocal (l : Nat × LocalName) : ByteArray :=
   uLeb128 l.1 ++ uLeb128 l.2.name.length ++ l.2.name.toUTF8
 
@@ -177,7 +189,10 @@ def encodeFunc (f : (Nat × List (Nat × LocalName))) : ByteArray :=
 def extractLocalNames (fs : List Func) : ByteArray :=
   let subsection_header := b 0x02
   let ifs := (indexFunctionsWithNamedLocals fs).map encodeFunc
-  subsection_header ++ (lindex $ uLeb128 ifs.length ++ flatten ifs)
+  if ifs.length > 0 then
+    subsection_header ++ (lindex $ uLeb128 ifs.length ++ flatten ifs)
+  else
+    b0
 
 def extractNames (m : Module) : ByteArray :=
   let header := b 0x00
@@ -186,12 +201,34 @@ def extractNames (m : Module) : ByteArray :=
   let modName := extractModName m
   let funcNames := extractFuncNames m.func
   let locNames := extractLocalNames m.func
-  header ++ (lindex $ (lindex name) ++ modName ++ funcNames ++ locNames)
+  if (modName.size > 0 || funcNames.size > 0 || locNames.size > 0) then
+    header ++ (lindex $ (lindex name) ++ modName ++ funcNames ++ locNames)
+  else
+    b0
+
+def mkVec (xs : List α) (xtobs : α → ByteArray) : ByteArray :=
+  let n := xs.length
+  let bs := flatten $ xs.map xtobs
+  uLeb128 n ++ bs
+
+def nMkStr (x : String) : ByteArray :=
+  uLeb128 x.length ++ x.toUTF8
+
+def extractExports (m : Module) : ByteArray :=
+  let header := b 0x07
+  let extractExport := fun f => match f.2.export_ with
+    | .some x => nMkStr x ++ b 0x00 ++ uLeb128 f.1
+    | .none => b0
+  let fs := indexFuncs ∘ m.func.filter $ fun f => match f.export_ with
+    | .some _ => true
+    | .none => false
+  header ++ (lindex $ mkVec fs extractExport)
 
 def mtob (m : Module) : ByteArray :=
   magic ++
   version ++
   (extractTypes m) ++
   (extractFuncIds m) ++
+  (extractExports m) ++
   (extractFuncs m.func) ++
   (extractNames m)
