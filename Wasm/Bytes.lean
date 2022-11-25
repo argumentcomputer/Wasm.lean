@@ -73,13 +73,11 @@ mutual
     | .from_operation o => extractOp o
     -- TODO: signed consts exist??? We should check the spec carefully.
     | .i_const i => Id.run $ do
-      dbg_trace s!"EXTRACTING I32 CONST {i}"
       ByteArray.mk #[0x41] ++ sLeb128 i.val
     -- TODO: handle locals
     | _ => b0
 
   partial def extractAdd (α : Type') : ByteArray :=
-    dbg_trace "EXTRACTING ADD !"
     b $ match α with
     | .i 32 => 0x6a
     | .i 64 => 0x7c
