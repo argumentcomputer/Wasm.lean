@@ -29,25 +29,25 @@ inductive Type' where
 | f : BitSize → Type'
 | i : BitSize → Type'
 -- | v : BitSizeSIMD → Type'
-    deriving BEq
+  deriving BEq
 
 instance : ToString Type' where
-    toString x := match x with
-    | .f y => "(Type'.f " ++ toString y ++ ")"
-    | .i y => "(Type'.i " ++ toString y ++ ")"
-    -- | .v y => "(Type'.v " ++ toString y ++ ")"
+  toString x := match x with
+  | .f y => "(Type'.f " ++ toString y ++ ")"
+  | .i y => "(Type'.i " ++ toString y ++ ")"
+  -- | .v y => "(Type'.v " ++ toString y ++ ")"
 
 def typeP : Parsec Char String Unit Type' := do
-    let ps ← getParserState
-    let iorf ← (string "i" <|> string "f")
-    let bits ← bitSizeP
-    match iorf with
-    | "i" => pure $ Type'.i bits
-    | "f" => pure $ Type'.f bits
-    | _ => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance Type'
-                        $ .trivial ps.offset .none $ hints0 Char
+  let ps ← getParserState
+  let iorf ← (string "i" <|> string "f")
+  let bits ← bitSizeP
+  match iorf with
+  | "i" => pure $ Type'.i bits
+  | "f" => pure $ Type'.f bits
+  | _ => @parseError (Parsec Char String Unit)
+                      String String Unit Char
+                      theInstance Type'
+                      $ .trivial ps.offset .none $ hints0 Char
 
 end Type'
 
@@ -57,35 +57,36 @@ open Name
 open Type'
 
 structure LocalName where
-    name : String
-    type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
-    deriving BEq
+  name : String
+  index : Nat
+  type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
+  deriving BEq
 
 instance : ToString LocalName where
-    toString x := s!"(LocalName.mk {x.name} {x.type})"
+  toString x := s!"(LocalName.mk {x.name} {x.type})"
 
 structure LocalIndex where
-    index : Nat
-    type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
-    deriving BEq
+  index : Nat
+  type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
+  deriving BEq
 
 instance : ToString LocalIndex where
-    toString x := s!"(LocalIndex.mk {x.index} {x.type})"
+  toString x := s!"(LocalIndex.mk {x.index} {x.type})"
 
 inductive Local where
 | name : LocalName → Local
 | index : LocalIndex → Local
-    deriving BEq
+  deriving BEq
 
 instance : ToString Local where
-    toString x := match x with
-    | .name y => s!"(Local.name {y})"
-    | .index n => s!"(Local.index {n})"
+  toString x := match x with
+  | .name y => s!"(Local.name {y})"
+  | .index n => s!"(Local.index {n})"
 
 def localToType (l : Local) : Type' :=
-    match l with
-    | .name ln => ln.type
-    | .index li => li.type
+  match l with
+  | .name ln => ln.type
+  | .index li => li.type
 
 end Local
 
@@ -103,30 +104,29 @@ inductive Get (x : Type') where
 | const : (ConstInt ⊕ ConstFloat ⊕ Unit) → Get x
 
 instance : ToString (Get α) where
-    toString x := "(" ++ (
-        match x with
-        | .from_stack => "Get.from_stack"
-        | .by_name n => "Get.by_name " ++ toString n
-        | .by_index i => "Get.by_index " ++ toString i
-        | .const ifu => "Get.const " ++ (match ifu with
-            | .inl i => "(Sum.inl " ++ toString i ++ ")"
-            | .inr $ .inl f => "(Sum.inr $ Sum.inl " ++ toString f ++ ")"
-            | .inr $ .inr () => sorry
-        )
-    ) ++ " : Get " ++ toString α ++ ")"
+  toString x := "(" ++ (
+    match x with
+    | .from_stack => "Get.from_stack"
+    | .by_name n => "Get.by_name " ++ toString n
+    | .by_index i => "Get.by_index " ++ toString i
+    | .const ifu => "Get.const " ++ (match ifu with
+      | .inl i => "(Sum.inl " ++ toString i ++ ")"
+      | .inr $ .inl f => "(Sum.inr $ Sum.inl " ++ toString f ++ ")"
+      | .inr $ .inr () => sorry
+    )
+  ) ++ " : Get " ++ toString α ++ ")"
 
 def getConstP : Parsec Char String Unit (Get x) := do
-    Seq.between (string "(") (string ")") do
-
-        match x with
-        | .i 32 => i32P >>= fun y => pure $ Get.const $ .inl y
-        | .i 64 => i64P >>= fun y => pure $ Get.const $ .inl y
-        | .f 32 => f32P >>= fun y => pure $ Get.const $ .inr $ .inl y
-        | .f 64 => f64P >>= fun y => pure $ Get.const $ .inr $ .inl y
+  Char.between '(' ')' do
+    match x with
+    | .i 32 => i32P >>= fun y => pure $ Get.const $ .inl y
+    | .i 64 => i64P >>= fun y => pure $ Get.const $ .inl y
+    | .f 32 => f32P >>= fun y => pure $ Get.const $ .inr $ .inl y
+    | .f 64 => f64P >>= fun y => pure $ Get.const $ .inr $ .inl y
 
 def getP : Parsec Char String Unit (Get x) := do
-    -- TODO: implement locals!!!
-    getConstP <|> (pure $ Get.from_stack)
+  -- TODO: implement locals!!!
+  getConstP <|> (pure $ Get.from_stack)
 
 end Get
 
@@ -144,94 +144,88 @@ open Get
 open Local
 
 mutual
-    -- Sadge
-    inductive Get' where
-    | from_stack
-    | from_operation : Operation → Get'
-    | by_name : LocalName → Get'
-    | by_index : LocalIndex → Get'
-    | i_const : ConstInt → Get'
-    | f_const : ConstFloat → Get'
+  -- Sadge
+  inductive Get' where
+  | from_stack
+  | from_operation : Operation → Get'
+  | by_name : LocalName → Get'
+  | by_index : LocalIndex → Get'
+  | i_const : ConstInt → Get'
+  | f_const : ConstFloat → Get'
 
-    inductive Add' where
-    | add : Type' → Get' → Get' → Add'
+  inductive Add' where
+  | add : Type' → Get' → Get' → Add'
 
-    inductive Operation where
-    | add : Add' → Operation
+  inductive Operation where
+  | add : Add' → Operation
 end
 
 mutual
-    partial def getToString (x : Get') : String :=
-        "(Get'" ++ (
-            match x with
-            | .from_stack => ".from_stack"
-            | .from_operation o => s!".from_operation {operationToString o}"
-            | .by_name n => ".by_name " ++ toString n
-            | .by_index i => ".by_index " ++ toString i
-            | .i_const i => s!".i_const {i}"
-            | .f_const f => s!".f_const {f}"
-        ) ++ ")"
+  partial def getToString (x : Get') : String :=
+    "(Get'" ++ (
+      match x with
+      | .from_stack => ".from_stack"
+      | .from_operation o => s!".from_operation {operationToString o}"
+      | .by_name n => ".by_name " ++ toString n
+      | .by_index i => ".by_index " ++ toString i
+      | .i_const i => s!".i_const {i}"
+      | .f_const f => s!".f_const {f}"
+    ) ++ ")"
 
-    partial def operationToString (x : Operation) : String :=
-        "(Operation" ++ (
-            match x with
-            | .add y => s!".add {addToString y}"
-        ) ++ ")"
+  partial def operationToString : Operation → String
+    | ⟨y⟩ => s!"(Operation.add {addToString y})"
 
-    partial def addToString (x : Add') : String :=
-        "(Add'" ++ (
-            match x with
-            | .add t g1 g2 => s!".add {t} {getToString g1} {getToString g2}"
-        ) ++ ")"
+  partial def addToString : Add' → String
+    | ⟨t, g1, g2⟩ => s!"(Add'.add {t} {getToString g1} {getToString g2})"
 end
 
 instance : ToString Add' where
-    toString := addToString
+  toString := addToString
 
 instance : ToString Get' where
-    toString := getToString
+  toString := getToString
 
 instance : ToString Operation where
-    toString := operationToString
+  toString := operationToString
 
 def stripGet (α : Type') (x : Get α) : Get' :=
-    match x with
-    | .from_stack => Get'.from_stack
-    | .by_name n => Get'.by_name n
-    | .by_index i => Get'.by_index i
-    | .const ifu => match ifu with
-        | .inl i => Get'.i_const i
-        | .inr $ .inl f => Get'.f_const f
-        | _ => sorry
+  match x with
+  | .from_stack => Get'.from_stack
+  | .by_name n => Get'.by_name n
+  | .by_index i => Get'.by_index i
+  | .const ifu => match ifu with
+    | .inl i => Get'.i_const i
+    | .inr $ .inl f => Get'.f_const f
+    | _ => sorry
 
 mutual
 
-    partial def get'ViaGetP (α  : Type') : Parsec Char String Unit Get' :=
-        attempt (opP >>= (pure ∘ Get'.from_operation)) <|>
-        (getP >>= (pure ∘ stripGet α))
+  partial def get'ViaGetP (α  : Type') : Parsec Char String Unit Get' :=
+    attempt (opP >>= (pure ∘ Get'.from_operation)) <|>
+    (getP >>= (pure ∘ stripGet α))
 
-    partial def opP : Parsec Char String Unit Operation :=
-        addP >>= pure ∘ Operation.add
+  partial def opP : Parsec Char String Unit Operation :=
+    addP >>= pure ∘ Operation.add
 
-    partial def opsP : Parsec Char String Unit (List Operation) := do
-        sepEndBy' opP owP
+  partial def opsP : Parsec Char String Unit (List Operation) := do
+    sepEndBy' opP owP
 
-    partial def addP : Parsec Char String Unit Add' := do
-        Seq.between (string "(") (string ")") do
-            owP
-            -- TODO: we'll use ps when we'll add more types into `Type'`.
-            -- let _ps ← getParserState
-            let add_t : Type' ←
-                (string "i32.add" *> (pure $ .i 32) <|>
-                string "i64.add" *> (pure $ .i 64) <|>
-                string "f32.add" *> (pure $ .f 32) <|>
-                string "f64.add" *> (pure $ .f 64))
-            ignoreP
-            let (arg_1 : Get') ← get'ViaGetP add_t
-            owP
-            let (arg_2 : Get') ← get'ViaGetP add_t
-            owP
-            pure $ Add'.add add_t arg_1 arg_2
+  partial def addP : Parsec Char String Unit Add' := do
+    Char.between '(' ')' do
+      owP
+      -- TODO: we'll use ps when we'll add more types into `Type'`.
+      -- let _ps ← getParserState
+      let add_t : Type' ←
+        string "i32.add" *> (pure $ .i 32) <|>
+        string "i64.add" *> (pure $ .i 64) <|>
+        string "f32.add" *> (pure $ .f 32) <|>
+        string "f64.add" *> (pure $ .f 64)
+      ignoreP
+      let (arg_1 : Get') ← get'ViaGetP add_t
+      owP
+      let (arg_2 : Get') ← get'ViaGetP add_t
+      owP
+      pure $ Add'.add add_t arg_1 arg_2
 end
 
 end Operation
@@ -244,81 +238,91 @@ open Local
 open Operation
 
 structure Func where
-    name : Option String
-    export_ : Option String
-    -- TODO: Heterogenous lists so that we can promote Type'?
-    params : List Local
-    result : Option Type'
-    locals : List Local
-    ops : List Operation
+  name : Option String
+  export_ : Option String
+  -- TODO: Heterogenous lists so that we can promote Type'?
+  params : List Local
+  result : List Type'
+  locals : List Local
+  ops : List Operation
 
 instance : ToString Func where
-    toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.result} {x.locals} {x.ops})"
+  toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.result} {x.locals} {x.ops})"
 
 def exportP : Parsec Char String Unit String := do
-    Seq.between (string "(") (string ")") do
-        void $ string "export"
-        ignoreP
-        -- TODO: are escaped quotation marks legal export names?
-        let export_label ← Seq.between (string "\"") (string "\"") $ many' $ noneOf "\"".data
-        pure $ String.mk export_label
+  Char.between '(' ')' do
+    discard $ string "export"
+    ignoreP
+    -- TODO: are escaped quotation marks legal export names?
+    let export_label ← Char.between '\"' '\"' $ many' $ noneOf "\"".data
+    pure $ String.mk export_label
 
 def genLocalP (x : String) : Parsec Char String Unit Local := do
-    void $ string x
-    let olabel ← (option' ∘ attempt) (ignoreP *> nameP)
-    let typ ← ignoreP *> typeP
-    pure $ match olabel with
-    | .none => Local.index $ LocalIndex.mk 0 typ
-    | .some l => Local.name $ LocalName.mk l typ
+  discard $ string x
+  let olabel ← (option' ∘ attempt) (ignoreP *> nameP)
+  let typ ← ignoreP *> typeP
+  pure $ match olabel with
+  | .none => Local.index $ LocalIndex.mk 0 typ
+  | .some l => Local.name $ LocalName.mk l 0 typ
 
 def paramP : Parsec Char String Unit Local :=
-    genLocalP "param"
+  genLocalP "param"
 
 def localP : Parsec Char String Unit Local :=
-    genLocalP "local"
+  genLocalP "local"
+
+def manyLispP (p : Parsec Char String Unit α) : Parsec Char String Unit (List α) :=
+  sepEndBy' (attempt (single '(' *> owP *> p <* owP <* single ')')) owP
 
 def nilParamsP : Parsec Char String Unit (List Local) := do
-    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
+  manyLispP paramP
 
 def nilLocalsP : Parsec Char String Unit (List Local) :=
-    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
+  manyLispP localP
 
 def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
-    (List.reverse ∘ Prod.snd) (
-        List.foldl (
-            fun acc x =>
-                match x with
-                | .name keep =>
-                    Prod.mk (Prod.fst acc + 1) ((.name keep) :: Prod.snd acc)
-                | .index ln =>
-                    Prod.mk (Prod.fst acc + 1) ((.index $ LocalIndex.mk (Prod.fst acc) (ln.type)) :: Prod.snd acc)
-        ) ((start, List.nil)) ps
-    )
+  (ps.foldl (
+      fun acc x =>
+        match x with
+        | .name keep =>
+          (acc.1 + 1, .name {keep with index := acc.1} :: acc.2)
+        | .index ln =>
+          (acc.1 + 1, .index {ln with index := acc.1} :: acc.2)
+    ) (start, [])
+  ).2.reverse
 
 def resultP : Parsec Char String Unit Type' :=
-    string "result" *> ignoreP *> typeP
+  string "result" *> ignoreP *> typeP
 
 def brResultP : Parsec Char String Unit Type' :=
-    string "(" *> owP *> resultP <* owP <* string ")"
+  single '(' *> owP *> resultP <* owP <* single ')'
+
+def brResultsP : Parsec Char String Unit (List Type') :=
+  manyLispP resultP
 
 def funcP : Parsec Char String Unit Func := do
-    Seq.between (string "(") (string ")") do
-        owP <* (string "func")
-        -- let oname ← option' (ignoreP *> nameP)
-        let oname ← option' (attempt $ ignoreP *> nameP)
-        let oexp ← option' (attempt $ owP *> exportP)
-        let ops ← option' (attempt $ owP *> nilParamsP)
-        let ps := optional ops []
-        let ps := reindexLocals 0 ps
-        let psn := ps.length
-        let rtype ← option' (attempt $ owP *> brResultP)
-        let ols ← option' (attempt $ owP *> nilLocalsP)
-        let ls := optional ols []
-        let ls := reindexLocals psn ls
-        let oops ← option' (attempt $ owP *> opsP)
-        let ops := optional oops []
-        owP
-        pure $ Func.mk oname oexp ps rtype ls ops
+  Char.between '(' ')' do
+    owP <* (string "func")
+    -- let oname ← option' (ignoreP *> nameP)
+    let oname ← option' (attempt $ ignoreP *> nameP)
+    let oexp ← option' (attempt $ owP *> exportP)
+    let ops ← option' (attempt $ owP *> nilParamsP)
+    let ps := optional ops []
+    let ps := reindexLocals 0 ps
+    let psn := ps.length
+    let rtypes ← attempt $ owP *> brResultsP
+    let ols ← option' (attempt $ owP *> nilLocalsP)
+    let ls := optional ols []
+    let ls := reindexLocals psn ls
+    let oops ← option' (attempt $ owP *> opsP)
+    let ops := optional oops []
+    owP
+    pure $ Func.mk oname oexp ps rtypes ls ops
+
+def reindexParamsAndLocals (f : Func) : (List Local × List Local) :=
+  let ps := reindexLocals 0 f.params
+  let ls := reindexLocals (ps.length) f.locals
+  (ps, ls)
 
 end Func
 
@@ -353,20 +357,20 @@ open Func
 open Operation
 
 structure Module where
-    name : Option String
-    func : List Func
+  name : Option String
+  func : List Func
 
 instance : ToString Module where
-    toString x := s!"(Module.mk {x.name} {x.func})"
+  toString x := s!"(Module.mk {x.name} {x.func})"
 
 def moduleP : Parsec Char String Unit Module := do
-    Seq.between (string "(") (string ")") do
-        owP <* (string "module")
-        let oname ← option' (attempt $ ignoreP *> nameP)
-        let ofuns ← option' (attempt $ ignoreP *> sepEndBy' funcP owP)
-        let funs := optional ofuns []
-        owP
-        pure $ Module.mk oname funs
+  Char.between '(' ')' do
+    owP <* (string "module")
+    let oname ← option' (attempt $ ignoreP *> nameP)
+    let ofuns ← option' (attempt $ ignoreP *> sepEndBy' funcP owP)
+    let funs := optional ofuns []
+    owP
+    pure $ Module.mk oname funs
 
 end Module
 
