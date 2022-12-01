@@ -422,4 +422,20 @@ instance : ToString ConstFloat where
 
 end Num.Float
 
+namespace Uni
+
+open NumType
+open Num.Int
+open Num.Float
+
+inductive NumUniT where
+-- | i32 : NumType.int 32 → ConstInt → NumUniT
+-- | i64 : NumType.int 64 → ConstInt → NumUniT
+-- | f32 : NumType.float 32 → ConstFloat → NumUniT
+-- | f64 : NumType.float 64 → ConstFloat → NumUniT
+| i : ConstInt → NumUniT
+| f : ConstFloat → NumUniT
+
+end Uni
+
 end Wasm.Wast.Num

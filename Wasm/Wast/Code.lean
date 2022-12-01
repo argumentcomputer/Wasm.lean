@@ -58,6 +58,7 @@ open Type'
 
 structure LocalName where
     name : String
+    index : Nat
     type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
     deriving BEq
 
@@ -248,7 +249,7 @@ structure Func where
     export_ : Option String
     -- TODO: Heterogenous lists so that we can promote Type'?
     params : List Local
-    result : Option Type'
+    result : List Type'
     locals : List Local
     ops : List Operation
 
@@ -269,7 +270,7 @@ def genLocalP (x : String) : Parsec Char String Unit Local := do
     let typ ← ignoreP *> typeP
     pure $ match olabel with
     | .none => Local.index $ LocalIndex.mk 0 typ
-    | .some l => Local.name $ LocalName.mk l typ
+    | .some l => Local.name $ LocalName.mk l 0 typ
 
 def paramP : Parsec Char String Unit Local :=
     genLocalP "param"
@@ -277,11 +278,14 @@ def paramP : Parsec Char String Unit Local :=
 def localP : Parsec Char String Unit Local :=
     genLocalP "local"
 
+def manyLispP (p : Parsec Char String Unit α) : Parsec Char String Unit (List α) :=
+    sepEndBy' (attempt (string "(" *> owP *> p <* owP <* string ")")) owP
+
 def nilParamsP : Parsec Char String Unit (List Local) := do
-    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
+    manyLispP paramP
 
 def nilLocalsP : Parsec Char String Unit (List Local) :=
-    sepEndBy' (attempt (string "(" *> owP *> paramP <* owP <* string ")")) owP
+    manyLispP localP
 
 def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
     (List.reverse ∘ Prod.snd) (
@@ -289,9 +293,21 @@ def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
             fun acc x =>
                 match x with
                 | .name keep =>
-                    Prod.mk (Prod.fst acc + 1) ((.name keep) :: Prod.snd acc)
+                    (
+                        (acc.1 + 1),
+                        (
+                            (.name $ LocalName.mk keep.name acc.1 keep.type)
+                            :: Prod.snd acc
+                        )
+                    )
                 | .index ln =>
-                    Prod.mk (Prod.fst acc + 1) ((.index $ LocalIndex.mk (Prod.fst acc) (ln.type)) :: Prod.snd acc)
+                    (
+                        (acc.1 + 1),
+                        (
+                            (.index $ LocalIndex.mk (Prod.fst acc) (ln.type))
+                            :: Prod.snd acc
+                        )
+                    )
         ) ((start, List.nil)) ps
     )
 
@@ -300,6 +316,9 @@ def resultP : Parsec Char String Unit Type' :=
 
 def brResultP : Parsec Char String Unit Type' :=
     string "(" *> owP *> resultP <* owP <* string ")"
+
+def brResultsP : Parsec Char String Unit (List Type') :=
+    manyLispP resultP
 
 def funcP : Parsec Char String Unit Func := do
     Seq.between (string "(") (string ")") do
@@ -311,14 +330,19 @@ def funcP : Parsec Char String Unit Func := do
         let ps := optional ops []
         let ps := reindexLocals 0 ps
         let psn := ps.length
-        let rtype ← option' (attempt $ owP *> brResultP)
+        let rtypes ← attempt $ owP *> brResultsP
         let ols ← option' (attempt $ owP *> nilLocalsP)
         let ls := optional ols []
         let ls := reindexLocals psn ls
         let oops ← option' (attempt $ owP *> opsP)
         let ops := optional oops []
         owP
-        pure $ Func.mk oname oexp ps rtype ls ops
+        pure $ Func.mk oname oexp ps rtypes ls ops
+
+def reindexParamsAndLocals (f : Func) : (List Local × List Local) :=
+    let ps := reindexLocals 0 f.params
+    let ls := reindexLocals (ps.length) f.locals
+    (ps, ls)
 
 end Func
 

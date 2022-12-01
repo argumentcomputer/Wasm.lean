@@ -51,8 +51,8 @@ def extractTypes (m : Module) : ByteArray :=
     let header := ByteArray.mk #[0x60, params.length.toUInt8]
     let res := params.foldl Append.append header
     res ++ (match x.result with --TODO: figure out and support multi-output functions
-    | .none => b 0x00
-    | .some t => ByteArray.mk #[1, ttoi t]
+    | List.nil => b 0x00
+    | ts => uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
     )
   sigs.foldl
     Append.append $
@@ -174,7 +174,7 @@ def indexFuncs (fs : List Func) : List (Nat × Func) :=
   let go (acc : List (Nat × Func)) (f : Func) :=
     match acc with
     | j :: _ => (j.1, f) :: acc
-    | [] => (0, f) :: acc
+    | [] => [(0, f)]
   (fs.foldl go []).reverse
 
 def encodeLocal (l : Nat × LocalName) : ByteArray :=
@@ -213,14 +213,20 @@ def nMkStr (x : String) : ByteArray :=
   uLeb128 x.length ++ x.toUTF8
 
 def extractExports (m : Module) : ByteArray :=
-  let header := b 0x07
-  let extractExport := fun f => match f.2.export_ with
-    | .some x => nMkStr x ++ b 0x00 ++ uLeb128 f.1
-    | .none => b0
-  let fs := indexFuncs ∘ m.func.filter $ fun f => match f.export_ with
-    | .some _ => true
-    | .none => false
-  header ++ (lindex $ mkVec fs extractExport)
+  let exports := m.func.filter (fun f => match f.export_ with
+  | .some _ => true
+  | .none => false)
+  if exports.length > 0 then
+    let header := b 0x07
+    let extractExport := fun f => match f.2.export_ with
+      | .some x => nMkStr x ++ b 0x00 ++ uLeb128 f.1
+      | .none => b0
+    let fs := indexFuncs ∘ m.func.filter $ fun f => match f.export_ with
+      | .some _ => true
+      | .none => false
+    header ++ (lindex $ mkVec fs extractExport)
+  else
+    b0
 
 def mtob (m : Module) : ByteArray :=
   magic ++
