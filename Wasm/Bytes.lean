@@ -46,7 +46,7 @@ def lindex (bss : ByteArray) : ByteArray :=
 -- TODO: Refactor completely and support locals!
 def extractTypes (m : Module) : ByteArray :=
   let sigs := m.func.map $ fun x =>
-    let params := x.params.map $ (b ∘ ttoi ∘ localToType)
+    let params := x.params.map $ (b ∘ ttoi ∘ fun x => x.type)
     -- TODO: check if we support > 255 params. Do the same for each length and size entries!
     let header := ByteArray.mk #[0x60, params.length.toUInt8]
     let res := params.foldl Append.append header
@@ -149,45 +149,43 @@ __-' { |          \    | /
       _-
 
 -/
-def indexNamedLocals (f : Func) : List (Nat × LocalName) :=
-  let go (acc : (Nat × List (Nat × LocalName))) (x : Local) :=
+def indexNamedLocals (f : Func) : List (Nat × Local) :=
+  let go (acc : (Nat × List (Nat × Local))) (x : Local) :=
     let i := acc.1
-    match x with
-    | .name y => (i + 1, (i, y) :: acc.2)
-    | _ => (i + 1, acc.2)
+    if x.name.isSome then (i + 1, (i, x) :: acc.2) else (i + 1, acc.2)
   let indexed_params := f.params.foldl go (0, [])
   let params := indexed_params.2.reverse
   let locals_proper := (f.locals.foldl go (indexed_params.1, [])).2.reverse
   params ++ locals_proper
 
-def indexFunctionsWithNamedLocals (fs : List Func) : List (Nat × List (Nat × LocalName)) :=
-  let go (acc : (Nat × List (Nat × List (Nat × LocalName)))) (x : Func) :=
+def indexFunctionsWithNamedLocals (fs : List Func)
+  : List (Nat × List (Nat × Local)) :=
+  let go (acc : (Nat × List (Nat × List (Nat × Local)))) (x : Func) :=
     let i := acc.1
     let ls := indexNamedLocals x
-    if ls.length > 0 then
-      (i + 1, (i, ls) :: acc.2)
-    else
-      (i + 1, acc.2)
+    if !ls.isEmpty then (i + 1, (i, ls) :: acc.2) else (i + 1, acc.2)
   (fs.foldl go (0, [])).2.reverse
 
 def indexFuncs (fs : List Func) : List (Nat × Func) :=
   let go (acc : List (Nat × Func)) (f : Func) :=
     match acc with
-    | j :: _ => (j.1, f) :: acc
     | [] => [(0, f)]
+    | j :: _ => (j.1, f) :: acc
   (fs.foldl go []).reverse
 
-def encodeLocal (l : Nat × LocalName) : ByteArray :=
-  uLeb128 l.1 ++ uLeb128 l.2.name.length ++ l.2.name.toUTF8
+def encodeLocal (l : Nat × Local) : ByteArray :=
+  match l.2.name with
+  | .some n => uLeb128 l.1 ++ uLeb128 n.length ++ n.toUTF8
+  | .none   => uLeb128 l.1 -- TODO: check logic
 
-def encodeFunc (f : (Nat × List (Nat × LocalName))) : ByteArray :=
+def encodeFunc (f : (Nat × List (Nat × Local))) : ByteArray :=
   let locals := f.2.map encodeLocal
   uLeb128 f.1 ++ uLeb128 f.2.length ++ flatten locals
 
 def extractLocalNames (fs : List Func) : ByteArray :=
   let subsection_header := b 0x02
   let ifs := (indexFunctionsWithNamedLocals fs).map encodeFunc
-  if ifs.length > 0 then
+  if !ifs.isEmpty then
     subsection_header ++ (lindex $ uLeb128 ifs.length ++ flatten ifs)
   else
     b0
@@ -214,7 +212,7 @@ def nMkStr (x : String) : ByteArray :=
 
 def extractExports (m : Module) : ByteArray :=
   let exports := m.func.filter (fun f => Option.toBool f.export_)
-  if exports.isEmpty then
+  if !exports.isEmpty then
     let header := b 0x07
     let extractExport := fun f => match f.2.export_ with
       | .some x => nMkStr x ++ b 0x00 ++ uLeb128 f.1

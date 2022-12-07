@@ -56,37 +56,14 @@ namespace Local
 open Name
 open Type'
 
-structure LocalName where
-  name : String
+structure Local where
   index : Nat
+  name : Option String
   type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
-  deriving BEq
-
-instance : ToString LocalName where
-  toString x := s!"(LocalName.mk {x.name} {x.type})"
-
-structure LocalIndex where
-  index : Nat
-  type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
-  deriving BEq
-
-instance : ToString LocalIndex where
-  toString x := s!"(LocalIndex.mk {x.index} {x.type})"
-
-inductive Local where
-| name : LocalName → Local
-| index : LocalIndex → Local
   deriving BEq
 
 instance : ToString Local where
-  toString x := match x with
-  | .name y => s!"(Local.name {y})"
-  | .index n => s!"(Local.index {n})"
-
-def localToType (l : Local) : Type' :=
-  match l with
-  | .name ln => ln.type
-  | .index li => li.type
+  toString x := s!"(Local.mk {x.index} {x.type})"
 
 end Local
 
@@ -97,8 +74,8 @@ open Local
 
 inductive Get (x : Type') where
 | from_stack
-| by_name : LocalName → Get x
-| by_index : LocalIndex → Get x
+| by_name : Local → Get x
+| by_index : Local → Get x
 -- TODO: replace "Unit" placeholder with ConstVec when implemented
 -- TODO: generalise Consts the same way Get is generalised so that Get' i32 can't be populated with ConstFloat!
 | const : (ConstInt ⊕ ConstFloat ⊕ Unit) → Get x
@@ -148,8 +125,8 @@ mutual
   inductive Get' where
   | from_stack
   | from_operation : Operation → Get'
-  | by_name : LocalName → Get'
-  | by_index : LocalIndex → Get'
+  | by_name : Local → Get'
+  | by_index : Local → Get'
   | i_const : ConstInt → Get'
   | f_const : ConstFloat → Get'
 
@@ -262,8 +239,8 @@ def genLocalP (x : String) : Parsec Char String Unit Local := do
   let olabel ← (option' ∘ attempt) (ignoreP *> nameP)
   let typ ← ignoreP *> typeP
   pure $ match olabel with
-  | .none => Local.index $ LocalIndex.mk 0 typ
-  | .some l => Local.name $ LocalName.mk l 0 typ
+  | .none => Local.mk 0 .none typ
+  | .some l => Local.mk 0 (.some l) typ
 
 def paramP : Parsec Char String Unit Local :=
   genLocalP "param"
@@ -283,11 +260,7 @@ def nilLocalsP : Parsec Char String Unit (List Local) :=
 def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
   (ps.foldl (
       fun acc x =>
-        match x with
-        | .name keep =>
-          (acc.1 + 1, .name {keep with index := acc.1} :: acc.2)
-        | .index ln =>
-          (acc.1 + 1, .index {ln with index := acc.1} :: acc.2)
+        (acc.1 + 1, {x with index := acc.1} :: acc.2)
     ) (start, [])
   ).2.reverse
 
@@ -312,8 +285,7 @@ def funcP : Parsec Char String Unit Func := do
     let psn := ps.length
     let rtypes ← attempt $ owP *> brResultsP
     let ols ← option' (attempt $ owP *> nilLocalsP)
-    let ls := optional ols []
-    let ls := reindexLocals psn ls
+    let ls := reindexLocals psn $ optional ols []
     let oops ← option' (attempt $ owP *> opsP)
     let ops := optional oops []
     owP
