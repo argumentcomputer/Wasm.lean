@@ -10,10 +10,10 @@ open Megaparsec.Errors
 namespace Wasm.Wast.Parser.Common
 
 def ignoreP : Parsec Char String Unit Unit :=
-  void $ some' $ oneOf " \t\n".data
+  discard $ some' $ oneOf " \t\n".data
 
 def owP : Parsec Char String Unit Unit :=
-  void $ option' $ some' $ oneOf " \t\n".data
+  discard $ many' $ oneOf " \t\n".data
 
 def specials : List Char := " ()".data
 
