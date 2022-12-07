@@ -21,6 +21,7 @@ namespace Wasm.Engine
 inductive EngineErrors where
 | not_enough_stuff_on_stack
 | param_type_incompatible
+| local_with_no_name_given
 | local_with_given_name_missing : String → EngineErrors
 | local_with_given_id_missing : Nat → EngineErrors
 | function_not_found
@@ -30,6 +31,7 @@ instance : ToString EngineErrors where
   toString x := match x with
   | .not_enough_stuff_on_stack => "not enough stuff on stack"
   | .param_type_incompatible => "param type incompatible"
+  | .local_with_no_name_given => s!"local with no name given"
   | .local_with_given_id_missing i => s!"local #{i} not found"
   | .local_with_given_name_missing n => s!"local ``{n}'' not found"
   | .function_not_found => s!"function not found"
@@ -89,21 +91,19 @@ def fidByName (s : Store m) (x : String) : Option Nat :=
   funcByName s x >>= pure ∘ FunctionInstance.index
 
 def paramTypecheck (x : Local) (y : StackEntry) :=
-  let t := localToType x
   match y with
   | .num nn => match nn with
-    | .i n => match t with
+    | .i n => match x.type with
       | .i 32 => n.bs == 32
       | .i 64 => n.bs == 64
       | _ => false
-    | .f n => match t with
+    | .f n => match x.type with
       | .f 32 => n.bs == 32
       | .f 64 => n.bs == 64
       | _ => false
 
-def findLocal (ls : List (Option String × Option StackEntry))
-              (x : String)
-              : Option StackEntry :=
+def findLocalByName? (ls : List (Option String × Option StackEntry))
+                    (x : String) : Option StackEntry :=
   match ls.filter (fun se => .some x == se.1) with
   | y :: [] => y.2
   | _ => .none
@@ -118,9 +118,11 @@ mutual
       | s :: rest => .ok (rest, s)
     | .from_operation o => runOp locals stack o
     -- TODO: names are erased in production. See what do we want to do with this code path.
-    | .by_name n => match findLocal locals n.name with
-      | .none => .error $ .local_with_given_name_missing n.name
-      | .some l => .ok (stack, l)
+    | .by_name n => match n.name with
+      | .none => .error .local_with_no_name_given
+      | .some name => match findLocalByName? locals name with
+        | .none => .error $ .local_with_given_name_missing name
+        | .some l => .ok (stack, l)
     | .by_index i => match locals.get? i.index with
       | .some (_, .some se)  => .ok (stack, se)
       | _ => .error $ .local_with_given_id_missing i.index
@@ -158,9 +160,9 @@ def runDo (_s : Store m)
         .error .param_type_incompatible
   let pσ ← f.params.foldl bite $ .ok (σ, [])
   let locals := (f.params ++ f.locals).map $
-    fun l => match l with
-      | .name ll => (.some ll.name, pσ.2.get? ll.index)
-      | .index ll => (.none, pσ.2.get? ll.index)
+    fun l => match l.name with
+      | .some name => (.some name, pσ.2.get? l.index)
+      | .none => (.none, pσ.2.get? l.index)
   let go (oσ : Except EngineErrors Stack) (x : Operation)
          : Except EngineErrors Stack := do
     let stack ← oσ
