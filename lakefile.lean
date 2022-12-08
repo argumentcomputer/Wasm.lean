@@ -1,7 +1,9 @@
 import Lake
 open Lake DSL
 
-package Wasm
+package Wasm {
+  precompileModules := true
+}
 
 @[default_target]
 lean_lib Wasm
@@ -27,4 +29,9 @@ lean_exe wasm {
 lean_exe yati {
   supportInterpreter := true
   root := "Yati32"
+}
+
+lean_exe pico {
+  supportInterpreter := true
+  root := "Pico"
 }
