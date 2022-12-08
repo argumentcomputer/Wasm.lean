@@ -272,14 +272,10 @@ def i32P : Parsec Char String Unit ConstInt := do
     ignoreP
     let ps ← getParserState
     let ds ← many1' notSpecialP
-    let dss : String := String.mk ds
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
-    match mkInt' dss with
+    match mkInt' ⟨ds⟩ with
     | .some i => pure $ ConstInt.mk 32 $ extractInt i
-    | .none => @parseError (Parsec Char String Unit)
-                           String String Unit Char
-                           theInstance ConstInt
-                           $ .trivial ps.offset .none $ hints0 Char
+    | .none => parseError $ .trivial ps.offset .none $ hints0 Char
 
 -- TODO: copypasta is bad
 def i64P : Parsec Char String Unit ConstInt := do
@@ -287,14 +283,10 @@ def i64P : Parsec Char String Unit ConstInt := do
     ignoreP
     let ps ← getParserState
     let ds ← many1' notSpecialP
-    let dss : String := String.mk ds
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
-    match mkInt' dss with
+    match mkInt' ⟨ds⟩ with
     | .some i => pure $ ConstInt.mk 64 $ extractInt i
-    | .none => @parseError (Parsec Char String Unit)
-                           String String Unit Char
-                           theInstance ConstInt
-                           $ .trivial ps.offset .none $ hints0 Char
+    | .none => parseError $ .trivial ps.offset .none $ hints0 Char
 
 end Num.Int
 
@@ -389,14 +381,10 @@ def f32P : Parsec Char String Unit ConstFloat := do
   ignoreP
   let ps ← getParserState
   let ds ← many1' notSpecialP
-  let dss : String := String.mk ds
   -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
-  match mkFloat' dss with
+  match mkFloat' ⟨ds⟩ with
   | .some f => pure $ ConstFloat.mk 32 $ extractFloat f
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance ConstFloat
-                        $ .trivial ps.offset .none $ hints0 Char
+  | .none => parseError $ .trivial ps.offset .none $ hints0 Char
 
 -- TODO: copypasta is bad
 def f64P : Parsec Char String Unit ConstFloat := do
@@ -404,17 +392,10 @@ def f64P : Parsec Char String Unit ConstFloat := do
   ignoreP
   let ps ← getParserState
   let ds ← many1' notSpecialP
-  let dss : String := String.mk ds
-  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
-  match mkFloat' dss with
+  -- TODO: CHECK THAT PARSED FLOAT FITS 64 BITS
+  match mkFloat' ⟨ds⟩ with
   | .some f => pure $ ConstFloat.mk 64 $ extractFloat f
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance ConstFloat
-                        $ .trivial ps.offset .none $ hints0 Char
-
-instance : ToString ConstFloat where
-  toString x := "(ConstFloat (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"
+  | .none => parseError $ .trivial ps.offset .none $ hints0 Char
 
 ------------------------------------------------------------------------
 -- TODO: Code generation for auxiliary structures and functions?!?!?! --

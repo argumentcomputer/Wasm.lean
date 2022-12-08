@@ -1,9 +1,10 @@
 import Wasm
 import Wasm.Engine
-import Wasm.Wast.Code
+import Wasm.Wast.AST
 import Wasm.Wast.Expr
 import Wasm.Wast.Name
 import Wasm.Wast.Num
+import Wasm.Wast.Parser
 import Wasm.Bytes
 import Wasm.Leb128
 
@@ -11,13 +12,13 @@ import Megaparsec.Parsec
 
 open Wasm.Bytes
 open Wasm.Engine
-open Wasm.Wast.Code
-open Wasm.Wast.Code.Func
-open Wasm.Wast.Code.Module
-open Wasm.Wast.Code.Operation
+open Wasm.Wast.AST.Func
+open Wasm.Wast.AST.Module
+open Wasm.Wast.AST.Operation
 open Wasm.Wast.Expr
 open Wasm.Wast.Name
 open Wasm.Wast.Num
+open Wasm.Wast.Parser
 open Wasm.Leb128
 
 open Num.Digit
@@ -72,7 +73,7 @@ def main : IO Unit := do
 
   IO.println "* * *"
   IO.println "f32 is represented as:"
-  void $ parseTestP Type'.typeP "f32"
+  void $ parseTestP typeP "f32"
   IO.println "* * *"
 
   IO.println "* * *"

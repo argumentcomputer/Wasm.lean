@@ -1,14 +1,16 @@
+import Wasm.Wast.AST
 import Wasm.Wast.Code
 import YatimaStdLib
 import Wasm.Leb128
 
 open Wasm.Leb128
-open Wasm.Wast.Code.Module
-open Wasm.Wast.Code.Type'
-open Wasm.Wast.Code.Local
-open Wasm.Wast.Code.Operation
-open Wasm.Wast.Code.Func
-open Wasm.Wast.Code.Get
+open Wasm.Wast.Code
+open Wasm.Wast.AST.Module
+open Wasm.Wast.AST.Type'
+open Wasm.Wast.AST.Local
+open Wasm.Wast.AST.Operation
+open Wasm.Wast.AST.Func
+open Wasm.Wast.AST.Get
 
 open ByteArray
 open Nat
