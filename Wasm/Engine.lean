@@ -83,7 +83,7 @@ def mkStore (m : Module) : Store m :=
   Store.mk $ instantiateFs m
 
 def funcByName (s : Store m) (x : String) : Option $ FunctionInstance m :=
-  match s.func.filter (fun f => f.name == .some x) with
+  match s.func.filter (fun f => f.export_ == .some x) with
   | y :: [] => .some y
   | _ => .none
 
