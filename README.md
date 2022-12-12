@@ -1,6 +1,8 @@
-# Wasm tools for lean
+# Wasm tools lite for lean
 
-Webassembly tools to be implemented in Lean.
+Webassembly tools implemented in Lean.
+
+Uses Straume's Zeptoparsec instead of Megaparsec to reduce the amount of dependencies and make compilation to other languages easier.
 
 To get the reference test suite, please run:
 
