@@ -1,10 +1,10 @@
-import Megaparsec.Common
-import Megaparsec.MonadParsec
-import Megaparsec.Parsec
+import Wasm.Wast.Parser.Common
 
-open Megaparsec
-open Megaparsec.Common
-open Megaparsec.Parsec
+import Straume.Zeptoparsec
+
+open Wasm.Wast.Parser.Common
+
+open Zeptoparsec
 
 /- Webassembly supports signed numbers. -/
 inductive Sign :=
@@ -34,7 +34,9 @@ def signum : Sign → Int
 I am very smart.
 -/
 def isMinus? (x : String) : Bool :=
-  @parses? Char String Unit String (lookAhead $ string "-") x
+  match x.data with
+  | x :: _ => x == '-'
+  | _ => false
 
 /-
 A `Sign` constructor from `String`.
@@ -44,8 +46,8 @@ def sign (x : String) : Sign :=
   if isMinus? x then .minus else .plus
 
 /- Parse out an optional sign. -/
-def signP : Parsec Char String Unit Sign := do
-  let s ← option $ string "-"
+def signP : Parsec String Sign := do
+  let s ← option $ pstring "-"
   match s with
-  | .none => option (string "+") *> pure .plus
+  | .none => option (pstring "+") *> pure .plus
   | .some _ => pure .minus

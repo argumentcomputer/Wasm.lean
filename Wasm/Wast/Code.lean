@@ -1,7 +1,4 @@
-import Megaparsec
-import Megaparsec.Common
-import Megaparsec.Errors.Bundle
-import Megaparsec.Parsec
+import Straume.Zeptoparsec
 
 import Wasm.Wast.BitSize
 import Wasm.Wast.Name
@@ -10,16 +7,12 @@ import Wasm.Wast.Parser.Common
 
 import YatimaStdLib
 
-open Megaparsec
-open Megaparsec.Common
-open Megaparsec.Errors.Bundle
-open Megaparsec.Parsec
-open MonadParsec
-
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int
 open Wasm.Wast.Num.Num.Float
+
+open Zeptoparsec
 
 namespace Wasm.Wast.Code
 
@@ -37,17 +30,13 @@ instance : ToString Type' where
   | .i y => "(Type'.i " ++ toString y ++ ")"
   -- | .v y => "(Type'.v " ++ toString y ++ ")"
 
-def typeP : Parsec Char String Unit Type' := do
-  let ps ← getParserState
-  let iorf ← (string "i" <|> string "f")
+def typeP : Parsec String Type' := do
+  let iorf ← (pstring "i" <|> pstring "f")
   let bits ← bitSizeP
   match iorf with
   | "i" => pure $ Type'.i bits
   | "f" => pure $ Type'.f bits
-  | _ => @parseError (Parsec Char String Unit)
-                      String String Unit Char
-                      theInstance Type'
-                      $ .trivial ps.offset .none $ hints0 Char
+  | _ => fail $ "Expected type string, got something else."
 
 end Type'
 
@@ -93,15 +82,17 @@ instance : ToString (Get α) where
     )
   ) ++ " : Get " ++ toString α ++ ")"
 
-def getConstP : Parsec Char String Unit (Get x) := do
-  Char.between '(' ')' do
-    match x with
+def getConstP : Parsec String (Get x) := do
+  let _ ← pstring "("
+  let res := match x with
     | .i 32 => i32P >>= fun y => pure $ Get.const $ .inl y
     | .i 64 => i64P >>= fun y => pure $ Get.const $ .inl y
     | .f 32 => f32P >>= fun y => pure $ Get.const $ .inr $ .inl y
     | .f 64 => f64P >>= fun y => pure $ Get.const $ .inr $ .inl y
+  let _ ← pstring ")"
+  res
 
-def getP : Parsec Char String Unit (Get x) := do
+def getP : Parsec String (Get x) := do
   -- TODO: implement locals!!!
   getConstP <|> (pure $ Get.from_stack)
 
@@ -177,26 +168,26 @@ def stripGet (α : Type') (x : Get α) : Get' :=
 
 mutual
 
-  partial def get'ViaGetP (α  : Type') : Parsec Char String Unit Get' :=
+  partial def get'ViaGetP (α  : Type') : Parsec String Get' :=
     attempt (opP >>= (pure ∘ Get'.from_operation)) <|>
     (getP >>= (pure ∘ stripGet α))
 
-  partial def opP : Parsec Char String Unit Operation :=
+  partial def opP : Parsec String Operation :=
     addP >>= pure ∘ Operation.add
 
-  partial def opsP : Parsec Char String Unit (List Operation) := do
+  partial def opsP : Parsec String (List Operation) := do
     sepEndBy' opP owP
 
-  partial def addP : Parsec Char String Unit Add' := do
-    Char.between '(' ')' do
+  partial def addP : Parsec String Add' := do
+    cbetween '(' ')' do
       owP
       -- TODO: we'll use ps when we'll add more types into `Type'`.
       -- let _ps ← getParserState
       let add_t : Type' ←
-        string "i32.add" *> (pure $ .i 32) <|>
-        string "i64.add" *> (pure $ .i 64) <|>
-        string "f32.add" *> (pure $ .f 32) <|>
-        string "f64.add" *> (pure $ .f 64)
+        pstring "i32.add" *> (pure $ .i 32) <|>
+        pstring "i64.add" *> (pure $ .i 64) <|>
+        pstring "f32.add" *> (pure $ .f 32) <|>
+        pstring "f64.add" *> (pure $ .f 64)
       ignoreP
       let (arg_1 : Get') ← get'ViaGetP add_t
       owP
@@ -226,35 +217,36 @@ structure Func where
 instance : ToString Func where
   toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.result} {x.locals} {x.ops})"
 
-def exportP : Parsec Char String Unit String := do
-  Char.between '(' ')' do
-    discard $ string "export"
+def exportP : Parsec String String := do
+  cbetween '(' ')' do
+    discard $ pstring "export"
     ignoreP
     -- TODO: are escaped quotation marks legal export names?
-    let export_label ← Char.between '\"' '\"' $ many' $ noneOf "\"".data
-    pure $ String.mk export_label
+    let export_label ← cbetween '\"' '\"' $ many $ noneOf "\"".data
+    pure $ String.mk $ Array.toList export_label
 
-def genLocalP (x : String) : Parsec Char String Unit Local := do
-  discard $ string x
-  let olabel ← (option' ∘ attempt) (ignoreP *> nameP)
+def genLocalP (x : String) : Parsec String Local := do
+  discard $ pstring x
+  -- TODO: We moved from `option'` to `option` here. Did we just wrote a bug?
+  let olabel ← (option ∘ attempt) (ignoreP *> nameP)
   let typ ← ignoreP *> typeP
   pure $ match olabel with
   | .none => Local.mk 0 .none typ
   | .some l => Local.mk 0 (.some l) typ
 
-def paramP : Parsec Char String Unit Local :=
+def paramP : Parsec String Local :=
   genLocalP "param"
 
-def localP : Parsec Char String Unit Local :=
+def localP : Parsec String Local :=
   genLocalP "local"
 
-def manyLispP (p : Parsec Char String Unit α) : Parsec Char String Unit (List α) :=
+def manyLispP (p : Parsec String α) : Parsec String (List α) :=
   sepEndBy' (attempt (single '(' *> owP *> p <* owP <* single ')')) owP
 
-def nilParamsP : Parsec Char String Unit (List Local) := do
+def nilParamsP : Parsec String (List Local) := do
   manyLispP paramP
 
-def nilLocalsP : Parsec Char String Unit (List Local) :=
+def nilLocalsP : Parsec String (List Local) :=
   manyLispP localP
 
 def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
@@ -264,29 +256,29 @@ def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
     ) (start, [])
   ).2.reverse
 
-def resultP : Parsec Char String Unit Type' :=
-  string "result" *> ignoreP *> typeP
+def resultP : Parsec String Type' :=
+  pstring "result" *> ignoreP *> typeP
 
-def brResultP : Parsec Char String Unit Type' :=
+def brResultP : Parsec String Type' :=
   single '(' *> owP *> resultP <* owP <* single ')'
 
-def brResultsP : Parsec Char String Unit (List Type') :=
+def brResultsP : Parsec String (List Type') :=
   manyLispP resultP
 
-def funcP : Parsec Char String Unit Func := do
-  Char.between '(' ')' do
-    owP <* (string "func")
+def funcP : Parsec String Func := do
+  cbetween '(' ')' do
+    owP <* (pstring "func")
     -- let oname ← option' (ignoreP *> nameP)
-    let oname ← option' (attempt $ ignoreP *> nameP)
-    let oexp ← option' (attempt $ owP *> exportP)
-    let ops ← option' (attempt $ owP *> nilParamsP)
+    let oname ← option (attempt $ ignoreP *> nameP)
+    let oexp ← option (attempt $ owP *> exportP)
+    let ops ← option (attempt $ owP *> nilParamsP)
     let ps := optional ops []
     let ps := reindexLocals 0 ps
     let psn := ps.length
     let rtypes ← attempt $ owP *> brResultsP
-    let ols ← option' (attempt $ owP *> nilLocalsP)
+    let ols ← option (attempt $ owP *> nilLocalsP)
     let ls := reindexLocals psn $ optional ols []
-    let oops ← option' (attempt $ owP *> opsP)
+    let oops ← option (attempt $ owP *> opsP)
     let ops := optional oops []
     owP
     pure $ Func.mk oname oexp ps rtypes ls ops
@@ -335,11 +327,11 @@ structure Module where
 instance : ToString Module where
   toString x := s!"(Module.mk {x.name} {x.func})"
 
-def moduleP : Parsec Char String Unit Module := do
-  Char.between '(' ')' do
-    owP <* (string "module")
-    let oname ← option' (attempt $ ignoreP *> nameP)
-    let ofuns ← option' (attempt $ ignoreP *> sepEndBy' funcP owP)
+def moduleP : Parsec String Module := do
+  cbetween '(' ')' do
+    owP <* (pstring "module")
+    let oname ← option (attempt $ ignoreP *> nameP)
+    let ofuns ← option (attempt $ ignoreP *> sepEndBy' funcP owP)
     let funs := optional ofuns []
     owP
     pure $ Module.mk oname funs

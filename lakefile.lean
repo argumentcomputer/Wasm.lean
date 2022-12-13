@@ -12,8 +12,8 @@ require LSpec from git
 require YatimaStdLib from git
   "https://github.com/yatima-inc/YatimaStdLib.lean" @ "f905b68f529de2af44cf6ea63489b7e3cd090050"
 
-require Megaparsec from git
-  "https://github.com/yatima-inc/Megaparsec.lean" @ "50f9beb2af165f5736155d30cdda2774784b677b"
+require Straume from git
+  "https://github.com/yatima-inc/Straume" @ "849b7c7dc5eff27bf8cfe7e9e91d6195a7b964cb"
 
 require Yatima from git
   "https://github.com/yatima-inc/yatima-lang" @ "26e896debf14cf3bb09a7a8a00f70583ae95469d"

@@ -1,10 +1,10 @@
+import Straume.Zeptoparsec
+
 import YatimaStdLib
-import Megaparsec.Common
-import Megaparsec.Parsec
 
 open Cached
-open Megaparsec.Common
-open Megaparsec.Parsec
+
+open Zeptoparsec
 
 namespace Wasm.Wast.Name
 
@@ -14,8 +14,8 @@ def isIdChar (x : Char) : Bool :=
 
 /- This is how desperate coding looks. We started with dependent parsing, and ended up here.
 Well, at least we aren't using unsafe funcitons for parsing. 🤷 -/
-def nameP : Parsec Char String Unit String :=
-  string "$" *> ((many' $ satisfy isIdChar) >>= (pure ∘ String.mk))
+def nameP : Parsec String String :=
+  pstring "$" *> ((many $ satisfy isIdChar) >>= (pure ∘ String.mk ∘ Array.toList))
 
 /- Captures a valid WAST identifier. -/
 structure Name (x : String) where

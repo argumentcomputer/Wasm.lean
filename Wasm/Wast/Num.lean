@@ -3,22 +3,15 @@ import Wasm.Wast.Radix
 import Wasm.Wast.Sign
 import Wasm.Wast.Parser.Common
 
-import Megaparsec.Common
-import Megaparsec.Errors
-import Megaparsec.Errors.Bundle
-import Megaparsec.Parsec
-import Megaparsec.MonadParsec
 import YatimaStdLib.NonEmpty
+
+import Straume.Zeptoparsec
 
 open Wasm.Wast.Parser.Common
 
-open Megaparsec
-open Megaparsec.Common
-open Megaparsec.Errors
-open Megaparsec.Errors.Bundle
-open Megaparsec.Parsec
-open MonadParsec
 open Cached
+
+open Zeptoparsec
 
 namespace Wasm.Wast.Num
 
@@ -94,24 +87,22 @@ instance : Coe (Digit x) Nat where
 -- Digit parsers
 --
 
-def withRangeDigitP (sat : Char → Bool) : Parsec Char String Unit Nat := do
-  let ps ← getParserState
-  let x ← satisfy sat
-  match parseDigit x with
-  | .some y => pure y
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance Nat
-                        $ .trivial ps.offset .none $ hints0 Char
+def withRangeDigitP (sat : Char → Bool) : Parsec String Nat := fun it =>
+  let (x, it') := ione it sat
+  match x with
+  | .some xx => match parseDigit xx with
+    | .some y => .success it' y
+    | .none => .error it "Expected a digit, but no digit found."
+  | _ => .error it "Not a digit."
 
 /- Parse out a decimal digit. -/
-def decDigitP : Parsec Char String Unit Nat := withRangeDigitP isDigit
+def decDigitP : Parsec String Nat := withRangeDigitP isDigit
 
 /- Parse out a digit up to `f`. Case-insensitive. -/
-def hexDigitP : Parsec Char String Unit Nat := withRangeDigitP isHexdigit
+def hexDigitP : Parsec String Nat := withRangeDigitP isHexdigit
 
 /- Match some `Radix` with an invocation of either `hexDigitP` or `decDigitP`. -/
-def radDigitP (radix : Radix) : Parsec Char String Unit Nat :=
+def radDigitP (radix : Radix) : Parsec String Nat :=
   match radix with
   | .ten => decDigitP
   | .sixteen => hexDigitP
@@ -140,44 +131,44 @@ open Digit
 --
 
 /- Match some `Radix` with the string prefix denoting that radix. -/
-def radPrefixP (radix : Radix) : Parsec Char String Unit String :=
+def radPrefixP (radix : Radix) : Parsec String String :=
   match radix with
   | .ten => pure $ ""
-  | .sixteen => string "0x"
+  | .sixteen => pstring "0x"
 
 /- Parses a number with some decorations as per spec. -/
-def radNumP (radix : Radix) : Parsec Char String Unit (List Nat) := do
+def radNumP (radix : Radix) : Parsec String (Array Nat) := do
   let d0 ← radDigitP radix
-  let dr ← many' $ (option (oneOf ['_']) *> pure 0) *> radDigitP radix
-  pure $ d0 :: dr
+  let dr ← many $ (option (oneOf ['_']) *> pure 0) *> radDigitP radix
+  pure $ Array.mk [d0] ++ dr
 
 /- Parse a natural out of a string of some `Radix`. -/
-def radixP (radix : Radix) : Parsec Char String Unit Nat := do
+def radixP (radix : Radix) : Parsec String Nat := do
   let _prefix ← radPrefixP radix
   let digits ← radNumP radix
-  pure $ List.foldl (fun a x => radix * a + x) 0 digits
+  pure $ Array.foldl (fun a x => radix * a + x) 0 digits
 
 /- Parse a decimal. -/
-def decimalP : Parsec Char String Unit Nat := radixP .ten
+def decimalP : Parsec String Nat := radixP .ten
 
 /- Parse a hexadecimal. -/
-def hexP : Parsec Char String Unit Nat := radixP .sixteen
+def hexP : Parsec String Nat := radixP .sixteen
 
-private def demoParse (φ : Parsec Char String Unit γ) (x : String) : Except (ParseErrorBundle Char String Unit) γ :=
-  runParserP φ "" x
+private def demoParse (φ : Parsec String γ) (x : String) : Except String γ :=
+  Zeptoparsec.run φ x
 
 /- Run a parser against `String` `y` and return a parse result. -/
 def natMaybe y := do
   demoParse (radixP $ hod y) y
 
-def parseNat' (label : String) (x : String)
-  := runParserP (radixP $ hod x) label x
+def parseNat' (x : String)
+  := Zeptoparsec.run (radixP $ hod x) x
 
 /- Captures a valid Natural.
 If you're parsing from a file with name `name`, set `label := name`. -/
 structure Nat' (x : String) where
   label : String := ""
-  parsed : Cached (parseNat' label) x := {}
+  parsed : Cached parseNat' x := {}
   doesParse : Except.isOk parsed.val := by trivial
 
 /- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Nat`. -/
@@ -197,7 +188,7 @@ instance : Coe (Nat' x) Nat where
 /- Perhaps, construct a valid Natural.
 If you're parsing from a file with name `name`, set `label := name`. -/
 def mkNat' (x : String) (label : String := "") : Option (Nat' x) :=
-  let pr : Cached (parseNat' label) x := {}
+  let pr : Cached parseNat' x := {}
   if isOk : Except.isOk pr.val then
     .some {parsed := pr, label := label}
   else
@@ -222,18 +213,18 @@ namespace Num.Int
 
 open Num.Nat
 
-def parseInt' (label : String) (x : String) :=
+def parseInt' (x : String) :=
   let intP := do
     let sign ← signP
     let n ← radixP (hod x)
     pure $ signum sign * n
-  runParserP intP label x
+  Zeptoparsec.run intP x
 
 /- Captures a valid signed Integer.
 If you're parsing from a file with name `name`, set `label := name`. -/
 structure Int' (x : String) where
   label : String := ""
-  parsed : Cached (parseInt' label) x := {}
+  parsed : Cached parseInt' x := {}
   doesParse : Except.isOk parsed.val := by trivial
 
 /- If you give me a parse result `pr` and somehow manage to prove that it's `isRight`, I'll give you a `Int`. -/
@@ -253,7 +244,7 @@ instance : Coe (Int' x) Int where
 /- Perhaps, construct a valid Integer.
 If you're parsing from a file with name `name`, set `label := name`. -/
 def mkInt' (x : String) (label : String := "") : Option (Int' x) :=
-  let pr : Cached (parseInt' label) x := {}
+  let pr : Cached parseInt' x := {}
   if isOk : Except.isOk pr.val then
     .some {parsed := pr, label := label}
   else
@@ -267,34 +258,26 @@ structure ConstInt where
 instance : ToString ConstInt where
   toString x := "(ConstInt " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
 
-def i32P : Parsec Char String Unit ConstInt := do
-    discard $ string "i32.const"
+def i32P : Parsec String ConstInt := do
+    discard $ pstring "i32.const"
     ignoreP
-    let ps ← getParserState
-    let ds ← many1' notSpecialP
-    let dss : String := String.mk ds
+    let ds ← many1 notSpecialP
+    let dss : String := String.mk $ Array.toList ds
     -- TODO: CHECK THAT PARSED INT FITS 32 BITS
     match mkInt' dss with
     | .some i => pure $ ConstInt.mk 32 $ extractInt i
-    | .none => @parseError (Parsec Char String Unit)
-                           String String Unit Char
-                           theInstance ConstInt
-                           $ .trivial ps.offset .none $ hints0 Char
+    | .none => fail "32-bit integer constant expected."
 
 -- TODO: copypasta is bad
-def i64P : Parsec Char String Unit ConstInt := do
-    discard $ string "i64.const"
+def i64P : Parsec String ConstInt := do
+    discard $ pstring "i64.const"
     ignoreP
-    let ps ← getParserState
-    let ds ← many1' notSpecialP
-    let dss : String := String.mk ds
-    -- TODO: CHECK THAT PARSED INT FITS 32 BITS
+    let ds ← many1 notSpecialP
+    let dss : String := String.mk $ Array.toList ds
+    -- TODO: CHECK THAT PARSED INT FITS 64 BITS
     match mkInt' dss with
     | .some i => pure $ ConstInt.mk 64 $ extractInt i
-    | .none => @parseError (Parsec Char String Unit)
-                           String String Unit Char
-                           theInstance ConstInt
-                           $ .trivial ps.offset .none $ hints0 Char
+    | .none => fail "64-bit integer constant expected."
 
 end Num.Int
 
@@ -316,7 +299,7 @@ namespace Num.Float
 open Nat
 open Digit
 
-def exponentP (radix : Radix) : Parsec Char String Unit Int := do
+def exponentP (radix : Radix) : Parsec String Int := do
   let _l ← match radix with
     | .ten => oneOf "eE".data
     | .sixteen => oneOf "pP".data
@@ -324,18 +307,19 @@ def exponentP (radix : Radix) : Parsec Char String Unit Int := do
   let exponent ← radDigitP .ten
   pure $ signum expsign * exponent
 
-def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
+def floatRadixP (radix : Radix) : Parsec String Float := do
   let _prefix ← radPrefixP radix
   let sign ← signP
   let s := Float.ofInt $ signum sign
   let an ← radixP radix
-  let _dot ← option $ string "."
+  let _dot ← option $ pstring "."
   let obs ← option $ radNumP radix
   let significand := s * (an.toFloat + match obs with
     | .none => 0
-    | .some bs => List.foldr (fun b acc => Id.run $ do
-      let rf := (radix : Nat).toFloat
-      (acc / rf) + b.toFloat / rf)  0.0 bs)
+    | .some bs => (Array.toList bs).foldr
+      (fun b acc => Id.run $ do
+        let rf := (radix : Nat).toFloat
+        (acc / rf) + b.toFloat / rf) 0.0)
   let exponent ← option $ exponentP radix
   pure $ match exponent, radix with
     | .none, _ => significand
@@ -346,12 +330,12 @@ def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
 -- TODO: Code generation for auxiliary structures and functions?!?!?! --
 ------------------------------------------------------------------------
 
-def parseFloat' (label : String) (input : String) :=
-  runParserP (floatRadixP $ hod input) label input
+def parseFloat' (input : String) :=
+  Zeptoparsec.run (floatRadixP $ hod input) input
 
 structure Float' (x : String) where
   label : String := ""
-  parsed : Cached (parseFloat' label) x := {}
+  parsed : Cached parseFloat' x := {}
   doesParse : Except.isOk parsed.val := by trivial
 
 def extractFloat (n : Float' x) : Float :=
@@ -369,7 +353,7 @@ instance : Coe (Float' x) Float where
 /- Perhaps, construct a valid Float.
 If you're parsing from a file with name `name`, set `label := name`. -/
 def mkFloat' (x : String) (label : String := "") : Option (Float' x) :=
-  let pr : Cached (parseFloat' label) x := {}
+  let pr : Cached parseFloat' x := {}
   if isOk : Except.isOk pr.val then
     .some {parsed := pr, label := label}
   else
@@ -384,34 +368,26 @@ instance : ToString ConstFloat where
   toString x := "(ConstFloat " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
 
 -- TODO: copypasta is bad
-def f32P : Parsec Char String Unit ConstFloat := do
-  discard $ string "f32.const"
+def f32P : Parsec String ConstFloat := do
+  discard $ pstring "f32.const"
   ignoreP
-  let ps ← getParserState
-  let ds ← many1' notSpecialP
-  let dss : String := String.mk ds
+  let ds ← many1 notSpecialP
+  let dss : String := String.mk $ Array.toList ds
   -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
   match mkFloat' dss with
   | .some f => pure $ ConstFloat.mk 32 $ extractFloat f
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance ConstFloat
-                        $ .trivial ps.offset .none $ hints0 Char
+  | .none => fail "Expected a 32-bit float."
 
 -- TODO: copypasta is bad
-def f64P : Parsec Char String Unit ConstFloat := do
-  discard $ string "f64.const"
+def f64P : Parsec String ConstFloat := do
+  discard $ pstring "f64.const"
   ignoreP
-  let ps ← getParserState
-  let ds ← many1' notSpecialP
-  let dss : String := String.mk ds
+  let ds ← many1 notSpecialP
+  let dss : String := String.mk $ Array.toList ds
   -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
   match mkFloat' dss with
   | .some f => pure $ ConstFloat.mk 64 $ extractFloat f
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance ConstFloat
-                        $ .trivial ps.offset .none $ hints0 Char
+  | .none => fail "Expected a 64-bit float"
 
 instance : ToString ConstFloat where
   toString x := "(ConstFloat (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"

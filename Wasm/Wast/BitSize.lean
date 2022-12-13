@@ -1,13 +1,6 @@
-import Megaparsec
-import Megaparsec.Char
-import Megaparsec.Common
-import Megaparsec.Parsec
+import Straume.Zeptoparsec
 
-open Megaparsec
-open Megaparsec.Char
-open Megaparsec.Common
-open Megaparsec.Parsec
-
+open Zeptoparsec
 
 /- Webassembly works on 32 and 64 bit ints and floats.
 We define BitSize inductive to then combine it with respective constructors. -/
@@ -75,5 +68,5 @@ instance : ToString BitSizeSIMD where
 
 -- End of boring instances
 
-def bitSizeP : Parsec Char String Unit BitSize :=
-  (string "32" *> pure BitSize.thirtyTwo) <|> (string "64" *> pure BitSize.sixtyFour)
+def bitSizeP : Parsec String BitSize :=
+  (pstring "32" *> pure BitSize.thirtyTwo) <|> (pstring "64" *> pure BitSize.sixtyFour)
