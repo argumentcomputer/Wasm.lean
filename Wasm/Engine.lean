@@ -113,7 +113,12 @@ mutual
     | .from_stack => match stack with
       | [] => .error .not_enough_stuff_on_stack
       | s :: rest => .ok (rest, s)
-    | .from_operation o => runOp locals stack o
+    | .from_operation o => do
+      -- Some instructions do not produce a value/do not change stack.
+      let stack' ← runOp locals stack o
+      match stack' with
+      | [] => .error .not_enough_stuff_on_stack
+      | s :: rest => .ok (rest, s)
     -- TODO: names are erased in production. See what do we want to do with this code path.
     | .by_name n => match n.name with
       | .none => .error .local_with_no_name_given
@@ -128,8 +133,9 @@ mutual
   partial def runOp (locals : List (Option String × Option StackEntry))
                     (stack : List StackEntry)
                     : Operation
-                    → Except EngineErrors (List StackEntry × StackEntry)
-    | .const _t n => pure (.num n :: stack, .num n)
+                    → Except EngineErrors (List StackEntry)
+    | .nop => pure stack
+    | .const _t n => pure $ .num n :: stack
     | .add _t g0 g1 => do
       let (stack', operand0) ← getSO locals stack g0
       let (stack1, operand1) ← getSO locals stack' g1
@@ -138,7 +144,7 @@ mutual
         | .i ⟨b0, i0⟩, .i ⟨_b1, i1⟩ => pure $ .num $ .i ⟨b0, i0 + i1⟩ -- TODO: check bitsize and overflow!
         | .f ⟨b0, f0⟩, .f ⟨_b1, f1⟩ => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- TODO: check bitsize and overflow!
         | _, _ => throw .param_type_incompatible
-      pure (res :: stack1, res)
+      pure (res :: stack1)
 end
 
 def runDo (_s : Store m)
@@ -162,8 +168,7 @@ def runDo (_s : Store m)
   let go (oσ : Except EngineErrors Stack) (x : Operation)
          : Except EngineErrors Stack := do
     let stack ← oσ
-    let naked_stack_and_result ← runOp locals (Stack.es stack) x
-    pure $ Stack.mk naked_stack_and_result.1
+    Stack.mk <$> runOp locals (Stack.es stack) x
   f.ops.foldl go $ .ok $ Stack.mk pσ.2
 
 def run (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors Stack :=

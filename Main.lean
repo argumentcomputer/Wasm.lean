@@ -315,6 +315,8 @@ def main : IO Unit := do
       (param i32)
       (result i32)
 
+      (i32.const 1)
+      (nop)
       (i32.add
         (i32.const 1499550000)
         (i32.add (i32.const 9000) (i32.const 17))

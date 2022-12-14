@@ -84,6 +84,7 @@ mutual
 -- TODO: replace "NumUniT" with something supporting ConstVec when implemented
 -- TODO: generalise Consts the same way Get is generalised so that i32.const can't be populated with ConstFloat!
   inductive Operation where
+  | nop
   | const : Type' → NumUniT → Operation
   | add : Type' → Get' → Get' → Operation
 end
@@ -99,6 +100,7 @@ mutual
     ) ++ ")"
 
   partial def operationToString : Operation → String
+    | .nop => "(Operation.nop)"
     | .const t n => s!"(Operation.const {t} {n})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
 
