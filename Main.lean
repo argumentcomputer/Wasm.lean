@@ -1,3 +1,5 @@
+import Straume.Zeptoparsec
+
 import Wasm
 import Wasm.Engine
 import Wasm.Wast.Code
@@ -6,8 +8,9 @@ import Wasm.Wast.Name
 import Wasm.Wast.Num
 import Wasm.Bytes
 import Wasm.Leb128
+import Wasm.Wast.Parser.Common
 
-import Megaparsec.Parsec
+open Zeptoparsec
 
 open Wasm.Bytes
 open Wasm.Engine
@@ -19,14 +22,13 @@ open Wasm.Wast.Expr
 open Wasm.Wast.Name
 open Wasm.Wast.Num
 open Wasm.Leb128
+open Wasm.Wast.Parser.Common
 
 open Num.Digit
 open Num.Nat
 open Num.Int
 open Num.Float
 open Wasm.Wast.Num.Uni
-
-open Megaparsec.Parsec
 
 def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name "kek") := mkName "kek"
 #eval sameName (mkName "lol") (mkName "lol")

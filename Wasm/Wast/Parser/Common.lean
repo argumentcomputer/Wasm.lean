@@ -6,9 +6,6 @@ open Zeptoparsec
 
 namespace Wasm.Wast.Parser.Common
 
-def sepEndBy' (p : Parsec α γ) (sep : Parsec α ψ) : Parsec α $ List γ :=
-  sorry
-
 def parses? (p : Parsec α γ) (x : α) : Bool :=
   match p (Iterator.mk x 0) with
   | ParseResult.success _ _ => true
@@ -70,8 +67,10 @@ def noneOf (excludes : List Char) : Parsec String Char := progressing $ fun it =
 def single (c : Char) :=
   oneOf [c]
 
-def cbetween (l : Char) (r : Char) (p : Parsec String β) : Parsec String β :=
-  single l *> p <* single r
+def cbetween (l : Char) (r : Char) (p : Parsec String β) [ToString β] : Parsec String β := do
+  let y ← single l *> p <* single r
+  dbg_trace s!"o> {y} <o"
+  pure y
 
 /- Obligatorily ignore some whitespace tokens. -/
 def ignoreP : Parsec String Unit :=
@@ -89,3 +88,18 @@ def optional (x : Option α) (d : α) : α :=
     match x with
     | .none => d
     | .some y => y
+
+def parseTestP (p : Parsec α γ) (xs : α) [ToString γ] : IO (Bool × Except Unit γ) :=
+  match Zeptoparsec.run p xs with
+  | .error e => IO.println s!"{e}" >>= fun _ => pure $ (false, .error ())
+  | .ok y => IO.println s!"{y}" >>= fun _ => pure $ (true, .ok y)
+
+mutual
+  partial def sepEndBy' (p : Parsec α γ) (sep : Parsec α ζ) [Alternative $ Parsec α] : Parsec α $ List γ := do
+    sepEndBy1' p sep <|> pure []
+
+  partial def sepEndBy1' (p : Parsec α γ) (sep : Parsec α ζ) [Alternative $ Parsec α] : Parsec α $ List γ := do
+    let y ← p
+    let ys ← (sep *> sepEndBy' p sep) <|> pure []
+    pure $ List.cons y ys
+end
