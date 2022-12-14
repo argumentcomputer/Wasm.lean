@@ -23,3 +23,13 @@ lean_exe wasm {
   supportInterpreter := true
   root := "Main"
 }
+
+lean_exe yati {
+  supportInterpreter := true
+  root := "Yati32"
+}
+
+lean_exe pico {
+  supportInterpreter := true
+  root := "Pico"
+}
