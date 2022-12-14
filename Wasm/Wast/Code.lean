@@ -83,9 +83,7 @@ instance : ToString (Get α) where
   ) ++ " : Get " ++ toString α ++ ")"
 
 def getConstP : Parsec String (Get x) := do
-  dbg_trace ">>>>>>>>> GET CONST P <<<<<<<<<"
   let _ ← pstring "("
-  dbg_trace "oOoO(1)OoOo"
   let resP := match x with
     | .i 32 => i32P >>= fun y => pure $ Get.const $ .inl y
     | .i 64 => i64P >>= fun y => pure $ Get.const $ .inl y
@@ -93,13 +91,10 @@ def getConstP : Parsec String (Get x) := do
     | .f 64 => f64P >>= fun y => pure $ Get.const $ .inr $ .inl y
   -- TODO: Understand why this bind fixed things!
   let y ← resP
-  dbg_trace s!"oOoO({y})OoOo"
   let _ ← pstring ")"
-  dbg_trace "-=-=<*>=-=-"
   pure y
 
 def getP : Parsec String (Get x) := do
-  dbg_trace "<<<<<<< GET P! >>>>>>>>"
   -- TODO: implement locals!!!
   getConstP <|> (pure $ Get.from_stack)
 
@@ -181,20 +176,15 @@ mutual
       (getP >>= (pure ∘ stripGet α))
 
   partial def opP : Parsec String Operation := do
-    dbg_trace "]]]] We're parsing operation [[[["
     let add ← addP
-    dbg_trace "]]]] {add} [[[["
     pure $ Operation.add add
 
   partial def opsP : Parsec String (List Operation) := do
-    dbg_trace "TRYING TO PARSE OPS"
     sepEndBy' opP owP
 
   partial def addP : Parsec String Add' := do
     cbetween '(' ')' do
-      dbg_trace ">>>>>> Running addP"
       owP
-      dbg_trace ">>>>>> 1"
       -- TODO: we'll use ps when we'll add more types into `Type'`.
       -- let _ps ← getParserState
       let add_t : Type' ←
@@ -202,14 +192,10 @@ mutual
         pstring "i64.add" *> (pure $ .i 64) <|>
         pstring "f32.add" *> (pure $ .f 32) <|>
         pstring "f64.add" *> (pure $ .f 64)
-      dbg_trace s!">>>>>> {add_t} IGNORING"
       ignoreP
-      dbg_trace ">>>>>> IGNORED"
       let (arg_1 : Get') ← get'ViaGetP add_t
-      dbg_trace s!">>>>>> GOT! {arg_1}"
       owP
       let (arg_2 : Get') ← get'ViaGetP add_t
-      dbg_trace s!">>>>>> GOT! {arg_2}"
       owP
       pure $ Add'.add add_t arg_1 arg_2
 end
@@ -246,24 +232,16 @@ def exportP : Parsec String String := do
 def genLocalP (x : String) : Parsec String Local := do
   discard $ pstring x
   -- TODO: We moved from `option'` to `option` here. Did we just wrote a bug?
-  dbg_trace "Beep {x}"
   let olabel ← (option ∘ attempt) (ignoreP *> nameP)
-  dbg_trace "Boop {x}"
   let typ ← ignoreP *> typeP
-  dbg_trace "Doop {x} : {typ}"
   pure $ match olabel with
   | .none =>
-    dbg_trace ">>: {typ} :<<"
     Local.mk 0 .none typ
   | .some l =>
-    dbg_trace ">>: {l} {typ} :<<"
     Local.mk 0 (.some l) typ
 
 def paramP : Parsec String Local := do
-  dbg_trace ">>:>> param <<:<<"
-  let y := genLocalP "param"
-  dbg_trace ">>:>> param1 <<:<<"
-  y
+  genLocalP "param"
 
 def localP : Parsec String Local :=
   genLocalP "local"
@@ -285,14 +263,9 @@ def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
   ).2.reverse
 
 def resultP : Parsec String Type' := do
-  dbg_trace "RESULT!"
   let _ ← pstring "result"
-  dbg_trace "IGNORE!"
   ignoreP
-  dbg_trace "IGNORED!"
-  let x ← typeP
-  dbg_trace s!"RESULT {x}"
-  pure x
+  typeP
 
 def brResultP : Parsec String Type' :=
   single '(' *> owP *> resultP <* owP <* single ')'

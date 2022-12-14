@@ -69,7 +69,6 @@ def single (c : Char) :=
 
 def cbetween (l : Char) (r : Char) (p : Parsec String β) [ToString β] : Parsec String β := do
   let y ← single l *> p <* single r
-  dbg_trace s!"o> {y} <o"
   pure y
 
 /- Obligatorily ignore some whitespace tokens. -/
