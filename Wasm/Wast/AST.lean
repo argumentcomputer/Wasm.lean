@@ -3,6 +3,7 @@ import Wasm.Wast.Num
 
 open Wasm.Wast.Num.Num.Int
 open Wasm.Wast.Num.Num.Float
+open Wasm.Wast.Num.Uni
 
 namespace Wasm.Wast.AST
 section AST
@@ -11,9 +12,9 @@ section AST
 namespace Type'
 
 inductive Type' where
-| f : BitSize → Type'
-| i : BitSize → Type'
--- | v : BitSizeSIMD → Type'
+  | f : BitSize → Type'
+  | i : BitSize → Type'
+  -- | v : BitSizeSIMD → Type'
   deriving BEq
 
 instance : ToString Type' where
@@ -21,6 +22,10 @@ instance : ToString Type' where
   | .f y => "(Type'.f " ++ toString y ++ ")"
   | .i y => "(Type'.i " ++ toString y ++ ")"
   -- | .v y => "(Type'.v " ++ toString y ++ ")"
+
+def numUniType : NumUniT → Type'
+  | .i x => .i x.bs
+  | .f x => .f x.bs
 
 end Type'
 open Type'
@@ -47,9 +52,6 @@ inductive Get (x : Type') where
 | from_stack
 | by_name : Local → Get x
 | by_index : Local → Get x
--- TODO: replace "Unit" placeholder with ConstVec when implemented
--- TODO: generalise Consts the same way Get is generalised so that Get' i32 can't be populated with ConstFloat!
-| const : (ConstInt ⊕ ConstFloat ⊕ Unit) → Get x
 
 instance : ToString (Get α) where
   toString x := "(" ++ (
@@ -57,11 +59,6 @@ instance : ToString (Get α) where
     | .from_stack => "Get.from_stack"
     | .by_name n => "Get.by_name " ++ toString n
     | .by_index i => "Get.by_index " ++ toString i
-    | .const ifu => "Get.const " ++ (match ifu with
-      | .inl i => "(Sum.inl " ++ toString i ++ ")"
-      | .inr $ .inl f => "(Sum.inr $ Sum.inl " ++ toString f ++ ")"
-      | .inr $ .inr () => sorry
-    )
   ) ++ " : Get " ++ toString α ++ ")"
 
 end Get
@@ -83,14 +80,12 @@ mutual
   | from_operation : Operation → Get'
   | by_name : Local → Get'
   | by_index : Local → Get'
-  | i_const : ConstInt → Get'
-  | f_const : ConstFloat → Get'
 
-  inductive Add' where
-  | add : Type' → Get' → Get' → Add'
-
+-- TODO: replace "NumUniT" with something supporting ConstVec when implemented
+-- TODO: generalise Consts the same way Get is generalised so that i32.const can't be populated with ConstFloat!
   inductive Operation where
-  | add : Add' → Operation
+  | const : Type' → NumUniT → Operation
+  | add : Type' → Get' → Get' → Operation
 end
 
 mutual
@@ -101,19 +96,13 @@ mutual
       | .from_operation o => s!".from_operation {operationToString o}"
       | .by_name n => ".by_name " ++ toString n
       | .by_index i => ".by_index " ++ toString i
-      | .i_const i => s!".i_const {i}"
-      | .f_const f => s!".f_const {f}"
     ) ++ ")"
 
   partial def operationToString : Operation → String
-    | ⟨y⟩ => s!"(Operation.add {addToString y})"
+    | .const t n => s!"(Operation.const {t} {n})"
+    | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
 
-  partial def addToString : Add' → String
-    | ⟨t, g1, g2⟩ => s!"(Add'.add {t} {getToString g1} {getToString g2})"
 end
-
-instance : ToString Add' where
-  toString := addToString
 
 instance : ToString Get' where
   toString := getToString
@@ -154,6 +143,14 @@ instance : ToString Module where
 
 end Module
 
+namespace Label
+
+/- Likely unused hehe -/
+structure Label where
+  frame : Int
+  kind : Byte --<-- this is an index of a 'continuation'
+
+end Label
 
 namespace Block
 end Block

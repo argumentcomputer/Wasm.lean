@@ -20,6 +20,7 @@ open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int
 open Wasm.Wast.Num.Num.Float
+open Wasm.Wast.Num.Uni
 
 
 /- Text parser for WASM AST. -/
@@ -43,56 +44,48 @@ def typeP : Parsec Char String Unit Type' := do
   | _ => parseError $ .trivial ps.offset .none $ hints0 Char
 
 
-def getConstP : Parsec Char String Unit (Get x) := do
-  Char.between '(' ')' do
-    match x with
-    | .i 32 => i32P >>= fun y => pure $ Get.const $ .inl y
-    | .i 64 => i64P >>= fun y => pure $ Get.const $ .inl y
-    | .f 32 => f32P >>= fun y => pure $ Get.const $ .inr $ .inl y
-    | .f 64 => f64P >>= fun y => pure $ Get.const $ .inr $ .inl y
-
-def getP : Parsec Char String Unit (Get x) := do
+def getP : Parsec Char String Unit (Get x) :=
   -- TODO: implement locals!!!
-  getConstP <|> (pure $ Get.from_stack)
+  pure $ Get.from_stack
 
 def stripGet (α : Type') (x : Get α) : Get' :=
   match x with
   | .from_stack => Get'.from_stack
   | .by_name n => Get'.by_name n
   | .by_index i => Get'.by_index i
-  | .const ifu => match ifu with
-    | .inl i => Get'.i_const i
-    | .inr $ .inl f => Get'.f_const f
-    | _ => sorry
 
-mutual
+def constP : Parsec Char String Unit Operation := attempt do
+  -- TODO: we'll use ps when we'll add more types into `Type'`.
+  -- let _ps ← getParserState
+  let x ← numUniTP
+  pure $ Operation.const (numUniType x) x
+
+ mutual
 
   partial def get'ViaGetP (α  : Type') : Parsec Char String Unit Get' :=
     attempt (opP >>= (pure ∘ Get'.from_operation)) <|>
     (getP >>= (pure ∘ stripGet α))
 
   partial def opP : Parsec Char String Unit Operation :=
-    addP >>= pure ∘ Operation.add
+    Char.between '(' ')' $ owP *> constP <|> addP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
 
-  partial def addP : Parsec Char String Unit Add' := do
-    Char.between '(' ')' do
-      owP
-      -- TODO: we'll use ps when we'll add more types into `Type'`.
-      -- let _ps ← getParserState
-      let add_t : Type' ←
-        string "i32.add" *> (pure $ .i 32) <|>
-        string "i64.add" *> (pure $ .i 64) <|>
-        string "f32.add" *> (pure $ .f 32) <|>
-        string "f64.add" *> (pure $ .f 64)
-      ignoreP
-      let (arg_1 : Get') ← get'ViaGetP add_t
-      owP
-      let (arg_2 : Get') ← get'ViaGetP add_t
-      owP
-      pure $ Add'.add add_t arg_1 arg_2
+  partial def addP : Parsec Char String Unit Operation := do
+    -- TODO: we'll use ps when we'll add more types into `Type'`.
+    -- let _ps ← getParserState
+    let add_t : Type' ←
+      string "i32.add" *> (pure $ .i 32) <|>
+      string "i64.add" *> (pure $ .i 64) <|>
+      string "f32.add" *> (pure $ .f 32) <|>
+      string "f64.add" *> (pure $ .f 64)
+    ignoreP
+    let (arg_1 : Get') ← get'ViaGetP add_t
+    owP
+    let (arg_2 : Get') ← get'ViaGetP add_t
+    owP
+    pure $ Operation.add add_t arg_1 arg_2
 end
 
 

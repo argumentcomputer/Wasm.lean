@@ -15,11 +15,6 @@ open Cached
 
 namespace Wasm.Engine
 
-/- Likely unused hehe -/
--- structure Label where
---   frame : Int
---   kind : Byte --<-- this is an index of a 'continuation'
-
 inductive EngineErrors where
 | not_enough_stuff_on_stack
 | param_type_incompatible
@@ -128,21 +123,20 @@ mutual
     | .by_index i => match locals.get? i.index with
       | .some (_, .some se)  => .ok (stack, se)
       | _ => .error $ .local_with_given_id_missing i.index
-    | .i_const i => .ok $ (stack, .num $ NumUniT.i i)
-    | .f_const f => .ok $ (stack, .num $ NumUniT.f f)
 
   -- TODO: there's a StateT somewhere here. Just sayin'
   partial def runOp (locals : List (Option String × Option StackEntry))
                     (stack : List StackEntry)
                     : Operation
                     → Except EngineErrors (List StackEntry × StackEntry)
-    | .add add' => match add' with | .add _t g0 g1 => do
+    | .const _t n => pure (.num n :: stack, .num n)
+    | .add _t g0 g1 => do
       let (stack', operand0) ← getSO locals stack g0
       let (stack1, operand1) ← getSO locals stack' g1
       let res ← match operand0, operand1 with
       | .num n0, .num n1 => match n0, n1 with
         | .i ⟨b0, i0⟩, .i ⟨_b1, i1⟩ => pure $ .num $ .i ⟨b0, i0 + i1⟩ -- TODO: check bitsize and overflow!
-        | .f ⟨b0, f0⟩, .f ⟨_b1, f1⟩ => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- check bitsize and overflow!
+        | .f ⟨b0, f0⟩, .f ⟨_b1, f1⟩ => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- TODO: check bitsize and overflow!
         | _, _ => throw .param_type_incompatible
       pure (res :: stack1, res)
 end

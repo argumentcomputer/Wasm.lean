@@ -417,6 +417,13 @@ inductive NumUniT where
 | i : ConstInt → NumUniT
 | f : ConstFloat → NumUniT
 
+instance : ToString NumUniT where
+  toString | .i ci => toString ci
+           | .f ci => toString ci
+
+def numUniTP : Parsec Char String Unit NumUniT :=
+  (.i <$> (i32P <|> i64P)) <|> (.f <$> (f32P <|> f64P))
+
 end Uni
 
 end Wasm.Wast.Num
