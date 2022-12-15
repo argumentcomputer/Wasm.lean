@@ -23,7 +23,10 @@ open Wasm.Wast.Num.Num.Float
 open Wasm.Wast.Num.Uni
 
 
-/- Text parser for WASM AST. -/
+/- Text parser for WASM AST.
+  The current intentions are to only parse S-expressions. This means
+  the interpreter will (probably) throw on naked/not well-formed instructions.
+-/
 namespace  Wasm.Wast.Parser
 section textparser
 
