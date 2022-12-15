@@ -67,6 +67,13 @@ def extractFuncIds (m : Module) : ByteArray :=
     m.func.foldl (fun acc _x => (acc ++ (b ∘ Nat.toUInt8) acc.data.size)) b0
   b 0x03 ++ uLeb128 funs.data.size ++ funs
 
+def extractAdd (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6a
+  | .i 64 => 0x7c
+  | .f 32 => 0x92
+  | .f 64 => 0xa0
+
 mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
   partial def extractGet' (x : Get') : ByteArray :=
@@ -76,13 +83,6 @@ mutual
     -- TODO: handle locals
     | _ => sorry
 
-  partial def extractAdd (α : Type') : ByteArray :=
-    b $ match α with
-    | .i 32 => 0x6a
-    | .i 64 => 0x7c
-    | .f 32 => 0x92
-    | .f 64 => 0xa0
-
   partial def extractOp (x : Operation) : ByteArray :=
     match x with
     | .nop => b 0x01
@@ -91,6 +91,10 @@ mutual
     | .add t g1 g2 =>
       -- Enter stackman
       extractGet' g1 ++ extractGet' g2 ++ extractAdd t
+    | .block ts ops =>
+      let bts := flatten $ ts.map (b ∘ ttoi)
+      let obs := bts ++ b ops.length.toUInt8 ++ flatten (ops.map extractOp)
+      b 0x02 ++ bts ++ lindex obs ++ b 0x0b
 end
 
 def extractOps (ops : List Operation) : List ByteArray :=

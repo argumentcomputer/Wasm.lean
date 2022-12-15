@@ -143,6 +143,8 @@ mutual
       | _ => .error $ .local_with_given_id_missing i.index
 
   -- TODO: there's a StateT somewhere here. Just sayin'
+  -- TODO: we're not typechecking at all!
+  -- TODO: can locals change when executing nested instructions?
   partial def runOp (locals : List (Option String × Option StackEntry))
                     (stack : List StackEntry)
                     : Operation
@@ -158,6 +160,17 @@ mutual
         | .f ⟨b0, f0⟩, .f ⟨_b1, f1⟩ => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- TODO: check bitsize and overflow!
         | _, _ => throw .param_type_incompatible
       pure (res :: stack1)
+    | .block ts ops => do
+      -- TODO: currently, we only support simple [] → [valuetype*] blocks,
+      -- not type indices. For this reason, we start the block execution
+      -- with an empty stack to simulate 0-arity.
+      let go σ op := do
+        let es ← σ
+        runOp locals es op
+      let es' ← ops.foldl go $ pure []
+      if resultsTypecheck ts es'
+        then pure $ es' ++ stack
+        else throw .stack_incompatible_with_results
 end
 
 def runDo (_s : Store m)

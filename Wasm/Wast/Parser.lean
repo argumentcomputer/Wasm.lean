@@ -37,6 +37,9 @@ open Operation
 open Func
 open Module
 
+def manyLispP (p : Parsec Char String Unit α) : Parsec Char String Unit (List α) :=
+  sepEndBy' (attempt (single '(' *> owP *> p <* owP <* single ')')) owP
+
 def typeP : Parsec Char String Unit Type' := do
   let ps ← getParserState
   let iorf ← (string "i" <|> string "f")
@@ -45,6 +48,15 @@ def typeP : Parsec Char String Unit Type' := do
   | "i" => pure $ Type'.i bits
   | "f" => pure $ Type'.f bits
   | _ => parseError $ .trivial ps.offset .none $ hints0 Char
+
+def resultP : Parsec Char String Unit (List Type') :=
+  string "result" *> ignoreP *> sepEndBy' typeP owP
+
+def brResultP : Parsec Char String Unit (List Type') :=
+  single '(' *> owP *> resultP <* owP <* single ')'
+
+def brResultsP : Parsec Char String Unit (List Type') :=
+  List.join <$> manyLispP resultP
 
 
 def getP : Parsec Char String Unit (Get x) :=
@@ -74,12 +86,19 @@ private def constP : Parsec Char String Unit Operation := do
 
   partial def opP : Parsec Char String Unit Operation :=
     Char.between '(' ')' $ owP *>
-      nopP <|> constP <|> addP
+      nopP <|> constP <|> addP <|> blockP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
 
-private partial def addP : Parsec Char String Unit Operation := do
+  partial def blockP : Parsec Char String Unit Operation := do
+    string "block" *> ignoreP
+    let ts ← brResultsP
+    let ops ← opsP
+    owP <* option' (string "end")
+    pure $ .block ts ops
+
+  partial def addP : Parsec Char String Unit Operation := do
     -- TODO: we'll use ps when we'll add more types into `Type'`.
     -- let _ps ← getParserState
     let add_t : Type' ←
@@ -118,9 +137,6 @@ def paramP : Parsec Char String Unit Local :=
 def localP : Parsec Char String Unit Local :=
   genLocalP "local"
 
-def manyLispP (p : Parsec Char String Unit α) : Parsec Char String Unit (List α) :=
-  sepEndBy' (attempt (single '(' *> owP *> p <* owP <* single ')')) owP
-
 def nilParamsP : Parsec Char String Unit (List Local) := do
   manyLispP paramP
 
@@ -133,15 +149,6 @@ def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
         (acc.1 + 1, {x with index := acc.1} :: acc.2)
     ) (start, [])
   ).2.reverse
-
-def resultP : Parsec Char String Unit (List Type') :=
-  string "result" *> ignoreP *> sepEndBy' typeP owP
-
--- def brResultP : Parsec Char String Unit Type' :=
---   single '(' *> owP *> resultP <* owP <* single ')'
-
-def brResultsP : Parsec Char String Unit (List Type') :=
-  List.join <$> manyLispP resultP
 
 def funcP : Parsec Char String Unit Func := do
   Char.between '(' ')' do

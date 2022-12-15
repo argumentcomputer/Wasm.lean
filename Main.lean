@@ -200,6 +200,18 @@ def main : IO Unit := do
   IO.println "* * *"
 
   IO.println "* * *"
+  let i := "block "
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP blockP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(block (result i32) (i32.const 1) end)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP opP i
+  IO.println "* * *"
+
+  IO.println "* * *"
   let i := "(func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))"
   -- unnamed param should have id 1
   IO.println s!"{i} is represented as:"
@@ -376,7 +388,7 @@ def main : IO Unit := do
       (param i32)
       (result i32 i32) (result i32 i32)
 
-      (i32.const 1)
+      (block (result i32) (i32.const 1))
       (nop)
       (i32.add
         (i32.const 1499550000)

@@ -64,6 +64,15 @@ instance : ToString (Get α) where
 end Get
 open Get
 
+namespace Label
+
+/- Likely unused hehe -/
+structure Label where
+  frame : Int
+  kind : Byte --<-- this is an index of a 'continuation'
+
+end Label
+
 
 /- TODO: Instructions are rigid WAT objects. If we choose to only support
 S-Expressions at this point, we don't need this concept. -/
@@ -81,12 +90,14 @@ mutual
   | by_name : Local → Get'
   | by_index : Local → Get'
 
+-- TODO: add support for function type indexes for blocktypes
 -- TODO: replace "NumUniT" with something supporting ConstVec when implemented
 -- TODO: generalise Consts the same way Get is generalised so that i32.const can't be populated with ConstFloat!
   inductive Operation where
   | nop
   | const : Type' → NumUniT → Operation
   | add : Type' → Get' → Get' → Operation
+  | block : List Type' → List Operation → Operation
 end
 
 mutual
@@ -103,6 +114,7 @@ mutual
     | .nop => "(Operation.nop)"
     | .const t n => s!"(Operation.const {t} {n})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
+    | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
 
 end
 
@@ -145,21 +157,6 @@ instance : ToString Module where
 
 end Module
 
-namespace Label
-
-/- Likely unused hehe -/
-structure Label where
-  frame : Int
-  kind : Byte --<-- this is an index of a 'continuation'
-
-end Label
-
-namespace Block
-end Block
-
-
-namespace Loop
-end Loop
 
 end AST
 end Wasm.Wast.AST
