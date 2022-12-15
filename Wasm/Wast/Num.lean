@@ -99,10 +99,7 @@ def withRangeDigitP (sat : Char → Bool) : Parsec Char String Unit Nat := do
   let x ← satisfy sat
   match parseDigit x with
   | .some y => pure y
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance Nat
-                        $ .trivial ps.offset .none $ hints0 Char
+  | .none => parseError $ .trivial ps.offset .none $ hints0 Char
 
 /- Parse out a decimal digit. -/
 def decDigitP : Parsec Char String Unit Nat := withRangeDigitP isDigit
@@ -267,26 +264,17 @@ structure ConstInt where
 instance : ToString ConstInt where
   toString x := "(ConstInt " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
 
-def i32P : Parsec Char String Unit ConstInt := do
-    discard $ string "i32.const"
-    ignoreP
-    let ps ← getParserState
-    let ds ← many1' notSpecialP
-    -- TODO: CHECK THAT PARSED INT FITS 32 BITS
-    match mkInt' ⟨ds⟩ with
-    | .some i => pure $ ConstInt.mk 32 $ extractInt i
-    | .none => parseError $ .trivial ps.offset .none $ hints0 Char
-
--- TODO: copypasta is bad
-def i64P : Parsec Char String Unit ConstInt := do
-    discard $ string "i64.const"
-    ignoreP
-    let ps ← getParserState
-    let ds ← many1' notSpecialP
-    -- TODO: CHECK THAT PARSED INT FITS 32 BITS
-    match mkInt' ⟨ds⟩ with
-    | .some i => pure $ ConstInt.mk 64 $ extractInt i
-    | .none => parseError $ .trivial ps.offset .none $ hints0 Char
+def iP : Parsec Char String Unit ConstInt := do
+  let bs ← string "i32.const" <|> string "i64.const"
+  ignoreP
+  let ps ← getParserState
+  let ds ← many1' notSpecialP
+  -- TODO: CHECK THAT PARSED INT FITS THE N BITS
+  match mkInt' ⟨ds⟩ with
+  | .some i =>
+    let nbs := if bs = "i32.const" then 32 else 64
+    pure $ ConstInt.mk nbs $ extractInt i
+  | .none => parseError $ .trivial ps.offset .none $ hints0 Char
 
 end Num.Int
 
@@ -375,26 +363,16 @@ structure ConstFloat where
 instance : ToString ConstFloat where
   toString x := "(ConstFloat " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
 
--- TODO: copypasta is bad
-def f32P : Parsec Char String Unit ConstFloat := do
-  discard $ string "f32.const"
+def fP : Parsec Char String Unit ConstFloat := do
+  let bs ← string "f32.const" <|> string "f64.const"
   ignoreP
   let ps ← getParserState
   let ds ← many1' notSpecialP
-  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
+  -- TODO: CHECK THAT PARSED FLOAT FITS THE N BITS
   match mkFloat' ⟨ds⟩ with
-  | .some f => pure $ ConstFloat.mk 32 $ extractFloat f
-  | .none => parseError $ .trivial ps.offset .none $ hints0 Char
-
--- TODO: copypasta is bad
-def f64P : Parsec Char String Unit ConstFloat := do
-  discard $ string "f64.const"
-  ignoreP
-  let ps ← getParserState
-  let ds ← many1' notSpecialP
-  -- TODO: CHECK THAT PARSED FLOAT FITS 64 BITS
-  match mkFloat' ⟨ds⟩ with
-  | .some f => pure $ ConstFloat.mk 64 $ extractFloat f
+  | .some f =>
+    let nbs := if bs = "f32.const" then 32 else 64
+    pure $ ConstFloat.mk nbs $ extractFloat f
   | .none => parseError $ .trivial ps.offset .none $ hints0 Char
 
 ------------------------------------------------------------------------
@@ -410,10 +388,6 @@ open Num.Int
 open Num.Float
 
 inductive NumUniT where
--- | i32 : NumType.int 32 → ConstInt → NumUniT
--- | i64 : NumType.int 64 → ConstInt → NumUniT
--- | f32 : NumType.float 32 → ConstFloat → NumUniT
--- | f64 : NumType.float 64 → ConstFloat → NumUniT
 | i : ConstInt → NumUniT
 | f : ConstFloat → NumUniT
 
@@ -422,7 +396,7 @@ instance : ToString NumUniT where
            | .f ci => toString ci
 
 def numUniTP : Parsec Char String Unit NumUniT :=
-  (.i <$> (i32P <|> i64P)) <|> (.f <$> (f32P <|> f64P))
+  .i <$> iP <|> .f <$> fP
 
 end Uni
 
