@@ -86,7 +86,9 @@ mutual
   partial def extractOp (x : Operation) : ByteArray :=
     match x with
     | .nop => b 0x01
-    | .const (.i _) (.i ci) => ByteArray.mk #[0x41] ++ sLeb128 ci.val
+    -- TODO: signed consts exist??? We should check the spec carefully.
+    | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
+    | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val
     | .const _ _ => sorry -- TODO: float binary encoding
     | .add t g1 g2 =>
       -- Enter stackman
@@ -99,6 +101,15 @@ mutual
       let bts := flatten $ ts.map (b ∘ ttoi)
       let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
       b 0x03 ++ bts ++ lindex obs ++ b 0x0b
+    | .if ts thens elses =>
+      let bts := flatten $ ts.map (b ∘ ttoi)
+      let bth := b thens.length.toUInt8 ++ flatten (thens.map extractOp)
+      let belse := if elses.isEmpty then b0
+        else
+          let bel := b elses.length.toUInt8 ++ flatten (elses.map extractOp)
+          b 0x05 ++ lindex bel
+      b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
+
 
 end
 

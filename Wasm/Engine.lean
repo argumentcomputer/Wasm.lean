@@ -19,6 +19,7 @@ inductive EngineErrors where
 | not_enough_stuff_on_stack
 | stack_incompatible_with_results
 | param_type_incompatible
+| typecheck_failed
 | local_with_no_name_given
 | local_with_given_name_missing : String → EngineErrors
 | local_with_given_id_missing : Nat → EngineErrors
@@ -30,6 +31,7 @@ instance : ToString EngineErrors where
   | .not_enough_stuff_on_stack => "not enough stuff on stack"
   | .stack_incompatible_with_results => "stack incompatible with result types"
   | .param_type_incompatible => "param type incompatible"
+  | .typecheck_failed => s!"typecheck failed"
   | .local_with_no_name_given => s!"local with no name given"
   | .local_with_given_id_missing i => s!"local #{i} not found"
   | .local_with_given_name_missing n => s!"local ``{n}'' not found"
@@ -152,10 +154,9 @@ mutual
     | .nop => pure stack
     | .const _t n => pure $ .num n :: stack
     | .add _t g0 g1 => do
-      let (stack', operand0) ← getSO locals stack g0
-      let (stack1, operand1) ← getSO locals stack' g1
+      let (stack', .num operand0) ← getSO locals stack g0
+      let (stack1, .num operand1) ← getSO locals stack' g1
       let res ← match operand0, operand1 with
-      | .num n0, .num n1 => match n0, n1 with
         | .i ⟨b0, i0⟩, .i ⟨_b1, i1⟩ => pure $ .num $ .i ⟨b0, i0 + i1⟩ -- TODO: check bitsize and overflow!
         | .f ⟨b0, f0⟩, .f ⟨_b1, f1⟩ => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- TODO: check bitsize and overflow!
         | _, _ => throw .param_type_incompatible
@@ -164,9 +165,7 @@ mutual
       -- TODO: currently, we only support simple [] → [valuetype*] blocks,
       -- not type indices. For this reason, we start the block execution
       -- with an empty stack to simulate 0-arity.
-      let go σ op := do
-        let es ← σ
-        runOp locals es op
+      let go σ op := do runOp locals (←σ) op
       let es' ← ops.foldl go $ pure []
       if resultsTypecheck ts es'
         then pure $ es' ++ stack
@@ -177,30 +176,33 @@ mutual
       if resultsTypecheck ts es'
         then pure $ es' ++ stack
         else throw .stack_incompatible_with_results
+    | .if ts thens elses => do
+      let (stack', .num cond) ← getSO locals stack .from_stack
+      match cond with
+      | .i ⟨32, n⟩ =>
+        let go σ op := do runOp locals (←σ) op
+        let es' ← (if n ≠ 0 then thens else elses).foldl go (pure [])
+        if resultsTypecheck ts es'
+          then pure $ es' ++ stack'
+          else throw .stack_incompatible_with_results
+      | _ => throw .typecheck_failed
 end
 
 def runDo (_s : Store m)
           (f : FunctionInstance m)
           (σ : Stack)
           : Except EngineErrors Stack := do
-  let bite acc x :=
-    match acc with
-    | .error _ => acc
-    | .ok cont => match cont.1.es with
-      | [] => .error .not_enough_stuff_on_stack -- TODO: Better errors lol lol
-      | y :: rest => if stackEntryTypecheck x.type y then
-        .ok (Stack.mk rest, y :: cont.2)
-      else
-        .error .param_type_incompatible
+  let bite acc x := do
+    match (←acc).1.es with
+    | [] => .error .not_enough_stuff_on_stack
+    | y :: rest =>
+      if stackEntryTypecheck x.type y
+      then .ok (⟨rest⟩, y :: (←acc).2)
+      else .error .param_type_incompatible
   let pσ ← f.params.foldl bite $ .ok (σ, [])
-  let locals := (f.params ++ f.locals).map $
-    fun l => match l.name with
-      | .some name => (.some name, pσ.2.get? l.index)
-      | .none => (.none, pσ.2.get? l.index)
-  let go (oσ : Except EngineErrors Stack) (x : Operation)
-         : Except EngineErrors Stack := do
-    let stack ← oσ
-    Stack.mk <$> runOp locals (Stack.es stack) x
+  let locals := (f.params ++ f.locals).map
+    fun l => (l.name, pσ.2.get? l.index)
+  let go oσ x:= do Stack.mk <$> runOp locals (←oσ).es x
   f.ops.foldl go $ .ok $ Stack.mk pσ.2
 
 -- This is sort of a debug function, returning the full resulting stack instead

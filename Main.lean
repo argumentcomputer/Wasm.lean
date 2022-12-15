@@ -200,15 +200,15 @@ def main : IO Unit := do
   IO.println "* * *"
 
   IO.println "* * *"
-  let i := "block "
-  IO.println s!"{i} is represented as:"
-  void $ parseTestP blockP i
-  IO.println "* * *"
-
-  IO.println "* * *"
   let i := "(block (result i32) (i32.const 1) end)"
   IO.println s!"{i} is represented as:"
   void $ parseTestP opP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "if (result i32) then (i32.const 42) else (i32.const 9)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP ifP i
   IO.println "* * *"
 
   IO.println "* * *"
@@ -388,8 +388,8 @@ def main : IO Unit := do
       (param i32)
       (result i32 i32) (result i32 i32)
 
-      (block (result i32) (i32.const 1))
-      (nop)
+      (block (result i32) (i32.const 0))
+      (if (result i32) then (i32.const 8) else (i32.const 2))
       (i32.add
         (i32.const 1499550000)
         (i32.add (i32.const 9000) (i32.const 17))
