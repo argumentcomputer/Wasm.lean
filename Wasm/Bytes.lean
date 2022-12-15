@@ -74,7 +74,7 @@ mutual
     | .from_stack => b0
     | .from_operation o => extractOp o
     -- TODO: handle locals
-    | _ => b0
+    | _ => sorry
 
   partial def extractAdd (α : Type') : ByteArray :=
     b $ match α with
@@ -88,7 +88,7 @@ mutual
     | .nop => b 0x01
     -- TODO: signed consts exist??? We should check the spec carefully.
     | .const (.i _) (.i ci) => ByteArray.mk #[0x41] ++ sLeb128 ci.val
-    | .const _ _ => b0 -- TODO: float binary encoding
+    | .const _ _ => sorry -- TODO: float binary encoding
     | .add t g1 g2 =>
       -- Enter stackman
       extractGet' g1 ++ extractGet' g2 ++ extractAdd t
@@ -115,9 +115,9 @@ def extractFuncs (fs : List Func) : ByteArray :=
   header ++ (lindex $ fn ++ fbs)
 
 -- TODO
-def extractModName (_ : Module) := b0
+def extractModName (_ : Module) : ByteArray := sorry
 -- TODO
-def extractFuncNames (_ : List Func) := b0
+def extractFuncNames (_ : List Func) : ByteArray := sorry
 
 /-
                        ___________________________________________________
