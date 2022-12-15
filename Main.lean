@@ -143,8 +143,8 @@ def main : IO Unit := do
   IO.println "* * *"
 
   IO.println "* * *"
-  IO.println "(i32.add (i32.const 42)) is represented as:"
-  void $ parseTestP addP "(i32.add (i32.const 42))"
+  IO.println "i32.add (i32.const 42) is represented as:"
+  void $ parseTestP addP "i32.add (i32.const 42)"
   IO.println "* * *"
 
   IO.println "* * *"
@@ -174,7 +174,7 @@ def main : IO Unit := do
   IO.println "* * *"
   let i := "( result i32)"
   IO.println s!"{i} is represented as:"
-  void $ parseTestP brResultP i
+  void $ parseTestP brResultsP i
   IO.println "* * *"
 
   -- IO.println "* * *"
@@ -374,7 +374,7 @@ def main : IO Unit := do
     (func $main (export \"main\")
       (param $x i32)
       (param i32)
-      (result i32)
+      (result i32 i32) (result i32 i32)
 
       (i32.const 1)
       (nop)
@@ -413,11 +413,8 @@ def main : IO Unit := do
       let eres := run store fid $ Stack.mk [se_zero, se_zero]
       match eres with
       | .ok stack2 => match stack2.es with
-        | x :: _ => match x with
-          | .num universal_number => match universal_number with
-            | .i i => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{i}"
-            | _ => "FAIL"
-        | _ => "UNEXPECTED RESULT"
+        | [] => "UNEXPECTED RESULT"
+        | xs => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{xs}"
       | .error ee => s!"FAILED TO RUN `main` CORRECTLY: {ee}"
 
   let mut x := 0

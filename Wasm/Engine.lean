@@ -17,6 +17,7 @@ namespace Wasm.Engine
 
 inductive EngineErrors where
 | not_enough_stuff_on_stack
+| stack_incompatible_with_results
 | param_type_incompatible
 | local_with_no_name_given
 | local_with_given_name_missing : String → EngineErrors
@@ -27,6 +28,7 @@ inductive EngineErrors where
 instance : ToString EngineErrors where
   toString x := match x with
   | .not_enough_stuff_on_stack => "not enough stuff on stack"
+  | .stack_incompatible_with_results => "stack incompatible with result types"
   | .param_type_incompatible => "param type incompatible"
   | .local_with_no_name_given => s!"local with no name given"
   | .local_with_given_id_missing i => s!"local #{i} not found"
@@ -40,6 +42,9 @@ instance : Inhabited EngineErrors where
 inductive StackEntry where
 | num : NumUniT → StackEntry
 
+instance : ToString StackEntry where
+  toString | .num n => s!"(StackEntry {n})"
+
 /- TODO: I forgot what sort of other stacks are in standard lol, but ok. -/
 structure Stack where
   es : List StackEntry
@@ -51,7 +56,7 @@ structure FunctionInstance (x : Module) where
   name : Option String
   export_ : Option String
   params : List Local
-  result : List Type'
+  results : List Type'
   locals : List Local -- These locals are indexed.
   index : Nat
   ops : List Operation
@@ -64,7 +69,7 @@ def instantiateFs (m : Module) : List (FunctionInstance m) :=
     let fi := FunctionInstance.mk f.name
                                   f.export_
                                   pl.1
-                                  f.result
+                                  f.results
                                   pl.2
                                   0
                                   f.ops
@@ -87,17 +92,25 @@ def funcByName (s : Store m) (x : String) : Option $ FunctionInstance m :=
 def fidByName (s : Store m) (x : String) : Option Nat :=
   funcByName s x >>= pure ∘ FunctionInstance.index
 
-def paramTypecheck (x : Local) (y : StackEntry) :=
+def stackEntryTypecheck (x : Type') (y : StackEntry) :=
   match y with
   | .num nn => match nn with
-    | .i n => match x.type with
+    | .i n => match x with
       | .i 32 => n.bs == 32
       | .i 64 => n.bs == 64
       | _ => false
-    | .f n => match x.type with
+    | .f n => match x with
       | .f 32 => n.bs == 32
       | .f 64 => n.bs == 64
       | _ => false
+
+-- Checks that the given numerical values correspond to the given
+-- types both in the type of each respective value and in length.
+def resultsTypecheck : List Type' → List StackEntry → Bool
+  | [], [] => true
+  | t :: ts, e :: es =>
+    if stackEntryTypecheck t e then resultsTypecheck ts es else false
+  | _, _ => false
 
 def findLocalByName? (ls : List (Option String × Option StackEntry))
                     (x : String) : Option StackEntry :=
@@ -156,7 +169,7 @@ def runDo (_s : Store m)
     | .error _ => acc
     | .ok cont => match cont.1.es with
       | [] => .error .not_enough_stuff_on_stack -- TODO: Better errors lol lol
-      | y :: rest => if paramTypecheck x y then
+      | y :: rest => if stackEntryTypecheck x.type y then
         .ok (Stack.mk rest, y :: cont.2)
       else
         .error .param_type_incompatible
@@ -171,7 +184,18 @@ def runDo (_s : Store m)
     Stack.mk <$> runOp locals (Stack.es stack) x
   f.ops.foldl go $ .ok $ Stack.mk pσ.2
 
-def run (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors Stack :=
+-- This is sort of a debug function, returning the full resulting stack instead
+-- of just the values specified in the result fields.
+def runFullStack (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors Stack :=
   match s.func.get? fid with
   | .none => .error .function_not_found
   | .some f => runDo s f σ
+
+def run (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors Stack :=
+  match s.func.get? fid with
+  | .none => .error .function_not_found
+  | .some f => do
+    let rstack ← runDo s f σ
+    if resultsTypecheck f.results rstack.es
+      then pure rstack
+      else throw .stack_incompatible_with_results

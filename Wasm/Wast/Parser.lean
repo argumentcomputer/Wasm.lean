@@ -131,14 +131,14 @@ def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
     ) (start, [])
   ).2.reverse
 
-def resultP : Parsec Char String Unit Type' :=
-  string "result" *> ignoreP *> typeP
+def resultP : Parsec Char String Unit (List Type') :=
+  string "result" *> ignoreP *> sepEndBy' typeP owP
 
-def brResultP : Parsec Char String Unit Type' :=
-  single '(' *> owP *> resultP <* owP <* single ')'
+-- def brResultP : Parsec Char String Unit Type' :=
+--   single '(' *> owP *> resultP <* owP <* single ')'
 
 def brResultsP : Parsec Char String Unit (List Type') :=
-  manyLispP resultP
+  List.join <$> manyLispP resultP
 
 def funcP : Parsec Char String Unit Func := do
   Char.between '(' ')' do

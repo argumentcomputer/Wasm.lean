@@ -123,12 +123,12 @@ structure Func where
   export_ : Option String
   -- TODO: Heterogenous lists so that we can promote Type'?
   params : List Local
-  result : List Type'
+  results : List Type'
   locals : List Local
   ops : List Operation
 
 instance : ToString Func where
-  toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.result} {x.locals} {x.ops})"
+  toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.results} {x.locals} {x.ops})"
 
 end Func
 open Func

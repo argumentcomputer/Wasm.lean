@@ -52,9 +52,9 @@ def extractTypes (m : Module) : ByteArray :=
     -- TODO: check if we support > 255 params. Do the same for each length and size entries!
     let header := ByteArray.mk #[0x60, params.length.toUInt8]
     let res := params.foldl Append.append header
-    res ++ (match x.result with --TODO: figure out and support multi-output functions
+    res ++ (match x.results with --TODO: test multi-result functions
     | List.nil => b 0x00
-    | ts => uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
+    | ts => b 0x7b ++ uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
     )
   sigs.foldl
     Append.append $
