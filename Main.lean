@@ -9,9 +9,6 @@ import Wasm.Leb128
 
 import Megaparsec.Parsec
 
-import Yatima
-import Yatima.Compiler.Compiler
-
 open Wasm.Bytes
 open Wasm.Engine
 open Wasm.Wast.Code
@@ -30,9 +27,6 @@ open Num.Float
 open Wasm.Wast.Num.Uni
 
 open Megaparsec.Parsec
-
-open Yatima
-open Yatima.Compiler
 
 -- def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name "kek") := mkName "kek"
 -- #eval sameName (mkName "lol") (mkName "lol")
@@ -429,12 +423,5 @@ def main : IO Unit := do
   let x1 := 1499559017
   IO.println s!"BE who you want to be: {x1.toByteArrayBE}..."
   IO.println s!"LEarn lean for fun and profit: {x1.toByteArrayLE}!"
-
-  IO.println s!"Okay, now let's try to compile some stuff to Yatima. :O"
-  let cs ← compile $ System.FilePath.mk "./Yati32.lean"
-  match cs with
-  | .error ce => IO.println s!"Compile error: {ce}."
-  | .ok _cr => IO.println s!"Success."
-  IO.println s!"So where do we go from here?.."
 
   pure ()
