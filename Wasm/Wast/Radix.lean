@@ -8,8 +8,9 @@ open Megaparsec.Parsec
 
 /- Webassembly supports two radixes: 10 and 16, which we naively implement here by force. -/
 inductive Radix :=
-| ten
-| sixteen
+  | ten
+  | sixteen
+  deriving Repr
 
 /- 10 *is* .ten -/
 instance : OfNat Radix 10 where
@@ -18,6 +19,9 @@ instance : OfNat Radix 10 where
 /- 16 *is* .sixteen -/
 instance : OfNat Radix 16 where
   ofNat := .sixteen
+
+instance : ToString Radix where
+  toString x := toString $ repr x
 
 /- For something to depend on .ten means that it can just as well depend on 10. -/
 instance : CoeDep Radix Radix.ten Nat where
@@ -38,6 +42,9 @@ instance : Ord Radix where
   compare x y := Ord.compare (x : Nat) (y : Nat)
 
 /- If something starts with "0x", then it's a hex. -/
+def baseP : Parsec Char String Unit Radix :=
+  (lookAhead (string "0x") *> pure .sixteen) <|> pure .ten
+
 def isHex? (x : String) : Bool :=
   @parses? Char String Unit String (lookAhead $ string "0x") x
 

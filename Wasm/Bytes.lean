@@ -86,7 +86,6 @@ mutual
   partial def extractOp (x : Operation) : ByteArray :=
     match x with
     | .nop => b 0x01
-    -- TODO: signed consts exist??? We should check the spec carefully.
     | .const (.i _) (.i ci) => ByteArray.mk #[0x41] ++ sLeb128 ci.val
     | .const _ _ => sorry -- TODO: float binary encoding
     | .add t g1 g2 =>
@@ -115,9 +114,9 @@ def extractFuncs (fs : List Func) : ByteArray :=
   header ++ (lindex $ fn ++ fbs)
 
 -- TODO
-def extractModName (_ : Module) : ByteArray := sorry
+def extractModName (_ : Module) : ByteArray := b0
 -- TODO
-def extractFuncNames (_ : List Func) : ByteArray := sorry
+def extractFuncNames (_ : List Func) : ByteArray := b0
 
 /-
                        ___________________________________________________

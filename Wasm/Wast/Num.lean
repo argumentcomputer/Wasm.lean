@@ -223,6 +223,7 @@ def parseInt' (label : String) (x : String) :=
   let intP := do
     let sign ← signP
     let n ← radixP (hod x)
+    eof -- the spec requires that the whole number is well-formed
     pure $ signum sign * n
   runParserP intP label x
 

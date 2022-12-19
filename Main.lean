@@ -138,8 +138,8 @@ def main : IO Unit := do
   IO.println "* * *"
 
   IO.println "* * *"
-  IO.println "i32.const 42 is represented as:"
-  void $ parseTestP iP "i32.const 42"
+  IO.println "i32.const -1 is represented as:"
+  void $ parseTestP iP "i32.const -1"
   IO.println "* * *"
 
   IO.println "* * *"

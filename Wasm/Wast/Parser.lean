@@ -57,10 +57,10 @@ def stripGet (α : Type') (x : Get α) : Get' :=
   | .by_name n => Get'.by_name n
   | .by_index i => Get'.by_index i
 
-def nopP : Parsec Char String Unit Operation :=
+private def nopP : Parsec Char String Unit Operation :=
   string "nop" *> pure .nop
 
-def constP : Parsec Char String Unit Operation := do
+private def constP : Parsec Char String Unit Operation := do
   -- TODO: we'll use ps when we'll add more types into `Type'`.
   -- let _ps ← getParserState
   let x ← numUniTP
@@ -79,7 +79,7 @@ def constP : Parsec Char String Unit Operation := do
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
 
-  partial def addP : Parsec Char String Unit Operation := do
+private partial def addP : Parsec Char String Unit Operation := do
     -- TODO: we'll use ps when we'll add more types into `Type'`.
     -- let _ps ← getParserState
     let add_t : Type' ←
