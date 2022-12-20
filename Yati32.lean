@@ -40,5 +40,3 @@ def go : Int := Id.run $ do
             | _ => (-3 : Int)
         | _ => (-4 : Int)
       | _ => (-5 : Int)
-
-def main := IO.println s!"{go}"
