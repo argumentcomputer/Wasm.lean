@@ -19,21 +19,18 @@ open MonadParsec
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int
-open Wasm.Wast.Num.Num.Float
 
 namespace Wasm.Wast.Code
 
 namespace Type'
 
 inductive Type' where
-| f : BitSize → Type'
 | i : BitSize → Type'
 -- | v : BitSizeSIMD → Type'
   deriving BEq
 
 instance : ToString Type' where
   toString x := match x with
-  | .f y => "(Type'.f " ++ toString y ++ ")"
   | .i y => "(Type'.i " ++ toString y ++ ")"
   -- | .v y => "(Type'.v " ++ toString y ++ ")"
 
@@ -43,7 +40,6 @@ def typeP : Parsec Char String Unit Type' := do
   let bits ← bitSizeP
   match iorf with
   | "i" => pure $ Type'.i bits
-  | "f" => pure $ Type'.f bits
   | _ => @parseError (Parsec Char String Unit)
                       String String Unit Char
                       theInstance Type'
@@ -77,8 +73,8 @@ inductive Get (x : Type') where
 | by_name : Local → Get x
 | by_index : Local → Get x
 -- TODO: replace "Unit" placeholder with ConstVec when implemented
--- TODO: generalise Consts the same way Get is generalised so that Get' i32 can't be populated with ConstFloat!
-| const : (ConstInt ⊕ ConstFloat ⊕ Unit) → Get x
+-- TODO: generalise Consts the same way Get is generalised so that Get' i32 can't be populated with ConstVec!
+| const : (ConstInt ⊕ Unit) → Get x
 
 instance : ToString (Get α) where
   toString x := "(" ++ (
@@ -88,8 +84,7 @@ instance : ToString (Get α) where
     | .by_index i => "Get.by_index " ++ toString i
     | .const ifu => "Get.const " ++ (match ifu with
       | .inl i => "(Sum.inl " ++ toString i ++ ")"
-      | .inr $ .inl f => "(Sum.inr $ Sum.inl " ++ toString f ++ ")"
-      | .inr $ .inr () => "(Sum.inr $ Sum.inr \"sorry\")"
+      | .inr () => "(Sum.inr $ Sum.inr \"sorry\")"
     )
   ) ++ " : Get " ++ toString α ++ ")"
 
@@ -98,8 +93,6 @@ def getConstP : Parsec Char String Unit (Get x) := do
     match x with
     | .i 32 => i32P >>= fun y => pure $ Get.const $ .inl y
     | .i 64 => i64P >>= fun y => pure $ Get.const $ .inl y
-    | .f 32 => f32P >>= fun y => pure $ Get.const $ .inr $ .inl y
-    | .f 64 => f64P >>= fun y => pure $ Get.const $ .inr $ .inl y
 
 def getP : Parsec Char String Unit (Get x) := do
   -- TODO: implement locals!!!
@@ -128,7 +121,6 @@ mutual
   | by_name : Local → Get'
   | by_index : Local → Get'
   | i_const : ConstInt → Get'
-  | f_const : ConstFloat → Get'
 
   inductive Add' where
   | add : Type' → Get' → Get' → Add'
@@ -146,7 +138,6 @@ mutual
       | .by_name n => ".by_name " ++ toString n
       | .by_index i => ".by_index " ++ toString i
       | .i_const i => s!".i_const {i}"
-      | .f_const f => s!".f_const {f}"
     ) ++ ")"
 
   partial def operationToString : Operation → String
@@ -172,7 +163,6 @@ def stripGet (α : Type') (x : Get α) : Get' :=
   | .by_index i => Get'.by_index i
   | .const ifu => match ifu with
     | .inl i => Get'.i_const i
-    | .inr $ .inl f => Get'.f_const f
     | _ => Get'.from_stack -- TODO: this should be "sorry". I replaced it with a placeholder from_stack because yatima-lang doesn't support sorryAx.
 mutual
 
@@ -193,10 +183,7 @@ mutual
       -- let _ps ← getParserState
       let add_t : Type' ←
         string "i32.add" *> (pure $ .i 32) <|>
-        string "i64.add" *> (pure $ .i 64) <|>
-        string "f32.add" *> (pure $ .f 32) <|>
-        string "f64.add" *> (pure $ .f 64)
-      ignoreP
+        string "i64.add" *> (pure $ .i 64)
       let (arg_1 : Get') ← get'ViaGetP add_t
       owP
       let (arg_2 : Get') ← get'ViaGetP add_t

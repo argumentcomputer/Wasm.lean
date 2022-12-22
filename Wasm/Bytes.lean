@@ -31,8 +31,6 @@ def ttoi (x : Type') : UInt8 :=
   match x with
   | .i 32 => 0x7f
   | .i 64 => 0x7e
-  | .f 32 => 0x7d
-  | .f 64 => 0x7c
 
 def copp [Append α] : α → α → α :=
   fun a x => x ++ a
@@ -81,8 +79,6 @@ mutual
     b $ match α with
     | .i 32 => 0x6a
     | .i 64 => 0x7c
-    | .f 32 => 0x92
-    | .f 64 => 0xa0
 
   partial def extractOp (x : Operation) : ByteArray :=
     match x with

@@ -10,7 +10,9 @@ open Megaparsec.Parsec
 
 
 /- Webassembly works on 32 and 64 bit ints and floats.
-We define BitSize inductive to then combine it with respective constructors. -/
+We don't support floats yet.
+We define BitSize inductive to then combine it with respective constructors.
+-/
 inductive BitSize :=
 | thirtyTwo
 | sixtyFour

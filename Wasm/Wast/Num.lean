@@ -25,10 +25,13 @@ namespace Wasm.Wast.Num
 namespace NumType
 
 /- Webassembly works on 32 and 64 bit ints and floats.
-We define NumType inductive as a combination of int and float constructors with BitSize. -/
+We define int constructor for NumType.
+It takes a BitSize as an argument.
+
+We use this NumType on the off-chance if we ever want to support floats.
+-/
 inductive NumType :=
 | int : BitSize → NumType
-| float : BitSize → NumType
 
 end NumType
 
@@ -298,143 +301,17 @@ def i64P : Parsec Char String Unit ConstInt := do
 
 end Num.Int
 
-----------------------------------------------------
---------------------- FLOATS -----------------------
-----------------------------------------------------
-
-/-
-
-Reference:
-https://webassembly.github.io/spec/core/text/values.html#floating-point
-
-TODO: represent `inf`, `nan`, and `nan:0x...`
-
--/
-
-namespace Num.Float
-
-open Nat
-open Digit
-
-def exponentP (radix : Radix) : Parsec Char String Unit Int := do
-  let _l ← match radix with
-    | .ten => oneOf "eE".data
-    | .sixteen => oneOf "pP".data
-  let expsign ← signP
-  let exponent ← radDigitP .ten
-  pure $ signum expsign * exponent
-
-def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
-  let _prefix ← radPrefixP radix
-  let sign ← signP
-  let s := Float.ofInt $ signum sign
-  let an ← radixP radix
-  let _dot ← option $ string "."
-  let obs ← option $ radNumP radix
-  let significand := s * (an.toFloat + match obs with
-    | .none => 0
-    | .some bs => List.foldr (fun b acc => Id.run $ do
-      let rf := (radix : Nat).toFloat
-      (acc / rf) + b.toFloat / rf)  0.0 bs)
-  let exponent ← option $ exponentP radix
-  pure $ match exponent, radix with
-    | .none, _ => significand
-    | .some exp, .ten => significand * 10^(Float.ofInt exp)
-    | .some exp, .sixteen => significand * 2^(Float.ofInt exp)
-
 ------------------------------------------------------------------------
 -- TODO: Code generation for auxiliary structures and functions?!?!?! --
 ------------------------------------------------------------------------
-
-def parseFloat' (label : String) (input : String) :=
-  runParserP (floatRadixP $ hod input) label input
-
-structure Float' (x : String) where
-  label : String := ""
-  parsed : Cached (parseFloat' label) x := {}
-  doesParse : Except.isOk parsed.val := by trivial
-
-def extractFloat (n : Float' x) : Float :=
-  let doesParse := n.doesParse
-  match npBranch : n.parsed.val with
-  | .ok y => y
-  | .error _ => by
-    unfold Except.isOk at doesParse
-    rw [npBranch] at doesParse
-    contradiction
-
-instance : Coe (Float' x) Float where
-  coe n := extractFloat n
-
-/- Perhaps, construct a valid Float.
-If you're parsing from a file with name `name`, set `label := name`. -/
-def mkFloat' (x : String) (label : String := "") : Option (Float' x) :=
-  let pr : Cached (parseFloat' label) x := {}
-  if isOk : Except.isOk pr.val then
-    .some {parsed := pr, label := label}
-  else
-    .none
-
-structure ConstFloat where
-  bs : BitSize
-  val : Float
-  deriving BEq
-
-instance : ToString ConstFloat where
-  toString x := "(ConstFloat " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
-
--- TODO: copypasta is bad
-def f32P : Parsec Char String Unit ConstFloat := do
-  discard $ string "f32.const"
-  ignoreP
-  let ps ← getParserState
-  let ds ← many1' notSpecialP
-  let dss : String := String.mk ds
-  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
-  match mkFloat' dss with
-  | .some f => pure $ ConstFloat.mk 32 $ extractFloat f
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance ConstFloat
-                        $ .trivial ps.offset .none $ hints0 Char
-
--- TODO: copypasta is bad
-def f64P : Parsec Char String Unit ConstFloat := do
-  discard $ string "f64.const"
-  ignoreP
-  let ps ← getParserState
-  let ds ← many1' notSpecialP
-  let dss : String := String.mk ds
-  -- TODO: CHECK THAT PARSED FLOAT FITS 32 BITS
-  match mkFloat' dss with
-  | .some f => pure $ ConstFloat.mk 64 $ extractFloat f
-  | .none => @parseError (Parsec Char String Unit)
-                        String String Unit Char
-                        theInstance ConstFloat
-                        $ .trivial ps.offset .none $ hints0 Char
-
-instance : ToString ConstFloat where
-  toString x := "(ConstFloat (" ++ (toString (x.bs : Nat)) ++ ") " ++ toString x.val ++ ")"
-
-------------------------------------------------------------------------
--- TODO: Code generation for auxiliary structures and functions?!?!?! --
-------------------------------------------------------------------------
-
-end Num.Float
 
 namespace Uni
 
 open NumType
 open Num.Int
-open Num.Float
 
 inductive NumUniT where
--- | i32 : NumType.int 32 → ConstInt → NumUniT
--- | i64 : NumType.int 64 → ConstInt → NumUniT
--- | f32 : NumType.float 32 → ConstFloat → NumUniT
--- | f64 : NumType.float 64 → ConstFloat → NumUniT
 | i : ConstInt → NumUniT
-| f : ConstFloat → NumUniT
 
 end Uni
 

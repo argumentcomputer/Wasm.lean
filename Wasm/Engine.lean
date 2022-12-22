@@ -96,11 +96,6 @@ def paramTypecheck (x : Local) (y : StackEntry) :=
     | .i n => match x.type with
       | .i 32 => n.bs == 32
       | .i 64 => n.bs == 64
-      | _ => false
-    | .f n => match x.type with
-      | .f 32 => n.bs == 32
-      | .f 64 => n.bs == 64
-      | _ => false
 
 def findLocalByName? (ls : List (Option String × Option StackEntry))
                     (x : String) : Option StackEntry :=
@@ -127,7 +122,6 @@ mutual
       | .some (_, .some se)  => .ok (stack, se)
       | _ => .error $ .local_with_given_id_missing i.index
     | .i_const i => .ok $ (stack, .num $ NumUniT.i i)
-    | .f_const f => .ok $ (stack, .num $ NumUniT.f f)
 
   -- TODO: there's a StateT somewhere here. Just sayin'
   partial def runOp (locals : List (Option String × Option StackEntry))
@@ -140,8 +134,6 @@ mutual
       let res ← match operand0, operand1 with
       | .num n0, .num n1 => match n0, n1 with
         | .i ⟨b0, i0⟩, .i ⟨_b1, i1⟩ => pure $ .num $ .i ⟨b0, i0 + i1⟩ -- TODO: check bitsize and overflow!
-        | .f ⟨b0, f0⟩, .f ⟨_b1, f1⟩ => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- check bitsize and overflow!
-        | _, _ => throw .param_type_incompatible
       pure (res :: stack1, res)
 end
 

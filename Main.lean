@@ -23,7 +23,6 @@ open Wasm.Leb128
 open Num.Digit
 open Num.Nat
 open Num.Int
-open Num.Float
 open Wasm.Wast.Num.Uni
 
 open Megaparsec.Parsec
@@ -58,23 +57,6 @@ def main : IO Unit := do
   | .some int => IO.println s!"{ints} == {(int : Int)}"
   | .none => IO.println s!"/_!_\\ BUG IN Int' {ints} clause"
 
-  IO.println s!"Heck, we even have floats!"
-  let n222d22e2 : Option $ Float' "22_2.2_2E+2" := mkFloat' "22_2.2_2E+2"
-  match n222d22e2 with
-  | .some sn222d22e2 => IO.println s!"My little number: Coe is magic. 222.22e2 == {(sn222d22e2 : Float) + 0.0} == 22222.0"
-  | .none => IO.println "/_!_\\ BUG IN Float' \"22_2.2_2E+2\" clause /_!_\\"
-
-  IO.println s!"Negative exponent and significand work, too!"
-  let fls := "-123.45e-2"
-  match mkFloat' fls with
-  | .some fl => IO.println s!"{fls} == {(fl : Float)} == -1.2345"
-  | .none => IO.println s!"Oh no, bug in {fls} parsing!"
-
-  IO.println "* * *"
-  IO.println "f32 is represented as:"
-  void $ parseTestP Type'.typeP "f32"
-  IO.println "* * *"
-
   IO.println "* * *"
   IO.println "i32.const 42 is represented as:"
   void $ parseTestP i32P "i32.const 42"
@@ -98,13 +80,13 @@ def main : IO Unit := do
   IO.println "* * *"
 
   IO.println "* * *"
-  let i := "(param $t i32) (param $coocoo f32)"
+  let i := "(param $t i32) (param $coocoo i32)"
   IO.println s!"{i} is represented as:"
   void $ parseTestP nilParamsP i
   IO.println "* * *"
 
   IO.println "* * *"
-  let i := "(param i32) (param $coocoo f32)  ( param i64 ) ( something_else )"
+  let i := "(param i32) (param $coocoo i32)  ( param i64 ) ( something_else )"
   IO.println s!"{i} is represented as:"
   void $ parseTestP nilParamsP i
   IO.println "* * *"
@@ -212,7 +194,7 @@ def main : IO Unit := do
 
   let i := "(module
         (func (param $x_one i32) (param $three i32) (param $y_one i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))
-        (func (param $x_two f32) (param f32) (param f32) (result i32) (i32.add (i32.const 12) (i32.const 30)))
+        (func (param $x_two i32) (param i32) (param i32) (result i32) (i32.add (i32.const 12) (i32.const 30)))
   )"
 
   -- unnamed param should have id 1
@@ -413,7 +395,6 @@ def main : IO Unit := do
         | x :: _ => match x with
           | .num universal_number => match universal_number with
             | .i i => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{i}"
-            | _ => "FAIL"
         | _ => "UNEXPECTED RESULT"
       | .error ee => s!"FAILED TO RUN `main` CORRECTLY: {ee}"
 

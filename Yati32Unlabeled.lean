@@ -17,7 +17,7 @@ def go : Int := Id.run $ do
   let se₀ := StackEntry.num un₀
 
   let i := "(module
-        (func $main (export \"main\")
+        (func
             (result i32)
 
             (i32.add
@@ -32,7 +32,7 @@ def go : Int := Id.run $ do
   | .error _ => (-1 : Int)
   | .ok m => do
     let store := mkStore m
-    let ofid := fidByName store "main"
+    let ofid := Option.some 0
     match ofid with
     | .none => (-2 : Int)
     | .some fid =>
