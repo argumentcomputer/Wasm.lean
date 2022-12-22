@@ -31,6 +31,11 @@ lean_exe yati {
   root := "Yati32"
 }
 
+lean_exe yati_raw {
+  supportInterpreter := true
+  root := "Yati32Raw"
+}
+
 lean_exe pico {
   supportInterpreter := true
   root := "Pico"

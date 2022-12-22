@@ -82,7 +82,7 @@ instance : ToString (Get α) where
     | .from_stack => "Get.from_stack"
     | .by_name n => "Get.by_name " ++ toString n
     | .by_index i => "Get.by_index " ++ toString i
-    | .const ifu => "Get.const " ++ (match ifu with
+    | .const iu => "Get.const " ++ (match iu with
       | .inl i => "(Sum.inl " ++ toString i ++ ")"
       | .inr () => "(Sum.inr $ Sum.inr \"sorry\")"
     )
@@ -171,7 +171,8 @@ mutual
     (getP >>= (pure ∘ stripGet α))
 
   partial def opP : Parsec Char String Unit Operation :=
-    addP >>= pure ∘ Operation.add
+    addP >>= fun x => do
+      (pure ∘ Operation.add) x
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
@@ -184,6 +185,7 @@ mutual
       let add_t : Type' ←
         string "i32.add" *> (pure $ .i 32) <|>
         string "i64.add" *> (pure $ .i 64)
+      ignoreP
       let (arg_1 : Get') ← get'ViaGetP add_t
       owP
       let (arg_2 : Get') ← get'ViaGetP add_t

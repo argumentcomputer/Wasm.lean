@@ -268,7 +268,7 @@ structure ConstInt where
   deriving BEq
 
 instance : ToString ConstInt where
-  toString x := "(ConstInt " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
+  toString x := "(ConstInt.mk " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
 
 def i32P : Parsec Char String Unit ConstInt := do
     discard $ string "i32.const"
