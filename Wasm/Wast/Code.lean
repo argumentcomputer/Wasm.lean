@@ -89,7 +89,7 @@ instance : ToString (Get α) where
     | .const ifu => "Get.const " ++ (match ifu with
       | .inl i => "(Sum.inl " ++ toString i ++ ")"
       | .inr $ .inl f => "(Sum.inr $ Sum.inl " ++ toString f ++ ")"
-      | .inr $ .inr () => sorry
+      | .inr $ .inr () => "(Sum.inr $ Sum.inr \"sorry\")"
     )
   ) ++ " : Get " ++ toString α ++ ")"
 
@@ -173,8 +173,7 @@ def stripGet (α : Type') (x : Get α) : Get' :=
   | .const ifu => match ifu with
     | .inl i => Get'.i_const i
     | .inr $ .inl f => Get'.f_const f
-    | _ => sorry
-
+    | _ => Get'.from_stack -- TODO: this should be "sorry". I replaced it with a placeholder from_stack because yatima-lang doesn't support sorryAx.
 mutual
 
   partial def get'ViaGetP (α  : Type') : Parsec Char String Unit Get' :=
