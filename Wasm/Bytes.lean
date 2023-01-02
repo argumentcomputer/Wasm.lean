@@ -103,10 +103,10 @@ mutual
       b 0x03 ++ bts ++ lindex obs ++ b 0x0b
     | .if ts thens elses =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let bth := b thens.length.toUInt8 ++ flatten (thens.map extractOp)
+      let bth := uLeb128 thens.length ++ flatten (thens.map extractOp)
       let belse := if elses.isEmpty then b0
         else
-          let bel := b elses.length.toUInt8 ++ flatten (elses.map extractOp)
+          let bel := uLeb128 elses.length ++ flatten (elses.map extractOp)
           b 0x05 ++ lindex bel
       b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
 
@@ -118,7 +118,6 @@ def extractOps (ops : List Operation) : List ByteArray :=
 
 def extractFuncs (fs : List Func) : ByteArray :=
   let header := b 0x0a -- ← here we'll add the whole size of the section.
-  let fn := b $ fs.length.toUInt8
   let fbs := flatten $ fs.map (fun x =>
     -- ← now for each function's code section, we'll add its size after we do all the other
     --   computations.
@@ -131,7 +130,7 @@ def extractFuncs (fs : List Func) : ByteArray :=
 
     lindex $ locals ++ obs ++ b 0x0b
   )
-  header ++ (lindex $ fn ++ fbs)
+  header ++ (lindex $ uLeb128 fs.length ++ fbs)
 
 -- TODO
 def extractModName (_ : Module) : ByteArray := b0
