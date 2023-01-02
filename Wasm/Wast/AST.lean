@@ -98,6 +98,7 @@ mutual
   | const : Type' → NumUniT → Operation
   | add : Type' → Get' → Get' → Operation
   | block : List Type' → List Operation → Operation
+  | loop : List Type' → List Operation → Operation
 end
 
 mutual
@@ -115,6 +116,7 @@ mutual
     | .const t n => s!"(Operation.const {t} {n})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
+    | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
 
 end
 

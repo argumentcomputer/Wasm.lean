@@ -171,6 +171,12 @@ mutual
       if resultsTypecheck ts es'
         then pure $ es' ++ stack
         else throw .stack_incompatible_with_results
+    | .loop ts ops => do
+      let go σ op := do runOp locals (←σ) op
+      let es' ← ops.foldl go $ pure []
+      if resultsTypecheck ts es'
+        then pure $ es' ++ stack
+        else throw .stack_incompatible_with_results
 end
 
 def runDo (_s : Store m)

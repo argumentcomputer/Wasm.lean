@@ -95,6 +95,11 @@ mutual
       let bts := flatten $ ts.map (b ∘ ttoi)
       let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
       b 0x02 ++ bts ++ lindex obs ++ b 0x0b
+    | .loop ts ops =>
+      let bts := flatten $ ts.map (b ∘ ttoi)
+      let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
+      b 0x03 ++ bts ++ lindex obs ++ b 0x0b
+
 end
 
 def extractOps (ops : List Operation) : List ByteArray :=

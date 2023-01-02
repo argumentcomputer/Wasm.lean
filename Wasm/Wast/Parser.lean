@@ -86,7 +86,7 @@ private def constP : Parsec Char String Unit Operation := do
 
   partial def opP : Parsec Char String Unit Operation :=
     Char.between '(' ')' $ owP *>
-      nopP <|> constP <|> addP <|> blockP
+      nopP <|> constP <|> addP <|> blockP <|> loopP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
@@ -97,6 +97,13 @@ private def constP : Parsec Char String Unit Operation := do
     let ops ← opsP
     owP <* option' (string "end")
     pure $ .block ts ops
+
+  partial def loopP : Parsec Char String Unit Operation := do
+    string "loop" *> ignoreP
+    let ts ← brResultsP
+    let ops ← opsP
+    owP <* option' (string "end")
+    pure $ .loop ts ops
 
   partial def addP : Parsec Char String Unit Operation := do
     -- TODO: we'll use ps when we'll add more types into `Type'`.
