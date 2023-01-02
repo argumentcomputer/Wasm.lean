@@ -5,6 +5,7 @@ import YatimaStdLib
 
 open Wasm.Wast.AST
 open Wasm.Wast.AST.Func
+open Wasm.Wast.AST.LabelIndex
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Module
 open Wasm.Wast.AST.Operation
@@ -41,11 +42,34 @@ instance : ToString EngineErrors where
 instance : Inhabited EngineErrors where
   default := .other
 
+/- Likely unused hehe <---- I WISH -/
+structure Label where
+  arity : Nat
+  ops : List Operation
+
+instance : ToString Label where
+  toString x := s!"(Label.mk {x.arity} {x.ops})"
+
+namespace StackEntry
+
 inductive StackEntry where
 | num : NumUniT → StackEntry
+| label : Label → StackEntry
 
 instance : ToString StackEntry where
-  toString | .num n => s!"(StackEntry {n})"
+  toString | .num n => s!"(StackEntry.num {n})"
+           | .label l => s!"(StackEntry.label {l})"
+
+def isLabel : StackEntry → Bool
+  | .num _ => false
+  | .label _ => true
+
+def isValue : StackEntry → Bool
+  | .num _ => true
+  | .label _ => false
+
+end StackEntry
+open StackEntry
 
 /- TODO: I forgot what sort of other stacks are in standard lol, but ok. -/
 structure Stack where
@@ -54,7 +78,22 @@ structure Stack where
 instance : ToString Stack where
   toString | ⟨es⟩ => s!"(Stack {es})"
 
-/- TODO: Functions for Stack? -/
+def stackValues (stack : Stack) : List StackEntry :=
+  stack.es.filter isValue
+
+def stackLabels (stack : Stack) : List StackEntry :=
+  stack.es.filter isLabel
+
+def skimValues (stack : Stack) : List StackEntry :=
+  stack.es.dropWhile isValue
+
+def fetchLabel (stack : Stack) (idx : LabelIndex) : Option Label :=
+  let rec go
+    | [], _ => .none
+    | .label l :: _, 0 => .some l
+    | .num _ :: es, n => go es n
+    | .label _ :: es, n+1 => go es n
+  go stack.es idx.li
 
 /- TODO: This will eventually depend on ModuleInstance! -/
 structure FunctionInstance (x : Module) where
@@ -108,6 +147,7 @@ def stackEntryTypecheck (x : Type') (y : StackEntry) :=
       | .f 32 => n.bs == 32
       | .f 64 => n.bs == 64
       | _ => false
+  | .label _ => false
 
 -- Checks that the given numerical values correspond to the given
 -- types both in the type of each respective value and in length.
@@ -157,37 +197,38 @@ mutual
     | .nop => pure stack
     | .const _t n => pure $ .num n :: stack
     | .add _t g0 g1 => do
-      let (stack', .num operand0) ← getSO locals stack g0
-      let (stack1, .num operand1) ← getSO locals stack' g1
+      let (stack', operand0) ← getSO locals stack g0
+      let (stack1, operand1) ← getSO locals stack' g1
       let res ← match operand0, operand1 with
-        | .i ⟨b0, i0⟩, .i ⟨_b1, i1⟩ => pure $ .num $ .i ⟨b0, i0 + i1⟩ -- TODO: check bitsize and overflow!
-        | .f ⟨b0, f0⟩, .f ⟨_b1, f1⟩ => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- TODO: check bitsize and overflow!
+        | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) => pure $ .num $ .i ⟨b0, i0 + i1⟩ -- TODO: check bitsize and overflow!
+        | .num (.f ⟨b0, f0⟩), .num (.f ⟨_b1, f1⟩) => pure $ .num $ .f ⟨b0, f0 + f1⟩ -- TODO: check bitsize and overflow!
         | _, _ => throw .param_type_incompatible
       pure (res :: stack1)
     | .block ts ops => do
       -- TODO: currently, we only support simple [] → [valuetype*] blocks,
       -- not type indices. For this reason, we start the block execution
-      -- with an empty stack to simulate 0-arity.
+      -- with an stack devoid of _values_ to simulate 0-input-arity, but we
+      -- still pass in all the labels currently reachable.
+      let innerStack := .label ⟨ts.length, []⟩ :: stackLabels ⟨stack⟩
       let go σ op := do runOp locals (←σ) op
-      let es' ← ops.foldl go $ pure []
-      if resultsTypecheck ts es'
-        then pure $ es' ++ stack
+      let es' ← ops.foldl go $ pure innerStack
+      if resultsTypecheck ts $ stackValues ⟨es'⟩
+        then pure $ stackValues ⟨es'⟩ ++ stack
         else throw .stack_incompatible_with_results
     | .loop ts ops => do
+      let innerStack :=
+        .label ⟨ts.length, [.loop ts ops]⟩ :: stackLabels ⟨stack⟩
       let go σ op := do runOp locals (←σ) op
-      let es' ← ops.foldl go $ pure []
-      if resultsTypecheck ts es'
-        then pure $ es' ++ stack
+      let es' ← ops.foldl go $ pure innerStack
+      if resultsTypecheck ts $ stackValues ⟨es'⟩
+        then pure $ stackValues ⟨es'⟩ ++ stack
         else throw .stack_incompatible_with_results
     | .if ts thens elses => do
-      let (stack', .num cond) ← getSO locals stack .from_stack
+      let (stack', cond) ← getSO locals stack .from_stack
       match cond with
-      | .i ⟨32, n⟩ =>
-        let go σ op := do runOp locals (←σ) op
-        let es' ← (if n ≠ 0 then thens else elses).foldl go (pure [])
-        if resultsTypecheck ts es'
-          then pure $ es' ++ stack'
-          else throw .stack_incompatible_with_results
+      | .num (.i ⟨32, n⟩) =>
+        -- Reducing to a block is actually spec-conforming behaviour!
+        runOp locals stack' $ .block ts (if n ≠ 0 then thens else elses)
       | _ => throw .typecheck_failed
 end
 

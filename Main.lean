@@ -418,7 +418,7 @@ def main : IO Unit := do
     let store := mkStore m
     let ofid := fidByName store "main"
     let uni_num_zero := NumUniT.i $ ConstInt.mk 32 0
-    let se_zero := StackEntry.num uni_num_zero
+    let se_zero := StackEntry.StackEntry.num uni_num_zero
     IO.println $ match ofid with
     | .none => s!"THERE IS NO FUNCTION CALLED `main`"
     | .some fid =>

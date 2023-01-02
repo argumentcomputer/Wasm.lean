@@ -45,6 +45,24 @@ instance : ToString Local where
 end Local
 open Local
 
+namespace LabelIndex
+
+structure LabelIndex where
+  li : Nat
+  deriving Repr, DecidableEq
+
+instance : Coe Nat LabelIndex where
+  coe n := ⟨n⟩
+
+instance : Coe LabelIndex Nat where
+  coe | ⟨n⟩ => n
+
+instance : ToString LabelIndex where
+  toString | ⟨n⟩ => s!"(LabelIndex {n})"
+
+end LabelIndex
+open LabelIndex
+
 
 namespace Get
 
@@ -63,15 +81,6 @@ instance : ToString (Get α) where
 
 end Get
 open Get
-
-namespace Label
-
-/- Likely unused hehe -/
-structure Label where
-  frame : Int
-  kind : Byte --<-- this is an index of a 'continuation'
-
-end Label
 
 
 /- TODO: Instructions are rigid WAT objects. If we choose to only support
@@ -103,7 +112,7 @@ mutual
 end
 
 mutual
-  partial def getToString (x : Get') : String :=
+  private partial def getToString (x : Get') : String :=
     "(Get'" ++ (
       match x with
       | .from_stack => ".from_stack"
@@ -112,7 +121,7 @@ mutual
       | .by_index i => ".by_index " ++ toString i
     ) ++ ")"
 
-  partial def operationToString : Operation → String
+  private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"
     | .const t n => s!"(Operation.const {t} {n})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
