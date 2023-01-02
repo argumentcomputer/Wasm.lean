@@ -50,15 +50,15 @@ def extractTypes (m : Module) : ByteArray :=
   let sigs := m.func.map $ fun x =>
     let params := x.params.map $ (b ∘ ttoi ∘ fun x => x.type)
     -- TODO: check if we support > 255 params. Do the same for each length and size entries!
-    let header := ByteArray.mk #[0x60, params.length.toUInt8]
+    let header := b 0x60 ++ uLeb128 params.length
     let res := params.foldl Append.append header
-    res ++ (match x.results with --TODO: test multi-result functions
+    res ++ (match x.results with -- TODO: test multi-result functions
     | List.nil => b 0x00
     | ts => b 0x7b ++ uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
     )
   sigs.foldl
     Append.append $
-    ByteArray.mk #[0x01, 1 + (Nat.toUInt8 ∘ totalLength) sigs, sigs.length.toUInt8]
+      b 0x01 ++ uLeb128 (1 + totalLength sigs) ++ uLeb128 sigs.length
 
 /- Function section -/
 def extractFuncIds (m : Module) : ByteArray :=
