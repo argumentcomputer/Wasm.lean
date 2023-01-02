@@ -93,7 +93,7 @@ mutual
       extractGet' g1 ++ extractGet' g2 ++ extractAdd t
     | .block ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs := bts ++ b ops.length.toUInt8 ++ flatten (ops.map extractOp)
+      let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
       b 0x02 ++ bts ++ lindex obs ++ b 0x0b
 end
 
