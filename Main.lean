@@ -1,9 +1,10 @@
 import Wasm
 import Wasm.Engine
-import Wasm.Wast.Code
+import Wasm.Wast.AST
 import Wasm.Wast.Expr
 import Wasm.Wast.Name
 import Wasm.Wast.Num
+import Wasm.Wast.Parser
 import Wasm.Bytes
 import Wasm.Leb128
 
@@ -11,13 +12,13 @@ import Megaparsec.Parsec
 
 open Wasm.Bytes
 open Wasm.Engine
-open Wasm.Wast.Code
-open Wasm.Wast.Code.Func
-open Wasm.Wast.Code.Module
-open Wasm.Wast.Code.Operation
+open Wasm.Wast.AST.Func
+open Wasm.Wast.AST.Module
+open Wasm.Wast.AST.Operation
 open Wasm.Wast.Expr
 open Wasm.Wast.Name
 open Wasm.Wast.Num
+open Wasm.Wast.Parser
 open Wasm.Leb128
 
 open Num.Digit
@@ -71,18 +72,79 @@ def main : IO Unit := do
   | .none => IO.println s!"Oh no, bug in {fls} parsing!"
 
   IO.println "* * *"
+
+  -- LEB128 TESTS
+  let lebx := 624485
+  let blebx := ntob lebx
+  /-
+  5> erlang:length( "000010011000011101100101" ).
+  24
+  8> erlang:length("00001001").
+  8
+  9> erlang:length("10000111").
+  8
+  10> erlang:length("01100101").
+  8
+  11> [ 2#00001001, 2#10000111, 2#01100101 ].
+  -/
+  IO.println s!"{blebx} should be [9,135,101]"
+  let bilebx := ByteArray.toBits blebx
+  IO.println s!"{bilebx} should be 000010011000011101100101"
+  let ulebx := unlead bilebx
+  IO.println s!"{ulebx} should be 10011000011101100101"
+  let plebx := pad7 ulebx
+  IO.println s!"{plebx} should be 010011000011101100101"
+  let pp := npad7 lebx
+  IO.println s!"{pp} should be {plebx}"
+  let fin := uLeb128 lebx
+  IO.println s!"{fin} should be 229, 142, 38"
+  IO.println s!"{uLeb128 1} should be 1"
+  -- LE Long
+  --- 00000101 11001011 10000101 11101000 11101001
+  --- becomes in LE:
+  --- 11101001 11101000 10000101 11001011 00000101
+  ---- 233
+  ---- 232
+  ---- 133
+  ---- 203
+  ---- 5
+  let bigN := 1499559017
+  IO.println s!"{uLeb128 bigN} should be 233 232 133 203 5"
+  IO.println s!"{reassemble $ npad7 bigN} should be 00000101 11001011 10000101 11101000 11101001"
+  IO.println s!"= = = = SIGNED LEB128 TEST = = = ="
+  IO.println s!"{sLeb128 (-123456)} should be [192, 187, 120]"
+  IO.println s!"{sLeb128 (1)} should be [1]"
+  IO.println s!"{sLeb128 (624485)} should be 229, 142, 38"
+  /-
+                4> 2#0000001.
+                1
+                5> 2#1111110.
+                126
+                6> 2#1111111.
+                127
+                7> 2#01111111.
+                127
+  -/
+  IO.println s!"{sLeb128 (-1)} should be [127]"
+  IO.println s!"{sLeb128 9000} should be 168, 198, 0 (because it's signed!)"
+  IO.println s!"{uLeb128 9000} should be 70, 168"
+  IO.println s!"{sLeb128 8787} should be 211, 196, 00"
+  IO.println s!"= = END OF SIGNED LEB128 TEST! = ="
+
+
+  IO.println "* * *"
   IO.println "f32 is represented as:"
-  void $ parseTestP Type'.typeP "f32"
+  void $ parseTestP typeP "f32"
   IO.println "* * *"
 
   IO.println "* * *"
-  IO.println "i32.const 42 is represented as:"
-  void $ parseTestP i32P "i32.const 42"
+  IO.println "i32.const -1 is represented as:"
+  void $ parseTestP iP "i32.const -1"
   IO.println "* * *"
 
   IO.println "* * *"
-  IO.println "(i32.add (i32.const 42)) is represented as:"
-  void $ parseTestP addP "(i32.add (i32.const 42))"
+  IO.println "i32.add (i32.const 42) is represented as:"
+  void $ parseTestP addP "i32.add (i32.const 42)"
   IO.println "* * *"
 
   IO.println "* * *"
@@ -112,7 +174,7 @@ def main : IO Unit := do
   IO.println "* * *"
   let i := "( result i32)"
   IO.println s!"{i} is represented as:"
-  void $ parseTestP brResultP i
+  void $ parseTestP brResultsP i
   IO.println "* * *"
 
   -- IO.println "* * *"
@@ -135,6 +197,18 @@ def main : IO Unit := do
   -- unnamed param should have id 1
   IO.println s!"{i} is represented as:"
   void $ parseTestP funcP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "(block (result i32) (i32.const 1) end)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP opP i
+  IO.println "* * *"
+
+  IO.println "* * *"
+  let i := "if (result i32) then (i32.const 42) else (i32.const 9)"
+  IO.println s!"{i} is represented as:"
+  void $ parseTestP ifP i
   IO.println "* * *"
 
   IO.println "* * *"
@@ -312,8 +386,10 @@ def main : IO Unit := do
     (func $main (export \"main\")
       (param $x i32)
       (param i32)
-      (result i32)
+      (result i32 i32) (result i32 i32)
 
+      (block (result i32) (i32.const 0))
+      (if (result i32) then (i32.const 8) else (i32.const 2))
       (i32.add
         (i32.const 1499550000)
         (i32.add (i32.const 9000) (i32.const 17))
@@ -334,67 +410,6 @@ def main : IO Unit := do
     h.write $ mtob parsed_module
     IO.println "It's recorded to disk at /tmp/something.special.wasm"
 
-  IO.println "* * *"
-
-  -- LEB128 TESTS
-  let lebx := 624485
-  let blebx := ntob lebx
-  /-
-  5> erlang:length( "000010011000011101100101" ).
-  24
-  8> erlang:length("00001001").
-  8
-  9> erlang:length("10000111").
-  8
-  10> erlang:length("01100101").
-  8
-  11> [ 2#00001001, 2#10000111, 2#01100101 ].
-  -/
-  IO.println s!"{blebx} should be [9,135,101]"
-  let bilebx := ByteArray.toBits blebx
-  IO.println s!"{bilebx} should be 000010011000011101100101"
-  let ulebx := unlead bilebx
-  IO.println s!"{ulebx} should be 10011000011101100101"
-  let plebx := pad7 ulebx
-  IO.println s!"{plebx} should be 010011000011101100101"
-  let pp := npad7 lebx
-  IO.println s!"{pp} should be {plebx}"
-  let fin := uLeb128 lebx
-  IO.println s!"{fin} should be 229, 142, 38"
-  IO.println s!"{uLeb128 1} should be 1"
-  -- LE Long
-  --- 00000101 11001011 10000101 11101000 11101001
-  --- becomes in LE:
-  --- 11101001 11101000 10000101 11001011 00000101
-  ---- 233
-  ---- 232
-  ---- 133
-  ---- 203
-  ---- 5
-  let bigN := 1499559017
-  IO.println s!"{uLeb128 bigN} should be 233 232 133 203 5"
-  IO.println s!"{reassemble $ npad7 bigN} should be 00000101 11001011 10000101 11101000 11101001"
-  IO.println s!"= = = = SIGNED LEB128 TEST = = = ="
-  IO.println s!"{sLeb128 (-123456)} should be [192, 187, 120]"
-  IO.println s!"{sLeb128 (1)} should be [1]"
-  IO.println s!"{sLeb128 (624485)} should be 229, 142, 38"
-  /-
-                4> 2#0000001.
-                1
-                5> 2#1111110.
-                126
-                6> 2#1111111.
-                127
-                7> 2#01111111.
-                127
-  -/
-  IO.println s!"{sLeb128 (-1)} should be [127]"
-  IO.println s!"{sLeb128 9000} should be 168, 198, 0 (because it's signed!)"
-  IO.println s!"{uLeb128 9000} should be 70, 168"
-  IO.println s!"{sLeb128 8787} should be 211, 196, 00"
-  IO.println s!"= = END OF SIGNED LEB128 TEST! = ="
-
-
   match something_special_module.2 with
   | .error _ => IO.println s!"THERE IS A BUG IN RUNTIME TEST"
   | .ok m => do
@@ -410,11 +425,8 @@ def main : IO Unit := do
       let eres := run store fid $ Stack.mk [se_zero, se_zero]
       match eres with
       | .ok stack2 => match stack2.es with
-        | x :: _ => match x with
-          | .num universal_number => match universal_number with
-            | .i i => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{i}"
-            | _ => "FAIL"
-        | _ => "UNEXPECTED RESULT"
+        | [] => "UNEXPECTED RESULT"
+        | xs => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{xs}"
       | .error ee => s!"FAILED TO RUN `main` CORRECTLY: {ee}"
 
   let mut x := 0

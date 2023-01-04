@@ -15,7 +15,7 @@ def isIdChar (x : Char) : Bool :=
 /- This is how desperate coding looks. We started with dependent parsing, and ended up here.
 Well, at least we aren't using unsafe funcitons for parsing. 🤷 -/
 def nameP : Parsec Char String Unit String :=
-  string "$" *> ((many' $ satisfy isIdChar) >>= (pure ∘ String.mk))
+  single '$' *> ((many' $ satisfy isIdChar) >>= (pure ∘ String.mk))
 
 /- Captures a valid WAST identifier. -/
 structure Name (x : String) where

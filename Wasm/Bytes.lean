@@ -1,14 +1,16 @@
+import Wasm.Wast.AST
 import Wasm.Wast.Code
 import YatimaStdLib
 import Wasm.Leb128
 
 open Wasm.Leb128
-open Wasm.Wast.Code.Module
-open Wasm.Wast.Code.Type'
-open Wasm.Wast.Code.Local
-open Wasm.Wast.Code.Operation
-open Wasm.Wast.Code.Func
-open Wasm.Wast.Code.Get
+open Wasm.Wast.Code
+open Wasm.Wast.AST.Module
+open Wasm.Wast.AST.Type'
+open Wasm.Wast.AST.Local
+open Wasm.Wast.AST.Operation
+open Wasm.Wast.AST.Func
+open Wasm.Wast.AST.Get
 
 open ByteArray
 open Nat
@@ -48,15 +50,15 @@ def extractTypes (m : Module) : ByteArray :=
   let sigs := m.func.map $ fun x =>
     let params := x.params.map $ (b ∘ ttoi ∘ fun x => x.type)
     -- TODO: check if we support > 255 params. Do the same for each length and size entries!
-    let header := ByteArray.mk #[0x60, params.length.toUInt8]
+    let header := b 0x60 ++ uLeb128 params.length
     let res := params.foldl Append.append header
-    res ++ (match x.result with --TODO: figure out and support multi-output functions
+    res ++ (match x.results with -- TODO: test multi-result functions
     | List.nil => b 0x00
-    | ts => uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
+    | ts => b 0x7b ++ uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
     )
   sigs.foldl
     Append.append $
-    ByteArray.mk #[0x01, 1 + (Nat.toUInt8 ∘ totalLength) sigs, sigs.length.toUInt8]
+      b 0x01 ++ uLeb128 (1 + totalLength sigs) ++ uLeb128 sigs.length
 
 /- Function section -/
 def extractFuncIds (m : Module) : ByteArray :=
@@ -65,31 +67,50 @@ def extractFuncIds (m : Module) : ByteArray :=
     m.func.foldl (fun acc _x => (acc ++ (b ∘ Nat.toUInt8) acc.data.size)) b0
   b 0x03 ++ uLeb128 funs.data.size ++ funs
 
+def extractAdd (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6a
+  | .i 64 => 0x7c
+  | .f 32 => 0x92
+  | .f 64 => 0xa0
+
 mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
   partial def extractGet' (x : Get') : ByteArray :=
     match x with
     | .from_stack => b0
     | .from_operation o => extractOp o
-    -- TODO: signed consts exist??? We should check the spec carefully.
-    | .i_const i => Id.run $ do
-      ByteArray.mk #[0x41] ++ sLeb128 i.val
     -- TODO: handle locals
-    | _ => b0
-
-  partial def extractAdd (α : Type') : ByteArray :=
-    b $ match α with
-    | .i 32 => 0x6a
-    | .i 64 => 0x7c
-    | .f 32 => 0x92
-    | .f 64 => 0xa0
+    | _ => sorry
 
   partial def extractOp (x : Operation) : ByteArray :=
     match x with
-    | .add a => match a with
-      | .add t g1 g2 =>
-        -- Enter stackman
-        extractGet' g1 ++ extractGet' g2 ++ extractAdd t
+    | .nop => b 0x01
+    -- TODO: signed consts exist??? We should check the spec carefully.
+    | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
+    | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val
+    | .const _ _ => sorry -- TODO: float binary encoding
+    | .add t g1 g2 =>
+      -- Enter stackman
+      extractGet' g1 ++ extractGet' g2 ++ extractAdd t
+    | .block ts ops =>
+      let bts := flatten $ ts.map (b ∘ ttoi)
+      let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
+      b 0x02 ++ bts ++ lindex obs ++ b 0x0b
+    | .loop ts ops =>
+      let bts := flatten $ ts.map (b ∘ ttoi)
+      let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
+      b 0x03 ++ bts ++ lindex obs ++ b 0x0b
+    | .if ts thens elses =>
+      let bts := flatten $ ts.map (b ∘ ttoi)
+      let bth := uLeb128 thens.length ++ flatten (thens.map extractOp)
+      let belse := if elses.isEmpty then b0
+        else
+          let bel := uLeb128 elses.length ++ flatten (elses.map extractOp)
+          b 0x05 ++ lindex bel
+      b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
+
+
 end
 
 def extractOps (ops : List Operation) : List ByteArray :=
@@ -97,7 +118,6 @@ def extractOps (ops : List Operation) : List ByteArray :=
 
 def extractFuncs (fs : List Func) : ByteArray :=
   let header := b 0x0a -- ← here we'll add the whole size of the section.
-  let fn := b $ fs.length.toUInt8
   let fbs := flatten $ fs.map (fun x =>
     -- ← now for each function's code section, we'll add its size after we do all the other
     --   computations.
@@ -110,12 +130,12 @@ def extractFuncs (fs : List Func) : ByteArray :=
 
     lindex $ locals ++ obs ++ b 0x0b
   )
-  header ++ (lindex $ fn ++ fbs)
+  header ++ (lindex $ uLeb128 fs.length ++ fbs)
 
 -- TODO
-def extractModName (_ : Module) := b0
+def extractModName (_ : Module) : ByteArray := b0
 -- TODO
-def extractFuncNames (_ : List Func) := b0
+def extractFuncNames (_ : List Func) : ByteArray := b0
 
 /-
                        ___________________________________________________
