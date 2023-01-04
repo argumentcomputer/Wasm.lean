@@ -100,8 +100,11 @@ mutual
   | by_index : Local → Get'
 
 -- TODO: add support for function type indexes for blocktypes
--- TODO: replace "NumUniT" with something supporting ConstVec when implemented
--- TODO: generalise Consts the same way Get is generalised so that i32.const can't be populated with ConstFloat!
+-- TODO: branching ops can produce and consume operands themselves,
+-- e.g. `(br 0 (i32.const 2))`. Right now we don't support it, but should we?
+-- TODO: replace `NumUniT` with something supporting `ConstVec` when implemented
+-- TODO: generalise Consts the same way Get is generalised so that `i32.const`
+-- can't be populated with `ConstFloat`!
   inductive Operation where
   | nop
   | const : Type' → NumUniT → Operation
@@ -109,6 +112,8 @@ mutual
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
   | if : List Type' → List Operation → List Operation → Operation
+  | br : LabelIndex → Operation
+  | br_if : LabelIndex → Operation
 end
 
 mutual
@@ -128,6 +133,8 @@ mutual
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
     | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"
+    | .br li => s!"(Operation.br {li})"
+    | .br_if li => s!"(Operation.br_if {li})"
 
 end
 

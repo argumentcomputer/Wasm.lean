@@ -277,6 +277,24 @@ mutual
         -- Reducing to a block is actually spec-conforming behaviour!
         runOp locals stack' $ .block ts (if n ≠ 0 then thens else elses)
       | _ => throw .typecheck_failed
+    | .br li =>
+      match fetchLabel ⟨stack⟩ li with
+      | .none => throw .label_not_found
+      | .some ⟨n, cont⟩ => do
+        let (topn, rest) := stack.splitAt n
+        if (stackValues ⟨topn⟩).length = n
+          then match skimValues ⟨rest⟩ with
+            | .label _ :: bottom =>
+              let ops := if li = ⟨0⟩ then cont else [.br ⟨li.li-1⟩]
+              pure (topn ++ bottom, .some ops)
+            | _ => throw .typecheck_failed
+          else throw .not_enough_stuff_on_stack
+    | .br_if li => do
+      let ((stack', _), cond) ← getSO locals stack .from_stack
+      match cond with
+      | .num (.i ⟨32, n⟩) =>
+         if n = 0 then pure (stack', .none) else runOp locals stack' (.br li)
+      | _ => throw .typecheck_failed
 end
 
 def runDo (_s : Store m)

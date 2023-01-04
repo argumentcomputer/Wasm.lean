@@ -109,6 +109,8 @@ mutual
           let bel := uLeb128 elses.length ++ flatten (elses.map extractOp)
           b 0x05 ++ lindex bel
       b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
+    | .br li => b 0x0c ++ sLeb128 li
+    | .br_if li => b 0x0d ++ sLeb128 li
 
 
 end

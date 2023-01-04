@@ -18,6 +18,7 @@ open MonadParsec
 open Wasm.Wast.AST
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
+open Wasm.Wast.Num.Num.Nat
 open Wasm.Wast.Num.Num.Int
 open Wasm.Wast.Num.Num.Float
 open Wasm.Wast.Num.Uni
@@ -78,6 +79,16 @@ private def constP : Parsec Char String Unit Operation := do
   let x ← numUniTP
   pure $ Operation.const (numUniType x) x
 
+private def brP : Parsec Char String Unit Operation := do
+  string "br" *> ignoreP
+  let idx ← hexP <|> decimalP
+  pure $ .br ⟨idx⟩
+
+private def brifP : Parsec Char String Unit Operation := do
+  string "br_if" *> ignoreP
+  let idx ← hexP <|> decimalP
+  pure $ .br ⟨idx⟩
+
  mutual
 
   partial def get'ViaGetP (α  : Type') : Parsec Char String Unit Get' :=
@@ -86,7 +97,9 @@ private def constP : Parsec Char String Unit Operation := do
 
   partial def opP : Parsec Char String Unit Operation :=
     Char.between '(' ')' $ owP *>
-      nopP <|> constP <|> addP <|> blockP <|> loopP <|> ifP
+      nopP <|> constP <|> addP <|>
+        blockP <|> loopP <|> ifP <|>
+        brP <|> brifP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
