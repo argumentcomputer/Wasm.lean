@@ -1,7 +1,9 @@
 import Lake
 open Lake DSL
 
-package Wasm
+package Wasm {
+  precompileModules := true
+}
 
 @[default_target]
 lean_lib Wasm
