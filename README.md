@@ -1,22 +1,23 @@
 # Wasm tools for lean
 
-Webassembly tools to be implemented in Lean.
+Included are:
 
-To get the reference test suite, please run:
+* WAST -> Lean -> Binary parser.
+* A Lean Webassembly runtime.
+* [A Lurk Webassembly runtime](https://github.com/yatima-inc/Wasm.lean/tree/cognivore/2022-12-08/yatimise) via [Yatima language](https://github.com/yatima-inc/yatima-lang).
+* Binary ouptuts are compatible with other Webassembly implementations.
 
-```
-git submodule update --init --recursive
-```
+![Visual representation of the previous list.](https://user-images.githubusercontent.com/66186054/210612265-32085aab-7463-4f0e-9d55-ebea0d805771.png)
 
 ## Develop
 
 `lake build`.
 
-## Building
+## Build
 
 `lake build`.
 
-## Tests
+## Test
 
 Build `lspec`: `lake build lspec`.
 
