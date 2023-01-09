@@ -388,8 +388,7 @@ def main : IO Unit := do
       (param i32)
       (result i32 i32)
 
-      (block (result i32) (i32.const 0))
-      (if (result i32) then (i32.const 8) else (i32.const 2))
+      (block (result i32) (i32.const 3) (i32.add (br 0) (i32.const 9)))
       (i32.add
         (i32.const 1499550000)
         (i32.add (i32.const 9000) (i32.const 17))
@@ -418,7 +417,7 @@ def main : IO Unit := do
     let store := mkStore m
     let ofid := fidByName store "main"
     let uni_num_zero := NumUniT.i $ ConstInt.mk 32 0
-    let se_zero := StackEntry.num uni_num_zero
+    let se_zero := StackEntry.StackEntry.num uni_num_zero
     IO.println $ match ofid with
     | .none => s!"THERE IS NO FUNCTION CALLED `main`"
     | .some fid =>

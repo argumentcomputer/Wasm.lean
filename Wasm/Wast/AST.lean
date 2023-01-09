@@ -45,6 +45,24 @@ instance : ToString Local where
 end Local
 open Local
 
+namespace LabelIndex
+
+structure LabelIndex where
+  li : Nat
+  deriving Repr, DecidableEq
+
+instance : Coe Nat LabelIndex where
+  coe n := ⟨n⟩
+
+instance : Coe LabelIndex Nat where
+  coe | ⟨n⟩ => n
+
+instance : ToString LabelIndex where
+  toString | ⟨n⟩ => s!"(LabelIndex {n})"
+
+end LabelIndex
+open LabelIndex
+
 
 namespace Get
 
@@ -64,15 +82,6 @@ instance : ToString (Get α) where
 end Get
 open Get
 
-namespace Label
-
-/- Likely unused hehe -/
-structure Label where
-  frame : Int
-  kind : Byte --<-- this is an index of a 'continuation'
-
-end Label
-
 
 /- TODO: Instructions are rigid WAT objects. If we choose to only support
 S-Expressions at this point, we don't need this concept. -/
@@ -91,8 +100,11 @@ mutual
   | by_index : Local → Get'
 
 -- TODO: add support for function type indexes for blocktypes
--- TODO: replace "NumUniT" with something supporting ConstVec when implemented
--- TODO: generalise Consts the same way Get is generalised so that i32.const can't be populated with ConstFloat!
+-- TODO: branching ops can produce and consume operands themselves,
+-- e.g. `(br 0 (i32.const 2))`. Right now we don't support it, but should we?
+-- TODO: replace `NumUniT` with something supporting `ConstVec` when implemented
+-- TODO: generalise Consts the same way Get is generalised so that `i32.const`
+-- can't be populated with `ConstFloat`!
   inductive Operation where
   | nop
   | const : Type' → NumUniT → Operation
@@ -100,10 +112,12 @@ mutual
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
   | if : List Type' → List Operation → List Operation → Operation
+  | br : LabelIndex → Operation
+  | br_if : LabelIndex → Operation
 end
 
 mutual
-  partial def getToString (x : Get') : String :=
+  private partial def getToString (x : Get') : String :=
     "(Get'" ++ (
       match x with
       | .from_stack => ".from_stack"
@@ -112,13 +126,15 @@ mutual
       | .by_index i => ".by_index " ++ toString i
     ) ++ ")"
 
-  partial def operationToString : Operation → String
+  private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"
     | .const t n => s!"(Operation.const {t} {n})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
     | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"
+    | .br li => s!"(Operation.br {li})"
+    | .br_if li => s!"(Operation.br_if {li})"
 
 end
 
