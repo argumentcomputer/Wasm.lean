@@ -386,7 +386,7 @@ def main : IO Unit := do
     (func $main (export \"main\")
       (param $x i32)
       (param i32)
-      (result i32 i32) (result i32 i32)
+      (result i32 i32)
 
       (block (result i32) (i32.const 0))
       (if (result i32) then (i32.const 8) else (i32.const 2))
