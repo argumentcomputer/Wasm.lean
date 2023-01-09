@@ -51,6 +51,9 @@ instance : ToString StackEntry where
 structure Stack where
   es : List StackEntry
 
+instance : ToString Stack where
+  toString | ⟨es⟩ => s!"(Stack {es})"
+
 /- TODO: Functions for Stack? -/
 
 /- TODO: This will eventually depend on ModuleInstance! -/
@@ -203,7 +206,7 @@ def runDo (_s : Store m)
   let locals := (f.params ++ f.locals).map
     fun l => (l.name, pσ.2.get? l.index)
   let go oσ x:= do Stack.mk <$> runOp locals (←oσ).es x
-  f.ops.foldl go $ .ok $ Stack.mk pσ.2
+  f.ops.foldl go $ .ok pσ.1
 
 -- This is sort of a debug function, returning the full resulting stack instead
 -- of just the values specified in the result fields.
