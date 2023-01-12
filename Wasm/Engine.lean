@@ -73,21 +73,6 @@ def isValue : StackEntry → Bool
 end StackEntry
 open StackEntry
 
-/- This is a readability helper type abbreviation for use in handling
-flow correctly when executing branch instructions like `br` and `br_if`.
-
-The `List Operation` in the return type represents an optional 'final'
-sequence of instructions – which should replace the rest of the instructions
-in the currently executed sequence, which in turn emulates the continuation
-jump, except it's more like 'continuation unwinding'.
-
-Semantics:
-- `.none` means there is no continuation, like in most simple/data instructions.
-- `some []` means there is a continuation, but it is empty, ending the block.
-- `some ops` means "drop the rest of whatever you're doing and run this instead"
--/
-abbrev ContinuationStack := (List StackEntry × Option (List Operation))
-
 /- TODO: I forgot what sort of other stacks are in standard lol, but ok. -/
 structure Stack where
   es : List StackEntry
@@ -180,19 +165,42 @@ def findLocalByName? (ls : List (Option String × Option StackEntry))
   | y :: [] => y.2
   | _ => .none
 
+/- This is readability helper type abbreviations for use in handling
+flow correctly when executing branch instructions like `br` and `br_if`.
+
+The `List Operation` in the return type represents an optional 'final'
+sequence of instructions – which should replace the rest of the instructions
+in the currently executed sequence, which in turn emulates the continuation
+jump, except it's more like 'continuation unwinding'.
+
+Semantics:
+- `.ok` means there is no continuation, like in most simple/data instructions.
+- `.error []` means there is a continuation, but it is empty, ending the block.
+- `.error ops` means "drop the rest of what you're doing and run this instead"
+-/
+abbrev Continuation? := Option (List Operation)
+abbrev EngineM := StateT (List StackEntry) (Except EngineErrors)
+
+instance : Inhabited (EngineM α) where
+  default := throw default
+
+def push [Monad m] : σ → StateT (List σ) m PUnit := fun x s => pure (⟨⟩, x :: s)
+def pile [Monad m] : List σ → StateT (List σ) m PUnit :=
+  fun xs s => pure (⟨⟩, xs ++ s)
+def σmap [Monad m] : (σ → σ) → StateT σ m PUnit := fun f s => pure (⟨⟩, f s)
+
 mutual
   /- TODO: Support multi-output functions. -/
   partial def getSO (locals : List (Option String × Option StackEntry))
-                    (stack : List StackEntry)
                     : Get'
-                    → Except EngineErrors (ContinuationStack × StackEntry)
-    | .from_stack => match stack with
-      | [] => .error .not_enough_stuff_on_stack
-      | s :: rest => .ok ((rest, .none), s)
+                    → EngineM (Continuation? × StackEntry)
+    | .from_stack => do match (←get) with
+      | [] => throw .not_enough_stuff_on_stack
+      | s :: rest => set rest; pure (.none, s)
     | .from_operation o => do
       -- Some instructions do not produce a value/do not change stack.
-      let (stack', cont?) ← runOp locals stack o
-      match stack' with
+      let cont? ← runOp locals o
+      match (←get) with
       | [] =>
         if cont?.isSome
           then throw .other -- TODO: this is incorrect! It's possible to `br` to
@@ -201,99 +209,99 @@ mutual
                             -- it's not possible. Continuations should ideally
                             -- be passed in a monadic way, not this jackally.
           else throw .not_enough_stuff_on_stack
-      | s :: rest => pure ((rest, cont?), s)
+      | s :: rest => set rest; pure (cont?, s)
     -- TODO: names are erased in production. See what do we want to do with this code path.
     | .by_name n => match n.name with
-      | .none => .error .local_with_no_name_given
+      | .none => throw .local_with_no_name_given
       | .some name => match findLocalByName? locals name with
-        | .none => .error $ .local_with_given_name_missing name
-        | .some l => .ok ((stack, .none), l)
+        | .none => throw $ .local_with_given_name_missing name
+        | .some l => pure (.none, l)
     | .by_index i => match locals.get? i.index with
-      | .some (_, .some se)  => .ok ((stack, .none), se)
-      | _ => .error $ .local_with_given_id_missing i.index
+      | .some (_, .some se)  => pure (.none, se)
+      | _ => throw $ .local_with_given_id_missing i.index
 
-  partial def runWithContinuation
+  partial def computeContinuation
                       (blocktypes : List Type')
                       (locals : List (Option String × Option StackEntry))
-                      (so : ContinuationStack)
+                      (so : Continuation?)
                       (ops' : List Operation)
-                      : Except EngineErrors (List StackEntry) := do
+                      : EngineM PUnit := do
     let rec go
-    | (stack, .none), [] => pure stack
-    | (stack, .some cont), _ => go (stack, .none) cont
-    | (stack, .none), op :: ops => do go (←runOp locals stack op) ops
+    | .none, [] => pure ()
+    | .some cont, _ => go .none cont
+    | .none, op :: ops => do go (←runOp locals op) ops
 
-    let es' ← (stackValues ∘ Stack.mk) <$> go so ops'
+    go so ops'
+    let es' := stackValues ⟨←get⟩
     if resultsTypecheck blocktypes es'
-      then pure es'
+      then set es'
       else throw .stack_incompatible_with_results
 
   -- TODO: this `getSO` threading shit literally simulates a monad in a way.
   -- We NEED to rewrite continuations to be passed more sanely.
   -- (`ContinuationStack` monad? `Except` pulling double-weight?)
   partial def runIBinop (locals : List (Option String × Option StackEntry))
-                        (stack : List StackEntry)
                         (g0 : Get') (g1 : Get')
                         (binop : Int → Int → Int)
-                        : Except EngineErrors ContinuationStack := do
-    let ((stack', cont?), operand0) ← getSO locals stack g0
-    if cont?.isSome then pure (operand0 :: stack', cont?) else
-      let ((stack1, cont1?), operand1) ← getSO locals stack' g1
-      if cont1?.isSome then pure (operand1 :: stack1, cont1?) else
+                        : EngineM Continuation? := do
+    let (cont?, operand0) ← getSO locals g0
+    if cont?.isSome then push operand0; pure cont? else
+      let (cont1?, operand1) ← getSO locals g1
+      if cont1?.isSome then push operand1; pure cont1? else
         let res ← match operand0, operand1 with
           -- TODO: check bitsize and overflow!
           | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) =>
               pure $ .num $ .i ⟨b0, binop i0 i1⟩
           | _, _ => throw .param_type_incompatible
-        pure (res :: stack1, .none)
+        push res
+        pure .none
 
-  -- TODO: there's a StateT somewhere here. Just sayin'
   -- TODO: we're not typechecking at all!
   -- TODO: can locals change when executing nested instructions?
   partial def runOp (locals : List (Option String × Option StackEntry))
-                    (stack : List StackEntry)
                     : Operation
-                    → Except EngineErrors ContinuationStack
-    | .nop => pure (stack, .none)
-    | .const _t n => pure (.num n :: stack, .none)
-    | .add _t g0 g1 => runIBinop locals stack g0 g1 fun x y => x+y
+                    → EngineM Continuation?
+    | .nop => pure .none
+    | .const _t n => do push $ .num n; pure .none
+    | .add _t g0 g1 => runIBinop locals g0 g1 fun x y => x+y
     | .block ts ops => do
       -- TODO: currently, we only support simple [] → [valuetype*] blocks,
       -- not type indices. For this reason, we start the block execution
       -- with an stack devoid of _values_ to simulate 0-input-arity, but we
       -- still pass in all the labels currently reachable.
-      let innerStack := .label ⟨ts.length, []⟩ :: stackLabels ⟨stack⟩
-      let es' ← runWithContinuation ts locals (innerStack, .none) ops
-      pure (es' ++ stack, .none)
+      let innerStack := .label ⟨ts.length, []⟩ :: stackLabels ⟨←get⟩
+      let es' ← (computeContinuation ts locals .none ops).run innerStack
+      pile es'.2; pure .none
     | .loop ts ops => do
       let innerStack :=
-        .label ⟨ts.length, [.loop ts ops]⟩ :: stackLabels ⟨stack⟩
-      let es' ← runWithContinuation ts locals (innerStack, .none) ops
-      pure (es' ++ stack, .none)
+        .label ⟨ts.length, [.loop ts ops]⟩ :: stackLabels ⟨←get⟩
+      let es' ← (computeContinuation ts locals .none ops).run innerStack
+      pile es'.2; pure .none
     | .if ts thens elses => do
-      let ((stack', _), cond) ← getSO locals stack .from_stack
+      let (_, cond) ← getSO locals .from_stack
       match cond with
       | .num (.i ⟨32, n⟩) =>
         -- Reducing to a block is actually spec-conforming behaviour!
-        runOp locals stack' $ .block ts (if n ≠ 0 then thens else elses)
+        runOp locals $ .block ts (if n ≠ 0 then thens else elses)
       | _ => throw .typecheck_failed
-    | .br li =>
-      match fetchLabel ⟨stack⟩ li with
+    | .br li => do
+      match fetchLabel ⟨←get⟩ li with
       | .none => throw .label_not_found
       | .some ⟨n, cont⟩ => do
-        let (topn, rest) := stack.splitAt n
+        let (topn, rest) := (←get).splitAt n
         if (stackValues ⟨topn⟩).length = n
           then match skimValues ⟨rest⟩ with
             | .label _ :: bottom =>
               let ops := if li = ⟨0⟩ then cont else [.br ⟨li.li-1⟩]
-              pure (topn ++ bottom, .some ops)
+              set $ topn ++ bottom
+              pure $ .some ops
             | _ => throw .typecheck_failed
           else throw .not_enough_stuff_on_stack
     | .br_if li => do
-      let ((stack', _), cond) ← getSO locals stack .from_stack
+      let (_, cond) ← getSO locals .from_stack
       match cond with
       | .num (.i ⟨32, n⟩) =>
-         if n = 0 then pure (stack', .none) else runOp locals stack' (.br li)
+         if n = 0 then pure .none else runOp locals (.br li)
       | _ => throw .typecheck_failed
 end
 
@@ -302,17 +310,17 @@ def runDo (_s : Store m)
           (σ : Stack)
           : Except EngineErrors Stack := do
   let bite acc x := do
-    match (←acc).1.es with
+    match (←acc).1 with
     | [] => .error .not_enough_stuff_on_stack
     | y :: rest =>
       if stackEntryTypecheck x.type y
-      then .ok (⟨rest⟩, y :: (←acc).2)
+      then .ok (rest, y :: (←acc).2)
       else .error .param_type_incompatible
-  let pσ ← f.params.foldl bite $ .ok (σ, [])
+  let pσ ← f.params.foldl bite $ .ok (σ.es, [])
   let locals := (f.params ++ f.locals).map
     fun l => (l.name, pσ.2.get? l.index)
-  let go oσ x:= do (fun so => Stack.mk so.1) <$> runOp locals (←oσ).es x
-  f.ops.foldl go $ .ok pσ.1
+  let ses ← (f.ops.forM fun op => discard $ runOp locals op).run pσ.1
+  pure $ Stack.mk ses.2
 
 -- This is sort of a debug function, returning the full resulting stack instead
 -- of just the values specified in the result fields.
