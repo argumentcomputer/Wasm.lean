@@ -1,6 +1,5 @@
 import Wasm.Wast.AST
 import Wasm.Wast.Code
-import YatimaStdLib
 import Wasm.Leb128
 
 open Wasm.Leb128
@@ -70,19 +69,19 @@ def indexLocals (f : Func) : Locals :=
   let idxLocals := f.locals.enumFrom f.params.length
   idxParams ++ idxLocals
 
-def indexNamedLocals (f : Func) : Locals :=
-  let onlyNamed := List.filter (·.2.name.isSome)
-  onlyNamed $ indexLocals f
+def indexIdentifiedLocals (f : Func) : Locals :=
+  let onlyIDed := List.filter (·.2.name.isSome)
+  onlyIDed $ indexLocals f
 
 def indexFuncs (fs : List Func) : List (Nat × Func) := fs.enum
 
-def indexFuncsWithNamedLocals (fs : List Func)
+def indexFuncsWithIdentifiedLocals (fs : List Func)
   : List (Nat × Locals) :=
-  (fs.map indexNamedLocals).enum.filter (!·.2.isEmpty)
+  (fs.map indexIdentifiedLocals).enum.filter (!·.2.isEmpty)
 
-def indexNamedGlobals (gs : List Global) : Globals :=
-  let onlyNamed := List.filter (·.2.name.isSome)
-  onlyNamed gs.enum
+def indexIdentifiedGlobals (gs : List Global) : Globals :=
+  let onlyIDed := List.filter (·.2.name.isSome)
+  onlyIDed gs.enum
 
 -- TODO: maybe calculate the opcodes instead of having lots of lookup subtables?
 -- def extractIBinOp (α : Type') (offset : UInt8)
@@ -383,8 +382,8 @@ mutual
     | .global_set gl => b 0x24 ++ extractGlobalLabel gl
     | .block ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs ← bts ++ mkVecM ops extractOp
-      pure $ b 0x02 ++ bts ++ lindex obs ++ b 0x0b
+      let obs ← bts ++ flatten <$> ops.mapM extractOp
+      pure $ b 0x02 ++ obs ++ b 0x0b
     | .loop ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
       let obs ← bts ++ mkVecM ops extractOp
@@ -430,7 +429,7 @@ def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
     | [] => b0
   let locals := mkVec localGroups extractCount
 
-  let obs : ByteArray := (extractOps f.ops).run globals (indexNamedLocals f)
+  let obs : ByteArray := (extractOps f.ops).run globals (indexIdentifiedLocals f)
 
   -- for each function's code section, we'll add its size after we do
   -- all the other computations.
@@ -438,13 +437,31 @@ def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
 
 def extractFuncBodies (m : Module) : ByteArray :=
   let header := b 0x0a
-  let extractFBwGlobals := extractFuncBody $ indexNamedGlobals m.globals
+  let extractFBwGlobals := extractFuncBody $ indexIdentifiedGlobals m.globals
   header ++ lindex (mkVec m.func extractFBwGlobals)
 
--- TODO
-def extractModName (_ : Module) : ByteArray := b0
--- TODO
-def extractFuncNames (_ : List Func) : ByteArray := b0
+def modHeader : ByteArray := b 0x00
+
+def extractModIdentifier : Module → ByteArray
+| ⟨.none, _, _⟩ => b0
+| ⟨.some n, _, _⟩ => modHeader ++ (lindex $ lindex n.toUTF8)
+
+def funcHeader : ByteArray := b 0x01
+
+def extractFuncIdentifier : Func → ByteArray
+| ⟨ .none, _, _, _, _, _ ⟩ => b0
+| ⟨ .some x, _, _, _, _, _ ⟩ => lindex x.toUTF8
+
+def flattenWithIndices (bs : List ByteArray) : ByteArray :=
+  flatten $ bs.enum.map fun (n,x) => uLeb128 n ++ x
+
+-- Same as extractModIdentifier, but maps a list of functions into a length-prefixed wasm array.
+def extractFuncIdentifiers (fs : List Func) : ByteArray :=
+  let fbs := flattenWithIndices $ fs.map extractFuncIdentifier
+  if fbs.size = 0 then
+    b0
+  else
+    funcHeader ++ (lindex $ uLeb128 fs.length ++ fbs)
 
 /-
                        ___________________________________________________
@@ -501,22 +518,24 @@ def encodeLocal (l : Nat × Local) : ByteArray :=
 def encodeFunc (f : (Nat × Locals)) : ByteArray :=
   uLeb128 f.1 ++ mkVec f.2 encodeLocal
 
-def extractLocalNames (fs : List Func) : ByteArray :=
+def extractLocalIdentifiers (fs : List Func) : ByteArray :=
   let subsection_header := b 0x02
-  let ifs := indexFuncsWithNamedLocals fs
+  let ifs := indexFuncsWithIdentifiedLocals fs
   if !ifs.isEmpty then
     subsection_header ++ lindex (mkVec ifs encodeFunc)
   else
     b0
 
-def extractNames (m : Module) : ByteArray :=
+def extractIdentifiers (m : Module) : ByteArray :=
   let header := b 0x00
-  let name := "name".toUTF8
-  let modName := extractModName m
-  let funcNames := extractFuncNames m.func
-  let locNames := extractLocalNames m.func
-  if (modName.size > 0 || funcNames.size > 0 || locNames.size > 0) then
-    header ++ (lindex $ (lindex name) ++ modName ++ funcNames ++ locNames)
+  let nameSectionStarts := "name".toUTF8
+  let modIdentifier := extractModIdentifier m
+  let funcIdentifiers := extractFuncIdentifiers m.func
+  let locIdentifiers := extractLocalIdentifiers m.func
+  if (modIdentifier.size > 0 || funcIdentifiers.size > 0 || locIdentifiers.size > 0)
+  then header ++ (lindex $
+    (lindex nameSectionStarts) ++ modIdentifier ++
+     funcIdentifiers ++ locIdentifiers)
   else
     b0
 
@@ -539,4 +558,4 @@ def mtob (m : Module) : ByteArray :=
   (extractGlobals m.globals) ++
   (extractExports m) ++
   (extractFuncBodies m) ++
-  (extractNames m)
+  (extractIdentifiers m)

@@ -1,4 +1,4 @@
-import YatimaStdLib
+import YatimaStdLib.Cached
 import Megaparsec.Common
 import Megaparsec.Parsec
 

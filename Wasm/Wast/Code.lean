@@ -10,8 +10,6 @@ import Wasm.Wast.Num
 import Wasm.Wast.Parser
 import Wasm.Wast.Parser.Common
 
-import YatimaStdLib
-
 open Megaparsec
 open Megaparsec.Common
 open Megaparsec.Errors.Bundle
