@@ -43,7 +43,7 @@ structure Local where
   deriving BEq
 
 instance : ToString Local where
-  toString x := s!"(Local.mk {x.index} {x.type})"
+  toString x := s!"(Local.mk {x.index} {x.name} {x.type})"
 
 end Local
 open Local
