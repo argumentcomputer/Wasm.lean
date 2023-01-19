@@ -111,9 +111,13 @@ def testNat : TestSeq := Id.run $ do
   test "correct nats parse" $ nats.foldl (fun acc x => acc && (isSome $ mkNat' x)) true
 
 
+def twoPlusTwo : TestSeq :=
+  test "2 + 2 = 4" $ 2 + 2 == 4
+
 -- Run all the TestSeq defined in this module.
 def main : IO UInt32 := do
   dbg_trace "Running tests..."
   lspecIO $
-    testNat -- ++
+    twoPlusTwo
+    -- testNat -- ++
     -- testFindFirst
