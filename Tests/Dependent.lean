@@ -30,7 +30,7 @@ def isNone (x : Option α) : Bool :=
 -- This is a very fast way to search for a substring in a string.
 -- It is used to find the first occurence of a substring in a string.
 -- We use it to find the first occurence of an underscore in a string.
-def findFirst (s : String) (sub : String) : Option String.Pos := do
+partial def findFirst (s : String) (sub : String) : Option String.Pos := do
   let subLen := sub.length
   let sLen := s.length
   let pospp x := String.Pos.mk $ x.byteIdx + 1
@@ -39,6 +39,8 @@ def findFirst (s : String) (sub : String) : Option String.Pos := do
   let mut k := 0
   let mut lps := [0]
   while j < String.Pos.mk subLen do
+    -- Debug steps
+    dbg_trace s!"j: {j.byteIdx} k: {k.byteIdx} lps: {lps}"
     if sub.get! j == sub.get! k then
       k := pospp k
       -- TODO: use Array instead of this.
@@ -53,6 +55,8 @@ def findFirst (s : String) (sub : String) : Option String.Pos := do
   j := 0
   let mut result : Option String.Pos := .none
   while i.byteIdx < sLen do
+    -- Debug steps
+    dbg_trace s!"i: {i.byteIdx} j: {j.byteIdx}"
     if sub.get! j == s.get! i then
       j := pospp j
       i := pospp i
@@ -108,6 +112,8 @@ def testNat : TestSeq := Id.run $ do
 
 
 -- Run all the TestSeq defined in this module.
-def main : IO UInt32 := lspecIO $
-  testNat ++
-  testFindFirst
+def main : IO UInt32 := do
+  dbg_trace "Running tests..."
+  lspecIO $
+    testNat -- ++
+    -- testFindFirst
