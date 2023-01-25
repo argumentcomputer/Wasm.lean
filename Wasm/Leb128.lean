@@ -1,4 +1,4 @@
-import YatimaStdLib
+import YatimaStdLib.Bit
 
 namespace Wasm.Leb128
 

@@ -19,7 +19,6 @@ require Megaparsec from git
 
 @[default_target]
 lean_exe wasm {
-  supportInterpreter := true
   root := "Main"
 }
 

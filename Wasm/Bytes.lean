@@ -1,6 +1,5 @@
 import Wasm.Wast.AST
 import Wasm.Wast.Code
-import YatimaStdLib
 import Wasm.Leb128
 
 open Wasm.Leb128

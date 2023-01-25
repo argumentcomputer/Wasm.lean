@@ -10,8 +10,6 @@ import Wasm.Wast.Num
 import Wasm.Wast.Parser
 import Wasm.Wast.Parser.Common
 
-import YatimaStdLib
-
 open Megaparsec
 open Megaparsec.Common
 open Megaparsec.Errors.Bundle
@@ -33,4 +31,3 @@ def reindexParamsAndLocals (f : Func) : (List Local × List Local) :=
   let ps := reindexLocals 0 f.params
   let ls := reindexLocals (ps.length) f.locals
   (ps, ls)
-
