@@ -54,7 +54,7 @@ def main : IO Unit := do
   | .none => IO.println s!":thumbs_up:"
 
   IO.println s!"Let's try signed integers?"
-  let ints := "-50_0"
+  let ints := "-0x50_0"
   match mkInt' ints with
   | .some int => IO.println s!"{ints} == {(int : Int)}"
   | .none => IO.println s!"/_!_\\ BUG IN Int' {ints} clause"

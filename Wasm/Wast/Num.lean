@@ -155,6 +155,11 @@ def radixP (radix : Radix) : Parsec Char String Unit Nat := do
   let digits ← radNumP radix
   pure $ List.foldl (fun a x => radix * a + x) 0 digits
 
+/- Parse a natural out of a string. Infer Radix based on parsec state -/
+def natP : Parsec Char String Unit Nat := do
+  let ps ← getParserState
+  radixP $ hod ps.input
+
 /- Parse a decimal. -/
 def decimalP : Parsec Char String Unit Nat := radixP .ten
 
@@ -166,10 +171,10 @@ private def demoParse (φ : Parsec Char String Unit γ) (x : String) : Except (P
 
 /- Run a parser against `String` `y` and return a parse result. -/
 def natMaybe y := do
-  demoParse (radixP $ hod y) y
+  demoParse natP y
 
 def parseNat' (label : String) (x : String)
-  := runParserP (radixP $ hod x) label x
+  := runParserP natP label x
 
 /- Captures a valid Natural.
 If you're parsing from a file with name `name`, set `label := name`. -/
@@ -223,7 +228,8 @@ open Num.Nat
 def parseInt' (label : String) (x : String) :=
   let intP := do
     let sign ← signP
-    let n ← radixP (hod x)
+    -- hod is bugged because it doesn't work on strings with minus prefix
+    let n ← natP
     eof -- the spec requires that the whole number is well-formed
     pure $ signum sign * n
   runParserP intP label x
@@ -310,7 +316,7 @@ def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
   let _prefix ← radPrefixP radix
   let sign ← signP
   let s := Float.ofInt $ signum sign
-  let an ← radixP radix
+  let an ← natP
   let _dot ← option $ string "."
   let obs ← option $ radNumP radix
   let significand := s * (an.toFloat + match obs with
