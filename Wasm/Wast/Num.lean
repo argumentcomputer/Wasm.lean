@@ -8,6 +8,7 @@ import Megaparsec.Errors
 import Megaparsec.Errors.Bundle
 import Megaparsec.Parsec
 import Megaparsec.MonadParsec
+import YatimaStdLib.Cached
 import YatimaStdLib.NonEmpty
 
 open Wasm.Wast.Parser.Common
