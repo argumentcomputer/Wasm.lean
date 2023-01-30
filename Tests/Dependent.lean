@@ -214,8 +214,43 @@ def floats := [
   "-0x10_000_000_0_0_0.0"
 ]
 
+def floatsWithExponentNotation := [
+  "123.0e0",
+  "-123.0e0",
+  "0.0e0",
+  "-0.0e0",
+  "0x123.0e0",
+  "-0x123.0e0",
+  "0x0.0e0",
+  "-0x0.0e0",
+  "0x1_0.0e2",
+  "-0x1_0.0e0",
+  "0x2_0_0.0e4",
+  "-0x2_0_0.0e0",
+  "0x3_0_0_0.0e-3",
+  "-0x3_0_0_0.0e0",
+  "0x4_0_0_0_0.0e0",
+  "-0x4_0_0_0_0.0e0",
+  "0x5_0_0_0_0_0.0e0",
+  "-0x5_0_0_0_0_0.0e0",
+  "0x6_0_0_0_0_0_0.0e0",
+  "-0x6_0_0_0_0_0_0.0e0",
+  "0x7_0_0_0_0_0_0_0.0e0",
+  "-0x7_0_0_0_0_0_0_0.0e0",
+  "0x8_0_0_0_0_0_0_0_0.0e0",
+  "-0x8_0_0_0_0_0_0_0_0.0e0",
+  "0x9_0_0_0_0_0_0_0_0_0.0e0",
+  "-0x9_0_0_0_0_0_0_0_0_0.0e0",
+  "0x10_000_000_0_0_0.0e0",
+  "-0x10_000_000_0_0_0.0e0",
+  "123.0e1",
+  "-123.0e1",
+  "0.0e1"
+]
+
+
 def testFloat : TestSeq := Id.run $ do
-  test "correct floats parse" $ floats.foldl (fun acc x => acc && (isSome $ mkFloat' x)) true
+  test "correct floats parse" $ (floats ++ floatsWithExponentNotation).foldl (fun acc x => acc && (isSome $ mkFloat' x)) true
 
 def testFloatUnderScores : TestSeq := Id.run $ do
   test "correct floats parse to the same Float with underscores" $ floats.foldl (fun acc x => Id.run $ do
@@ -262,4 +297,6 @@ def main : IO UInt32 := do
     testFloatAntiScores ++
     testBadFloatsDontParse ++
     testOxxFloatsDontParse ++
-    (test "-22_2_2.0 is -2222.0, not anything else" $ floatParsesTo (-2222.0) "-22_2_2.0")
+    (test "-22_2_2.0 is -2222.0, not anything else" $ floatParsesTo (-2222.0) "-22_2_2.0") ++
+    -- -0x3000.0e-3 is the same as -12288.0e-3 and -12288.0e-3 is the same as -12.288
+    (test "-0x3000.0e-3 is -12.288, not anything else" $ floatParsesTo (-12.288) "-0x3000.0e-3")
