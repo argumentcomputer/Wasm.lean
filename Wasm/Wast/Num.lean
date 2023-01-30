@@ -21,6 +21,14 @@ open Megaparsec.Parsec
 open MonadParsec
 open Cached
 
+-- Turns a negative integer into a positive by taking its
+-- bit representation and interpreting it as unsigned.
+-- `size` is the number of bits to assume
+def unsign (i : Int) (size : BitSize := 64) : Int :=
+  match i with
+  | .ofNat m => m
+  | .negSucc _ => i + ((2 : Int) ^ (size : Nat))
+
 namespace Wasm.Wast.Num
 
 namespace NumType

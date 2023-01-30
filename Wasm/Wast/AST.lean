@@ -109,6 +109,20 @@ mutual
   | nop
   | const : Type' → NumUniT → Operation
   | add : Type' → Get' → Get' → Operation
+  | sub : Type' → Get' → Get' → Operation
+  | mul : Type' → Get' → Get' → Operation
+  | div_s : Type' → Get' → Get' → Operation
+  | div_u : Type' → Get' → Get' → Operation
+  | rem_s : Type' → Get' → Get' → Operation
+  | rem_u : Type' → Get' → Get' → Operation
+  | and : Type' → Get' → Get' → Operation
+  | or : Type' → Get' → Get' → Operation
+  | xor : Type' → Get' → Get' → Operation
+  | shl : Type' → Get' → Get' → Operation
+  | shr_u : Type' → Get' → Get' → Operation
+  | shr_s : Type' → Get' → Get' → Operation
+  | rotl : Type' → Get' → Get' → Operation
+  | rotr : Type' → Get' → Get' → Operation
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
   | if : List Type' → List Operation → List Operation → Operation
@@ -130,6 +144,28 @@ mutual
     | .nop => "(Operation.nop)"
     | .const t n => s!"(Operation.const {t} {n})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
+    | .sub t g1 g2 => s!"(Operation.sub {t} {getToString g1} {getToString g2})"
+    | .mul t g1 g2 => s!"(Operation.mul {t} {getToString g1} {getToString g2})"
+    | .div_s t g1 g2 =>
+      s!"(Operation.div_s {t} {getToString g1} {getToString g2})"
+    | .div_u t g1 g2 =>
+      s!"(Operation.div_u {t} {getToString g1} {getToString g2})"
+    | .rem_s t g1 g2 =>
+      s!"(Operation.rem_s {t} {getToString g1} {getToString g2})"
+    | .rem_u t g1 g2 =>
+      s!"(Operation.rem_u {t} {getToString g1} {getToString g2})"
+    | .and t g1 g2 => s!"(Operation.and {t} {getToString g1} {getToString g2})"
+    | .or t g1 g2 => s!"(Operation.or {t} {getToString g1} {getToString g2})"
+    | .xor t g1 g2 => s!"(Operation.xor {t} {getToString g1} {getToString g2})"
+    | .shl t g1 g2 => s!"(Operation.shl {t} {getToString g1} {getToString g2})"
+    | .shr_u t g1 g2 =>
+      s!"(Operation.shr_u {t} {getToString g1} {getToString g2})"
+    | .shr_s t g1 g2 =>
+      s!"(Operation.shr_s {t} {getToString g1} {getToString g2})"
+    | .rotl t g1 g2 =>
+      s!"(Operation.rotl {t} {getToString g1} {getToString g2})"
+    | .rotr t g1 g2 =>
+      s!"(Operation.rotr {t} {getToString g1} {getToString g2})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
     | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"

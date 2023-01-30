@@ -74,6 +74,94 @@ def extractAdd (α : Type') : ByteArray :=
   | .f 32 => 0x92
   | .f 64 => 0xa0
 
+-- TODO: maybe calculate the opcodes instead of having lots of lookup subtables?
+-- def extractIBinOp (α : Type') (offset : UInt8)
+def extractSub (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6b
+  | .i 64 => 0x7d
+  | .f 32 => 0x93
+  | .f 64 => 0xa1
+
+def extractMul (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6c
+  | .i 64 => 0x7e
+  | .f 32 => 0x94
+  | .f 64 => 0xa2
+
+def extractDivS (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6d
+  | .i 64 => 0x7f
+  | _ => unreachable!
+
+def extractDivU (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6e
+  | .i 64 => 0x80
+  | _ => unreachable!
+
+def extractRemS (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x6f
+  | .i 64 => 0x81
+  | _ => unreachable!
+
+def extractRemU (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x70
+  | .i 64 => 0x82
+  | _ => unreachable!
+
+def extractAnd (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x71
+  | .i 64 => 0x83
+  | _ => unreachable!
+
+def extractOr (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x72
+  | .i 64 => 0x84
+  | _ => unreachable!
+
+def extractXor (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x73
+  | .i 64 => 0x85
+  | _ => unreachable!
+
+def extractShl (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x74
+  | .i 64 => 0x86
+  | _ => unreachable!
+
+def extractShrS (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x75
+  | .i 64 => 0x87
+  | _ => unreachable!
+
+def extractShrU (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x76
+  | .i 64 => 0x88
+  | _ => unreachable!
+
+def extractRotl (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x77
+  | .i 64 => 0x89
+  | _ => unreachable!
+
+def extractRotr (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x78
+  | .i 64 => 0x8a
+  | _ => unreachable!
+
 mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
   partial def extractGet' (x : Get') : ByteArray :=
@@ -90,9 +178,21 @@ mutual
     | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
     | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val
     | .const _ _ => sorry -- TODO: float binary encoding
-    | .add t g1 g2 =>
-      -- Enter stackman
-      extractGet' g1 ++ extractGet' g2 ++ extractAdd t
+    | .add t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAdd t
+    | .sub t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractSub t
+    | .mul t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMul t
+    | .div_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivS t
+    | .div_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivU t
+    | .rem_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRemS t
+    | .rem_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRemU t
+    | .and t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAnd t
+    | .or  t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractOr  t
+    | .xor t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractXor t
+    | .shl t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShl t
+    | .shr_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShrU t
+    | .shr_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShrS t
+    | .rotl t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRotl t
+    | .rotr t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRotr t
     | .block ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
       let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)

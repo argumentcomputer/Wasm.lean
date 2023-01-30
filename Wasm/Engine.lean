@@ -254,13 +254,17 @@ mutual
       let operand1 ← getSO locals g1
       match operand0, operand1 with
         -- TODO: check bitsize and overflow!
-        | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) =>
-            push $ .num $ .i ⟨b0, binop i0 i1⟩
-        | _, _ => throwEE .param_type_incompatible
+      | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) =>
+          push $ .num $ .i ⟨b0, binop i0 i1⟩
+      | _, _ => throwEE .param_type_incompatible
     let blockOp ts ops contLabel := do
       let innerStack := contLabel :: stackLabels ⟨←get⟩
       let es' ← (computeContinuation ts locals ops).run innerStack
       pile es'.2
+    let unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
+      match t with
+      | .i bs => f (unsign x bs) (unsign y bs)
+      | .f _ => unreachable!
     let checkTop_i32 (f : Int → EngineM PUnit) := do
       match (←getSO locals .from_stack) with
       | .num (.i ⟨32, n⟩) => f n
@@ -273,7 +277,33 @@ mutual
     match op with
     | .nop => pure ⟨⟩
     | .const _t n => push $ .num n
-    | .add _t g0 g1 => runIBinop g0 g1 fun x y => x+y
+    -- TODO: run NOT IBinop depending on the type
+    | .add _t g0 g1 => runIBinop g0 g1 (· + ·)
+    | .sub _t g0 g1 => runIBinop g0 g1 (· - ·)
+    | .mul _t g0 g1 => runIBinop g0 g1 (· * ·)
+    | .div_s _t g0 g1 => runIBinop g0 g1 (· / ·)
+    | .div_u  t g0 g1 => runIBinop g0 g1 $ unsigned (· / ·) t
+    | .rem_s _t g0 g1 => runIBinop g0 g1 (· % ·)
+    | .rem_u  t g0 g1 => runIBinop g0 g1 $ unsigned (· % ·) t
+    | .and _t g0 g1 => runIBinop g0 g1 (· &&& ·)
+    | .or _t g0 g1  => runIBinop g0 g1 (· ||| ·)
+    | .xor _t g0 g1 => runIBinop g0 g1 (· ^^^ ·)
+    | .shl _t g0 g1 => runIBinop g0 g1 (· <<< ·)
+    | .shr_u t g0 g1 => runIBinop g0 g1 $ unsigned (· >>> ·) t
+    | .shr_s (.i bs) g0 g1 => runIBinop g0 g1 fun x k =>
+      let N := (2 : Int)^(bs : Nat)
+      (x >>> k) ||| (x &&& (N/2))
+    | .shr_s _ _ _ => throwEE .typecheck_failed
+    | .rotl (.i bs) g0 g1 => runIBinop g0 g1 fun x k =>
+      (x <<< k) ||| match k with
+      | .ofNat   _ => (x >>> ((bs : Int) - k))
+      | .negSucc _ => (x <<< ((bs : Int) + k))
+    | .rotl _ _ _ => throwEE .typecheck_failed
+    | .rotr (.i bs) g0 g1 => runIBinop g0 g1 fun x k =>
+      (x >>> k) ||| match k with
+      | .ofNat   _ => x <<< ((bs : Int) - k)
+      | .negSucc _ => x >>> ((bs : Int) + k)
+    | .rotr _ _ _ => throwEE .typecheck_failed
     | .block ts ops => blockOp ts ops $ .label ⟨ts.length, []⟩
       -- TODO: currently, we only support simple [] → [valuetype*] blocks,
       -- not type indices. For this reason, we start the block execution
