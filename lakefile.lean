@@ -15,7 +15,7 @@ require YatimaStdLib from git
   "https://github.com/yatima-inc/YatimaStdLib.lean" @ "49ee890897dbdd4665d0e8c75cd3401f0b4e6f21"
 
 require Megaparsec from git
-  "https://github.com/yatima-inc/Megaparsec.lean" @ "85ffa8b5e9bd0bc9b9020fd4e0fe1baa89d69413"
+  "https://github.com/yatima-inc/Megaparsec.lean" @ "ec68257a42f4af2d02e69100e6fe4b90bb5aef9a"
 
 @[default_target]
 lean_exe wasm {
