@@ -2,6 +2,7 @@ import LSpec
 
 -- Now we import all the dependently typed stuff from Wasm project.
 import Wasm.Wast.Num
+import Wasm.Wast.Name
 
 -- Open LSpec namespace.
 open LSpec
@@ -277,6 +278,28 @@ def testOxxFloatsDontParse : TestSeq := Id.run $ do
       acc && (isNone $ mkFloat' s!"0xx{x}")
     ) true
 
+def names := [
+  "lol",
+  "keque",
+  "foo",
+  "bar",
+  "baz",
+  "qu$x",
+  "x.y",
+  "q_u.x",
+  "z><x",
+  "_.+-*/\\^~=<>!?@#$%&|:'`4555sdgf"
+]
+
+def testNames : TestSeq := Id.run $ do
+  test "correct names parse" $ names.foldl (fun acc x => acc && (isSome $ Wasm.Wast.Name.mkName x)) true
+
+def testNamesDontParse : TestSeq := Id.run $ do
+  test "some wrong names don't parse" $
+    names.foldl (fun acc x => Id.run $ do
+      acc && (isNone $ Wasm.Wast.Name.mkName s!"{x}[]")
+    ) true
+
 -- Run all the TestSeq defined in this module.
 def main : IO UInt32 := do
   lspecIO $
@@ -299,4 +322,6 @@ def main : IO UInt32 := do
     testOxxFloatsDontParse ++
     (test "-22_2_2.0 is -2222.0, not anything else" $ floatParsesTo (-2222.0) "-22_2_2.0") ++
     -- -0x3000.0e-3 is the same as -12288.0e-3 and -12288.0e-3 is the same as -12.288
-    (test "-0x3000.0e-3 is -12.288, not anything else" $ floatParsesTo (-12.288) "-0x3000.0e-3")
+    (test "-0x3000.0e-3 is -12.288, not anything else" $ floatParsesTo (-12.288) "-0x3000.0e-3") ++
+    testNames ++
+    testNamesDontParse
