@@ -23,3 +23,4 @@ lean_exe wasm {
 }
 
 lean_exe Tests.Dependent
+lean_exe Tests.Leb128

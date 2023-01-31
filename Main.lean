@@ -35,65 +35,6 @@ def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name 
 
 def main : IO Unit := do
 
-  -- LEB128 TESTS
-  let lebx := 624485
-  let blebx := ntob lebx
-  /-
-  5> erlang:length( "000010011000011101100101" ).
-  24
-  8> erlang:length("00001001").
-  8
-  9> erlang:length("10000111").
-  8
-  10> erlang:length("01100101").
-  8
-  11> [ 2#00001001, 2#10000111, 2#01100101 ].
-  -/
-  IO.println s!"{blebx} should be [9,135,101]"
-  let bilebx := ByteArray.toBits blebx
-  IO.println s!"{bilebx} should be 000010011000011101100101"
-  let ulebx := unlead bilebx
-  IO.println s!"{ulebx} should be 10011000011101100101"
-  let plebx := pad7 ulebx
-  IO.println s!"{plebx} should be 010011000011101100101"
-  let pp := npad7 lebx
-  IO.println s!"{pp} should be {plebx}"
-  let fin := uLeb128 lebx
-  IO.println s!"{fin} should be 229, 142, 38"
-  IO.println s!"{uLeb128 1} should be 1"
-  -- LE Long
-  --- 00000101 11001011 10000101 11101000 11101001
-  --- becomes in LE:
-  --- 11101001 11101000 10000101 11001011 00000101
-  ---- 233
-  ---- 232
-  ---- 133
-  ---- 203
-  ---- 5
-  let bigN := 1499559017
-  IO.println s!"{uLeb128 bigN} should be 233 232 133 203 5"
-  IO.println s!"{reassemble $ npad7 bigN} should be 00000101 11001011 10000101 11101000 11101001"
-  IO.println s!"= = = = SIGNED LEB128 TEST = = = ="
-  IO.println s!"{sLeb128 (-123456)} should be [192, 187, 120]"
-  IO.println s!"{sLeb128 (1)} should be [1]"
-  IO.println s!"{sLeb128 (624485)} should be 229, 142, 38"
-  /-
-                4> 2#0000001.
-                1
-                5> 2#1111110.
-                126
-                6> 2#1111111.
-                127
-                7> 2#01111111.
-                127
-  -/
-  IO.println s!"{sLeb128 (-1)} should be [127]"
-  IO.println s!"{sLeb128 9000} should be 168, 198, 0 (because it's signed!)"
-  IO.println s!"{uLeb128 9000} should be 70, 168"
-  IO.println s!"{sLeb128 8787} should be 211, 196, 00"
-  IO.println s!"= = END OF SIGNED LEB128 TEST! = ="
-
-
   IO.println "* * *"
   IO.println "f32 is represented as:"
   void $ parseTestP typeP "f32"
