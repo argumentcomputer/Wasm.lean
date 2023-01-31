@@ -278,7 +278,7 @@ structure ConstInt where
   deriving BEq
 
 instance : ToString ConstInt where
-  toString x := "(ConstInt " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
+  toString x := "(ConstInt.mk " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
 
 def iP : Parsec Char String Unit ConstInt := do
   let bs ← string "i32.const" <|> string "i64.const"
@@ -408,8 +408,8 @@ inductive NumUniT where
 | f : ConstFloat → NumUniT
 
 instance : ToString NumUniT where
-  toString | .i ci => toString ci
-           | .f ci => toString ci
+  toString | .i ci => s!"(NumUniT.i {ci})"
+           | .f ci => s!"(NumUniT.f {ci})"
 
 def numUniTP : Parsec Char String Unit NumUniT :=
   .i <$> iP <|> .f <$> fP
