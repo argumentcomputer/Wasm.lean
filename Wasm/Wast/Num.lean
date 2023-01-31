@@ -114,6 +114,14 @@ def radDigitP (radix : Radix) : Parsec Char String Unit Nat :=
   | .ten => decDigitP
   | .sixteen => hexDigitP
 
+def mkDigit (y : Char) (_label : String := "") : Option (Digit y) :=
+  let pr : Cached Wasm.Wast.Num.Num.Digit.parseDigit y := {}
+  if isOk : Option.isSome pr.val then
+    let d : Digit y := { parsed := pr }
+    .some d
+  else
+    .none
+
 end Num.Digit
 
 ----------------------------------------------------

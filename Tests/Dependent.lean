@@ -300,6 +300,84 @@ def testNamesDontParse : TestSeq := Id.run $ do
       acc && (isNone $ Wasm.Wast.Name.mkName s!"{x}[]")
     ) true
 
+def digitsWithHexDigits := [
+  '0',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5',
+  '6',
+  '7',
+  '8',
+  '9',
+  'a',
+  'b',
+  'c',
+  'd',
+  'e',
+  'f',
+  'A',
+  'B',
+  'C',
+  'D',
+  'E',
+  'F'
+]
+
+def testDigitsWithHexDigits : TestSeq := Id.run $ do
+  test "correct digits with hex digits parse" $
+    digitsWithHexDigits.foldl (fun acc x => acc && (isSome $ Wasm.Wast.Num.Num.Digit.mkDigit x)) true
+
+def badDigits := [
+  'g',
+  'h',
+  'i',
+  'j',
+  'k',
+  'l',
+  'm',
+  'n',
+  'o',
+  'p',
+  'q',
+  'r',
+  's',
+  't',
+  'u',
+  'v',
+  'w',
+  'x',
+  'y',
+  'z',
+  'G',
+  'H',
+  'I',
+  'J',
+  'K',
+  'L',
+  'M',
+  'N',
+  'O',
+  'P',
+  'Q',
+  'R',
+  'S',
+  'T',
+  'U',
+  'V',
+  'W',
+  'X',
+  'Y',
+  'Z'
+]
+
+def testBadDigitsDontParse : TestSeq := Id.run $ do
+  test "some wrong digits don't parse" $
+    badDigits.foldl (fun acc x => Id.run $ do
+      acc && (isNone $ Wasm.Wast.Num.Num.Digit.mkDigit x)
+    ) true
+
 -- Run all the TestSeq defined in this module.
 def main : IO UInt32 := do
   lspecIO $
@@ -324,4 +402,6 @@ def main : IO UInt32 := do
     -- -0x3000.0e-3 is the same as -12288.0e-3 and -12288.0e-3 is the same as -12.288
     (test "-0x3000.0e-3 is -12.288, not anything else" $ floatParsesTo (-12.288) "-0x3000.0e-3") ++
     testNames ++
-    testNamesDontParse
+    testNamesDontParse ++
+    testDigitsWithHexDigits ++
+    testBadDigitsDontParse
