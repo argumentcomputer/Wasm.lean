@@ -27,9 +27,12 @@ def numUniType : NumUniT → Type'
   | .i x => .i x.bs
   | .f x => .f x.bs
 
+def bitsize : Type' → BitSize
+  | .f bs => bs
+  | .i bs => bs
+
 end Type'
 open Type'
-
 
 namespace Local
 
@@ -108,6 +111,9 @@ mutual
   inductive Operation where
   | nop
   | const : Type' → NumUniT → Operation
+  | clz : Type' → Get' → Operation
+  | ctz : Type' → Get' → Operation
+  | popcnt : Type' → Get' → Operation
   | add : Type' → Get' → Get' → Operation
   | sub : Type' → Get' → Get' → Operation
   | mul : Type' → Get' → Get' → Operation
@@ -143,6 +149,9 @@ mutual
   private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"
     | .const t n => s!"(Operation.const {t} {n})"
+    | .clz t g => s!"(Operation.clz {t} {getToString g})"
+    | .ctz t g => s!"(Operation.ctz {t} {getToString g})"
+    | .popcnt t g => s!"(Operation.popcnt {t} {getToString g})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
     | .sub t g1 g2 => s!"(Operation.sub {t} {getToString g1} {getToString g2})"
     | .mul t g1 g2 => s!"(Operation.mul {t} {getToString g1} {getToString g2})"

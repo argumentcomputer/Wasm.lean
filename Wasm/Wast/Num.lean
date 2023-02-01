@@ -29,6 +29,11 @@ def unsign (i : Int) (size : BitSize := 64) : Int :=
   | .ofNat m => m
   | .negSucc _ => i + ((2 : Int) ^ (size : Nat))
 
+def toNBits (i : Int) (size : BitSize := 64) : List Bit :=
+  let bits := i.toBits
+  let padbit := if i ≥ 0 then .zero else .one
+  List.replicate (size - bits.length) padbit ++ bits
+
 namespace Wasm.Wast.Num
 
 namespace NumType

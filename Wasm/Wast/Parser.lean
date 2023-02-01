@@ -98,15 +98,16 @@ private def brifP : Parsec Char String Unit Operation := do
   partial def opP : Parsec Char String Unit Operation :=
     Char.between '(' ')' $ owP *>
       nopP <|> constP <|>
-        binopP "add" .add <|> binopP "sub" .sub <|> binopP "mul" .mul <|>
-        iBinopP "div_s" .div_s <|> iBinopP "div_u" .div_u <|>
-        iBinopP "rem_s" .rem_s <|> iBinopP "rem_u" .rem_u <|>
-        iBinopP "and" .and <|> iBinopP "or" .or <|> iBinopP "xor" .xor <|>
-        iBinopP "shl" .shl <|>
-        iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
-        iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
-        blockP <|> loopP <|> ifP <|>
-        brP <|> brifP
+      iUnopP "clz" .clz <|> iUnopP "ctz" .ctz <|> iUnopP "popcnt" .popcnt <|>
+      binopP "add" .add <|> binopP "sub" .sub <|> binopP "mul" .mul <|>
+      iBinopP "div_s" .div_s <|> iBinopP "div_u" .div_u <|>
+      iBinopP "rem_s" .rem_s <|> iBinopP "rem_u" .rem_u <|>
+      iBinopP "and" .and <|> iBinopP "or" .or <|> iBinopP "xor" .xor <|>
+      iBinopP "shl" .shl <|>
+      iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
+      iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
+      blockP <|> loopP <|> ifP <|>
+      brP <|> brifP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
@@ -134,6 +135,16 @@ private def brifP : Parsec Char String Unit Operation := do
     let elses ← opsP
     owP <* option' (string "end")
     pure $ .if ts thens elses
+
+  partial def iUnopP (opS : String) (unopMk : Type' → Get' → Operation)
+              : Parsec Char String Unit Operation := do
+    let type : Type' ←
+      string s!"i32.{opS}" *> (pure $ .i 32) <|>
+      string s!"i64.{opS}" *> (pure $ .i 64)
+    ignoreP
+    let arg ← get'ViaGetP type
+    owP
+    pure $ unopMk type arg
 
   partial def iBinopP (opS : String) (binopMk : Type' → Get' → Get' → Operation)
               : Parsec Char String Unit Operation := do

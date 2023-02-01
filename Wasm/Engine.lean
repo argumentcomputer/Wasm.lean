@@ -249,6 +249,12 @@ mutual
   -- TODO: check that typechecking is done everywhere!
   partial def runOp (locals : List (Option String × Option StackEntry))
                     : Operation → EngineM PUnit := fun op =>
+    let runIUnop g unop := do
+      match (←getSO locals g) with
+        -- TODO: check bitsize and overflow!
+      | .num (.i ⟨b, i⟩) =>
+          push $ .num $ .i ⟨b, unop i⟩
+      | _ => throwEE .param_type_incompatible
     let runIBinop g0 g1 binop := do
       let operand0 ← getSO locals g0
       let operand1 ← getSO locals g1
@@ -277,6 +283,12 @@ mutual
     match op with
     | .nop => pure ⟨⟩
     | .const _t n => push $ .num n
+    | .clz t g => runIUnop g fun i =>
+      ((toNBits i $ bitsize t).takeWhile (· = .zero)).length
+    | .ctz t g => runIUnop g fun i =>
+      ((toNBits i $ bitsize t).reverse.takeWhile (· = .zero)).length
+    | .popcnt t g => runIUnop g fun i =>
+      ((toNBits i $ bitsize t).filter (· = .one)).length
     -- TODO: run NOT IBinop depending on the type
     | .add _t g0 g1 => runIBinop g0 g1 (· + ·)
     | .sub _t g0 g1 => runIBinop g0 g1 (· - ·)

@@ -67,6 +67,26 @@ def extractFuncIds (m : Module) : ByteArray :=
     m.func.foldl (fun acc _x => (acc ++ (b ∘ Nat.toUInt8) acc.data.size)) b0
   b 0x03 ++ uLeb128 funs.data.size ++ funs
 
+-- TODO: maybe calculate the opcodes instead of having lots of lookup subtables?
+-- def extractIBinOp (α : Type') (offset : UInt8)
+def extractClz (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x67
+  | .i 64 => 0x79
+  | _ => unreachable!
+
+def extractCtz (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x68
+  | .i 64 => 0x7a
+  | _ => unreachable!
+
+def extractPopcnt (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x69
+  | .i 64 => 0x7b
+  | _ => unreachable!
+
 def extractAdd (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6a
@@ -74,8 +94,6 @@ def extractAdd (α : Type') : ByteArray :=
   | .f 32 => 0x92
   | .f 64 => 0xa0
 
--- TODO: maybe calculate the opcodes instead of having lots of lookup subtables?
--- def extractIBinOp (α : Type') (offset : UInt8)
 def extractSub (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6b
@@ -178,6 +196,9 @@ mutual
     | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
     | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val
     | .const _ _ => sorry -- TODO: float binary encoding
+    | .clz    t g => extractGet' g ++ extractClz t
+    | .ctz    t g => extractGet' g ++ extractCtz t
+    | .popcnt t g => extractGet' g ++ extractPopcnt t
     | .add t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAdd t
     | .sub t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractSub t
     | .mul t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMul t
