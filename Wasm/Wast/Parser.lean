@@ -98,6 +98,12 @@ private def brifP : Parsec Char String Unit Operation := do
   partial def opP : Parsec Char String Unit Operation :=
     Char.between '(' ')' $ owP *>
       nopP <|> constP <|>
+      iUnopP "eqz" .eqz <|>
+      binopP "eq" .eq <|> binopP "ne" .ne <|>
+      iBinopP "lt_u" .lt_u <|> iBinopP "lt_s" .lt_s <|>
+      iBinopP "gt_u" .gt_u <|> iBinopP "gt_s" .gt_s <|>
+      iBinopP "le_u" .le_u <|> iBinopP "le_s" .le_s <|>
+      iBinopP "ge_u" .ge_u <|> iBinopP "ge_s" .ge_s <|>
       iUnopP "clz" .clz <|> iUnopP "ctz" .ctz <|> iUnopP "popcnt" .popcnt <|>
       binopP "add" .add <|> binopP "sub" .sub <|> binopP "mul" .mul <|>
       iBinopP "div_s" .div_s <|> iBinopP "div_u" .div_u <|>

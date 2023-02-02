@@ -69,6 +69,74 @@ def extractFuncIds (m : Module) : ByteArray :=
 
 -- TODO: maybe calculate the opcodes instead of having lots of lookup subtables?
 -- def extractIBinOp (α : Type') (offset : UInt8)
+def extractEqz (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x45
+  | .i 64 => 0x50
+  | _ => unreachable!
+
+def extractEq (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x46
+  | .i 64 => 0x51
+  | .f 32 => 0x5b
+  | .f 64 => 0x61
+
+def extractNe (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x47
+  | .i 64 => 0x52
+  | .f 32 => 0x5c
+  | .f 64 => 0x62
+
+def extractLts (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x48
+  | .i 64 => 0x53
+  | _ => unreachable!
+
+def extractLtu (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x49
+  | .i 64 => 0x54
+  | _ => unreachable!
+
+def extractGts (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x4a
+  | .i 64 => 0x55
+  | _ => unreachable!
+
+def extractGtu (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x4b
+  | .i 64 => 0x56
+  | _ => unreachable!
+
+def extractLes (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x4c
+  | .i 64 => 0x57
+  | _ => unreachable!
+
+def extractLeu (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x4d
+  | .i 64 => 0x58
+  | _ => unreachable!
+
+def extractGes (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x4e
+  | .i 64 => 0x59
+  | _ => unreachable!
+
+def extractGeu (α : Type') : ByteArray :=
+  b $ match α with
+  | .i 32 => 0x4f
+  | .i 64 => 0x5a
+  | _ => unreachable!
+
 def extractClz (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x67
@@ -196,6 +264,17 @@ mutual
     | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
     | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val
     | .const _ _ => sorry -- TODO: float binary encoding
+    | .eqz    t g => extractGet' g ++ extractEqz t
+    | .eq t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractEq t
+    | .ne t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractNe t
+    | .lt_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLtu t
+    | .lt_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLts t
+    | .gt_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGtu t
+    | .gt_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGts t
+    | .le_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLeu t
+    | .le_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLes t
+    | .ge_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGeu t
+    | .ge_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGes t
     | .clz    t g => extractGet' g ++ extractClz t
     | .ctz    t g => extractGet' g ++ extractCtz t
     | .popcnt t g => extractGet' g ++ extractPopcnt t

@@ -111,6 +111,17 @@ mutual
   inductive Operation where
   | nop
   | const : Type' → NumUniT → Operation
+  | eqz : Type' → Get' → Operation
+  | eq  : Type' → Get' → Get' → Operation
+  | ne  : Type' → Get' → Get' → Operation
+  | lt_u  : Type' → Get' → Get' → Operation
+  | lt_s  : Type' → Get' → Get' → Operation
+  | gt_u  : Type' → Get' → Get' → Operation
+  | gt_s  : Type' → Get' → Get' → Operation
+  | le_u  : Type' → Get' → Get' → Operation
+  | le_s  : Type' → Get' → Get' → Operation
+  | ge_u  : Type' → Get' → Get' → Operation
+  | ge_s  : Type' → Get' → Get' → Operation
   | clz : Type' → Get' → Operation
   | ctz : Type' → Get' → Operation
   | popcnt : Type' → Get' → Operation
@@ -149,6 +160,25 @@ mutual
   private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"
     | .const t n => s!"(Operation.const {t} {n})"
+    | .eqz t g => s!"(Operation.eqz {t} {getToString g})"
+    | .eq  t g1 g2 => s!"(Operation.eq {t} {getToString g1} {getToString g2})"
+    | .ne  t g1 g2 => s!"(Operation.ne {t} {getToString g1} {getToString g2})"
+    | .lt_u t g1 g2 =>
+      s!"(Operation.lt_u {t} {getToString g1} {getToString g2})"
+    | .lt_s t g1 g2 =>
+      s!"(Operation.lt_s {t} {getToString g1} {getToString g2})"
+    | .gt_u t g1 g2 =>
+      s!"(Operation.gt_u {t} {getToString g1} {getToString g2})"
+    | .gt_s t g1 g2 =>
+      s!"(Operation.gt_s {t} {getToString g1} {getToString g2})"
+    | .le_u t g1 g2 =>
+      s!"(Operation.le_u {t} {getToString g1} {getToString g2})"
+    | .le_s t g1 g2 =>
+      s!"(Operation.le_s {t} {getToString g1} {getToString g2})"
+    | .ge_u t g1 g2 =>
+      s!"(Operation.ge_u {t} {getToString g1} {getToString g2})"
+    | .ge_s t g1 g2 =>
+      s!"(Operation.ge_s {t} {getToString g1} {getToString g2})"
     | .clz t g => s!"(Operation.clz {t} {getToString g})"
     | .ctz t g => s!"(Operation.ctz {t} {getToString g})"
     | .popcnt t g => s!"(Operation.popcnt {t} {getToString g})"

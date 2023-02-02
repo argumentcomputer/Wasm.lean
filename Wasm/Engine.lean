@@ -283,6 +283,17 @@ mutual
     match op with
     | .nop => pure ⟨⟩
     | .const _t n => push $ .num n
+    | .eqz _t g => runIUnop g $ (if · = 0 then 1 else 0)
+    | .eq _t g0 g1 => runIBinop g0 g1 (if · = · then 1 else 0)
+    | .ne _t g0 g1 => runIBinop g0 g1 (if · ≠ · then 1 else 0)
+    | .lt_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · < · then 1 else 0) t
+    | .lt_s _t g0 g1 => runIBinop g0 g1 (if · < · then 1 else 0)
+    | .gt_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · > · then 1 else 0) t
+    | .gt_s _t g0 g1 => runIBinop g0 g1 (if · > · then 1 else 0)
+    | .le_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · ≤ · then 1 else 0) t
+    | .le_s _t g0 g1 => runIBinop g0 g1 (if · ≤ · then 1 else 0)
+    | .ge_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · ≥ · then 1 else 0) t
+    | .ge_s _t g0 g1 => runIBinop g0 g1 (if · ≥ · then 1 else 0)
     | .clz t g => runIUnop g fun i =>
       ((toNBits i $ bitsize t).takeWhile (· = .zero)).length
     | .ctz t g => runIUnop g fun i =>
