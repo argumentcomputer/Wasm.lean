@@ -110,6 +110,7 @@ mutual
 -- can't be populated with `ConstFloat`!
   inductive Operation where
   | nop
+  | drop
   | const : Type' → NumUniT → Operation
   | eqz : Type' → Get' → Operation
   | eq  : Type' → Get' → Get' → Operation
@@ -166,6 +167,7 @@ mutual
 
   private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"
+    | .drop => "(Operation.drop)"
     | .const t n => s!"(Operation.const {t} {n})"
     | .eqz t g => s!"(Operation.eqz {t} {getToString g})"
     | .eq  t g1 g2 => s!"(Operation.eq {t} {getToString g1} {getToString g2})"

@@ -308,6 +308,7 @@ mutual
   partial def extractOp (x : Operation) : ByteArray :=
     match x with
     | .nop => b 0x01
+    | .drop => b 0x1a
     -- TODO: signed consts exist??? We should check the spec carefully.
     | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
     | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val

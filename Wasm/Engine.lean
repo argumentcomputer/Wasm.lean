@@ -290,6 +290,7 @@ mutual
 
     match op with
     | .nop => pure ⟨⟩
+    | .drop => discard bite
     | .const _t n => push $ .num n
     | .eqz _t g => runIUnop g $ (if · = 0 then 1 else 0)
     | .eq (.i _) g0 g1 => runIBinop g0 g1 (if · = · then 1 else 0)

@@ -73,6 +73,9 @@ def stripGet (α : Type') (x : Get α) : Get' :=
 private def nopP : Parsec Char String Unit Operation :=
   string "nop" *> pure .nop
 
+private def dropP : Parsec Char String Unit Operation :=
+  string "drop" *> pure .drop
+
 private def constP : Parsec Char String Unit Operation := do
   -- TODO: we'll use ps when we'll add more types into `Type'`.
   -- let _ps ← getParserState
@@ -97,7 +100,7 @@ private def brifP : Parsec Char String Unit Operation := do
 
   partial def opP : Parsec Char String Unit Operation :=
     Char.between '(' ')' $ owP *>
-      nopP <|> constP <|>
+      nopP <|> dropP <|> constP <|>
       iUnopP "eqz" .eqz <|>
       binopP "eq" .eq <|> binopP "ne" .ne <|>
       iBinopP "lt_u" .lt_u <|> iBinopP "lt_s" .lt_s <|>
