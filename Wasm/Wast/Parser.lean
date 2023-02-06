@@ -33,7 +33,6 @@ section textparser
 
 open Type'
 open Local
-open Get
 open Operation
 open Func
 open Module
@@ -59,17 +58,6 @@ def brResultP : Parsec Char String Unit (List Type') :=
 def brResultsP : Parsec Char String Unit (List Type') :=
   List.join <$> manyLispP resultP
 
-
-def getP : Parsec Char String Unit (Get x) :=
-  -- TODO: implement locals!!!
-  pure $ Get.from_stack
-
-def stripGet (α : Type') (x : Get α) : Get' :=
-  match x with
-  | .from_stack => Get'.from_stack
-  | .by_name n => Get'.by_name n
-  | .by_index i => Get'.by_index i
-
 private def nopP : Parsec Char String Unit Operation :=
   string "nop" *> pure .nop
 
@@ -94,9 +82,9 @@ private def brifP : Parsec Char String Unit Operation := do
 
  mutual
 
-  partial def get'ViaGetP (α : Type') : Parsec Char String Unit Get' :=
-    attempt (opP >>= (pure ∘ Get'.from_operation)) <|>
-    (getP >>= (pure ∘ stripGet α))
+  partial def getP : Parsec Char String Unit Get' :=
+    attempt (pure ∘ .from_operation =<< opP) <|>
+    pure .from_stack
 
   partial def opP : Parsec Char String Unit Operation :=
     Char.between '(' ')' $ owP *>
@@ -154,7 +142,7 @@ private def brifP : Parsec Char String Unit Operation := do
       string s!"i32.{opS}" *> (pure $ .i 32) <|>
       string s!"i64.{opS}" *> (pure $ .i 64)
     ignoreP
-    let arg ← get'ViaGetP type
+    let arg ← getP
     owP
     pure $ unopMk type arg
 
@@ -167,9 +155,9 @@ private def brifP : Parsec Char String Unit Operation := do
       string s!"{tChar}32.{opS}" *> (pure $ con 32) <|>
       string s!"{tChar}64.{opS}" *> (pure $ con 64)
     ignoreP
-    let arg_1 ← get'ViaGetP type
+    let arg_1 ← getP
     owP
-    let arg_2 ← get'ViaGetP type
+    let arg_2 ← getP
     owP
     pure $ binopMk type arg_1 arg_2
 

@@ -10,7 +10,6 @@ open Wasm.Wast.AST.Type'
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Operation
 open Wasm.Wast.AST.Func
-open Wasm.Wast.AST.Get
 
 open ByteArray
 open Nat

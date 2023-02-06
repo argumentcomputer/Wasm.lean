@@ -67,25 +67,6 @@ end LabelIndex
 open LabelIndex
 
 
-namespace Get
-
-inductive Get (x : Type') where
-| from_stack
-| by_name : Local → Get x
-| by_index : Local → Get x
-
-instance : ToString (Get α) where
-  toString x := "(" ++ (
-    match x with
-    | .from_stack => "Get.from_stack"
-    | .by_name n => "Get.by_name " ++ toString n
-    | .by_index i => "Get.by_index " ++ toString i
-  ) ++ " : Get " ++ toString α ++ ")"
-
-end Get
-open Get
-
-
 /- TODO: Instructions are rigid WAT objects. If we choose to only support
 S-Expressions at this point, we don't need this concept. -/
 namespace Instruction
