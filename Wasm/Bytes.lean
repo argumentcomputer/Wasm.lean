@@ -89,6 +89,30 @@ def extractNe (α : Type') : ByteArray :=
   | .f 32 => 0x5c
   | .f 64 => 0x62
 
+def extractLt (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x5d
+  | .f 64 => 0x63
+  | _ => unreachable!
+
+def extractGt (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x5e
+  | .f 64 => 0x64
+  | _ => unreachable!
+
+def extractLe (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x5f
+  | .f 64 => 0x65
+  | _ => unreachable!
+
+def extractGe (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x60
+  | .f 64 => 0x66
+  | _ => unreachable!
+
 def extractLts (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x48
@@ -175,6 +199,30 @@ def extractMul (α : Type') : ByteArray :=
   | .i 64 => 0x7e
   | .f 32 => 0x94
   | .f 64 => 0xa2
+
+def extractDiv (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x95
+  | .f 64 => 0xa3
+  | _ => unreachable!
+
+def extractMin (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x96
+  | .f 64 => 0xa4
+  | _ => unreachable!
+
+def extractMax (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x97
+  | .f 64 => 0xa5
+  | _ => unreachable!
+
+def extractCopysign (α : Type') : ByteArray :=
+  b $ match α with
+  | .f 32 => 0x98
+  | .f 64 => 0xa6
+  | _ => unreachable!
 
 def extractDivS (α : Type') : ByteArray :=
   b $ match α with
@@ -275,12 +323,19 @@ mutual
     | .le_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLes t
     | .ge_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGeu t
     | .ge_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGes t
+    | .lt t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLt t
+    | .gt t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGt t
+    | .le t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLe t
+    | .ge t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGe t
     | .clz    t g => extractGet' g ++ extractClz t
     | .ctz    t g => extractGet' g ++ extractCtz t
     | .popcnt t g => extractGet' g ++ extractPopcnt t
     | .add t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAdd t
     | .sub t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractSub t
     | .mul t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMul t
+    | .div t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDiv t
+    | .min t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMin t
+    | .max t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMax t
     | .div_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivS t
     | .div_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivU t
     | .rem_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRemS t

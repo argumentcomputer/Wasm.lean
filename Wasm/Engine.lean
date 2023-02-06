@@ -263,6 +263,14 @@ mutual
       | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) =>
           push $ .num $ .i ⟨b0, binop i0 i1⟩
       | _, _ => throwEE .param_type_incompatible
+    let runFBinop g0 g1 binop := do -- sad we can't generalise over constructors
+      let operand0 ← getSO locals g0
+      let operand1 ← getSO locals g1
+      match operand0, operand1 with
+        -- TODO: check bitsize and overflow!
+      | .num (.f ⟨b0, f0⟩), .num (.f ⟨_b1, f1⟩) =>
+          push $ .num $ .f ⟨b0, binop f0 f1⟩
+      | _, _ => throwEE .param_type_incompatible
     let blockOp ts ops contLabel := do
       let innerStack := contLabel :: stackLabels ⟨←get⟩
       let es' ← (computeContinuation ts locals ops).run innerStack
@@ -284,8 +292,10 @@ mutual
     | .nop => pure ⟨⟩
     | .const _t n => push $ .num n
     | .eqz _t g => runIUnop g $ (if · = 0 then 1 else 0)
-    | .eq _t g0 g1 => runIBinop g0 g1 (if · = · then 1 else 0)
-    | .ne _t g0 g1 => runIBinop g0 g1 (if · ≠ · then 1 else 0)
+    | .eq (.i _) g0 g1 => runIBinop g0 g1 (if · = · then 1 else 0)
+    | .eq (.f _) g0 g1 => runFBinop g0 g1 (if · == · then 1 else 0) -- lmao even this isn't right because of +0 == -0
+    | .ne (.i _) g0 g1 => runIBinop g0 g1 (if · ≠ · then 1 else 0)
+    | .ne (.f _) g0 g1 => runFBinop g0 g1 (if · != · then 1 else 0)
     | .lt_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · < · then 1 else 0) t
     | .lt_s _t g0 g1 => runIBinop g0 g1 (if · < · then 1 else 0)
     | .gt_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · > · then 1 else 0) t
@@ -294,16 +304,25 @@ mutual
     | .le_s _t g0 g1 => runIBinop g0 g1 (if · ≤ · then 1 else 0)
     | .ge_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · ≥ · then 1 else 0) t
     | .ge_s _t g0 g1 => runIBinop g0 g1 (if · ≥ · then 1 else 0)
+    | .lt _t g0 g1 => runFBinop g0 g1 (if · < · then 1 else 0)
+    | .gt _t g0 g1 => runFBinop g0 g1 (if · > · then 1 else 0)
+    | .le _t g0 g1 => runFBinop g0 g1 (if · ≤ · then 1 else 0)
+    | .ge _t g0 g1 => runFBinop g0 g1 (if · ≥ · then 1 else 0)
     | .clz t g => runIUnop g fun i =>
       ((toNBits i $ bitsize t).takeWhile (· = .zero)).length
     | .ctz t g => runIUnop g fun i =>
       ((toNBits i $ bitsize t).reverse.takeWhile (· = .zero)).length
     | .popcnt t g => runIUnop g fun i =>
       ((toNBits i $ bitsize t).filter (· = .one)).length
-    -- TODO: run NOT IBinop depending on the type
-    | .add _t g0 g1 => runIBinop g0 g1 (· + ·)
-    | .sub _t g0 g1 => runIBinop g0 g1 (· - ·)
-    | .mul _t g0 g1 => runIBinop g0 g1 (· * ·)
+    | .add (.i _) g0 g1 => runIBinop g0 g1 (· + ·)
+    | .add (.f _) g0 g1 => runFBinop g0 g1 (· + ·)
+    | .sub (.i _) g0 g1 => runIBinop g0 g1 (· - ·)
+    | .sub (.f _) g0 g1 => runFBinop g0 g1 (· - ·)
+    | .mul (.i _) g0 g1 => runIBinop g0 g1 (· * ·)
+    | .mul (.f _) g0 g1 => runFBinop g0 g1 (· * ·)
+    | .div _t g0 g1 => runFBinop g0 g1 (· / ·)
+    | .max _t g0 g1 => runFBinop g0 g1 max
+    | .min _t g0 g1 => runFBinop g0 g1 min
     | .div_s _t g0 g1 => runIBinop g0 g1 (· / ·)
     | .div_u  t g0 g1 => runIBinop g0 g1 $ unsigned (· / ·) t
     | .rem_s _t g0 g1 => runIBinop g0 g1 (· % ·)

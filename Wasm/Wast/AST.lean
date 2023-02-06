@@ -122,12 +122,19 @@ mutual
   | le_s  : Type' → Get' → Get' → Operation
   | ge_u  : Type' → Get' → Get' → Operation
   | ge_s  : Type' → Get' → Get' → Operation
+  | lt  : Type' → Get' → Get' → Operation
+  | gt  : Type' → Get' → Get' → Operation
+  | le  : Type' → Get' → Get' → Operation
+  | ge  : Type' → Get' → Get' → Operation
   | clz : Type' → Get' → Operation
   | ctz : Type' → Get' → Operation
   | popcnt : Type' → Get' → Operation
   | add : Type' → Get' → Get' → Operation
   | sub : Type' → Get' → Get' → Operation
   | mul : Type' → Get' → Get' → Operation
+  | div : Type' → Get' → Get' → Operation
+  | max : Type' → Get' → Get' → Operation
+  | min : Type' → Get' → Get' → Operation
   | div_s : Type' → Get' → Get' → Operation
   | div_u : Type' → Get' → Get' → Operation
   | rem_s : Type' → Get' → Get' → Operation
@@ -179,12 +186,19 @@ mutual
       s!"(Operation.ge_u {t} {getToString g1} {getToString g2})"
     | .ge_s t g1 g2 =>
       s!"(Operation.ge_s {t} {getToString g1} {getToString g2})"
+    | .lt  t g1 g2 => s!"(Operation.lt {t} {getToString g1} {getToString g2})"
+    | .gt  t g1 g2 => s!"(Operation.gt {t} {getToString g1} {getToString g2})"
+    | .le  t g1 g2 => s!"(Operation.le {t} {getToString g1} {getToString g2})"
+    | .ge  t g1 g2 => s!"(Operation.ge {t} {getToString g1} {getToString g2})"
     | .clz t g => s!"(Operation.clz {t} {getToString g})"
     | .ctz t g => s!"(Operation.ctz {t} {getToString g})"
     | .popcnt t g => s!"(Operation.popcnt {t} {getToString g})"
     | .add t g1 g2 => s!"(Operation.add {t} {getToString g1} {getToString g2})"
     | .sub t g1 g2 => s!"(Operation.sub {t} {getToString g1} {getToString g2})"
     | .mul t g1 g2 => s!"(Operation.mul {t} {getToString g1} {getToString g2})"
+    | .div t g1 g2 => s!"(Operation.div {t} {getToString g1} {getToString g2})"
+    | .max t g1 g2 => s!"(Operation.max {t} {getToString g1} {getToString g2})"
+    | .min t g1 g2 => s!"(Operation.min {t} {getToString g1} {getToString g2})"
     | .div_s t g1 g2 =>
       s!"(Operation.div_s {t} {getToString g1} {getToString g2})"
     | .div_u t g1 g2 =>

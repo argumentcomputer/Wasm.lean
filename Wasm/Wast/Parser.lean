@@ -104,8 +104,11 @@ private def brifP : Parsec Char String Unit Operation := do
       iBinopP "gt_u" .gt_u <|> iBinopP "gt_s" .gt_s <|>
       iBinopP "le_u" .le_u <|> iBinopP "le_s" .le_s <|>
       iBinopP "ge_u" .ge_u <|> iBinopP "ge_s" .ge_s <|>
+      fBinopP "lt" .lt <|> fBinopP "gt" .gt <|>
+      fBinopP "le" .le <|> fBinopP "ge" .ge <|>
       iUnopP "clz" .clz <|> iUnopP "ctz" .ctz <|> iUnopP "popcnt" .popcnt <|>
       binopP "add" .add <|> binopP "sub" .sub <|> binopP "mul" .mul <|>
+      fBinopP "div" .div <|> fBinopP "max" .max <|> fBinopP "min" .min <|>
       iBinopP "div_s" .div_s <|> iBinopP "div_u" .div_u <|>
       iBinopP "rem_s" .rem_s <|> iBinopP "rem_u" .rem_u <|>
       iBinopP "and" .and <|> iBinopP "or" .or <|> iBinopP "xor" .xor <|>
@@ -152,33 +155,26 @@ private def brifP : Parsec Char String Unit Operation := do
     owP
     pure $ unopMk type arg
 
-  partial def iBinopP (opS : String) (binopMk : Type' → Get' → Get' → Operation)
+  partial def aBinopP (tChar : Char) (con : BitSize → Type') (opS : String)
+                      (binopMk : Type' → Get' → Get' → Operation)
               : Parsec Char String Unit Operation := do
     -- TODO: we'll use ps when we'll add more types into `Type'`.
     -- let _ps ← getParserState
-    let type : Type' ←
-      string s!"i32.{opS}" *> (pure $ .i 32) <|>
-      string s!"i64.{opS}" *> (pure $ .i 64)
+    let type ←
+      string s!"{tChar}32.{opS}" *> (pure $ con 32) <|>
+      string s!"{tChar}64.{opS}" *> (pure $ con 64)
     ignoreP
-    let (arg_1 : Get') ← get'ViaGetP type
+    let arg_1 ← get'ViaGetP type
     owP
-    let (arg_2 : Get') ← get'ViaGetP type
+    let arg_2 ← get'ViaGetP type
     owP
     pure $ binopMk type arg_1 arg_2
 
-  partial def fBinopP (opS : String) (binopMk : Type' → Get' → Get' → Operation)
-              : Parsec Char String Unit Operation := do
-    -- TODO: we'll use ps when we'll add more types into `Type'`.
-    -- let _ps ← getParserState
-    let type : Type' ←
-      string s!"f32.{opS}" *> (pure $ .f 32) <|>
-      string s!"f64.{opS}" *> (pure $ .f 64)
-    ignoreP
-    let (arg_1 : Get') ← get'ViaGetP type
-    owP
-    let (arg_2 : Get') ← get'ViaGetP type
-    owP
-    pure $ binopMk type arg_1 arg_2
+  partial def iBinopP : String → (Type' → Get' → Get' → Operation)
+              → Parsec Char String Unit Operation := aBinopP 'i' .i
+
+  partial def fBinopP : String → (Type' → Get' → Get' → Operation)
+              → Parsec Char String Unit Operation := aBinopP 'f' .f
 
   partial def binopP (opS : String) (binopMk : Type' → Get' → Get' → Operation)
               : Parsec Char String Unit Operation :=
