@@ -6,3 +6,4 @@ lake-packages/
 wasm-sandbox
 wasm-sandbox.exe # Haha, tough chance
 wast-dump*bytes
+wast-dump*bytes.lean
