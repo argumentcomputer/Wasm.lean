@@ -34,7 +34,7 @@ def testCanary : TestSeq :=
 def testCrow : TestSeq :=
   -- test "This is a crow test. Caw caw." false
   test
-    "You need to have `wasm-sandbox` binary in your current work directory. Please run `wget https://github.com/cognivore/wasm-sandbox/releases/download/v1/wasm-sandbox`."
+    "You need to have `wasm-sandbox` binary in your current work directory. Please run `wget https://github.com/cognivore/wasm-sandbox/releases/download/v1/wasm-sandbox && chmod +x ./wasm-sandbox`."
     false
 
 def withWasmSandboxRun : IO UInt32 :=
