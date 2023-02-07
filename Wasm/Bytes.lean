@@ -301,8 +301,6 @@ mutual
     match x with
     | .from_stack => b0
     | .from_operation o => extractOp o
-    -- TODO: handle locals
-    | _ => sorry
 
   partial def extractOp (x : Operation) : ByteArray :=
     match x with

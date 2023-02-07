@@ -15,7 +15,7 @@ inductive Type' where
   | f : BitSize → Type'
   | i : BitSize → Type'
   -- | v : BitSizeSIMD → Type'
-  deriving BEq
+  deriving DecidableEq
 
 instance : ToString Type' where
   toString x := match x with
@@ -40,7 +40,7 @@ structure Local where
   index : Nat
   name : Option String
   type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
-  deriving BEq
+  deriving DecidableEq
 
 instance : ToString Local where
   toString x := s!"(Local.mk {x.index} {x.type})"
@@ -80,8 +80,6 @@ mutual
   inductive Get' where
   | from_stack
   | from_operation : Operation → Get'
-  | by_name : Local → Get'
-  | by_index : Local → Get'
 
 -- TODO: add support for function type indexes for blocktypes
 -- TODO: branching ops can produce and consume operands themselves,
@@ -137,14 +135,9 @@ mutual
 end
 
 mutual
-  private partial def getToString (x : Get') : String :=
-    "(Get'" ++ (
-      match x with
-      | .from_stack => ".from_stack"
-      | .from_operation o => s!".from_operation {operationToString o}"
-      | .by_name n => ".by_name " ++ toString n
-      | .by_index i => ".by_index " ++ toString i
-    ) ++ ")"
+  private partial def getToString : Get' → String
+    | .from_stack => "(Get'.from_stack)"
+    | .from_operation o => s!"(Get'.from_operation {operationToString o})"
 
   private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"

@@ -159,11 +159,26 @@ def resultsTypecheck : List Type' → List StackEntry → Bool
     if stackEntryTypecheck t e then resultsTypecheck ts es else false
   | _, _ => false
 
-def findLocalByName? (ls : List (Option String × Option StackEntry))
-                    (x : String) : Option StackEntry :=
-  match ls.filter (fun se => .some x == se.1) with
-  | y :: [] => y.2
-  | _ => .none
+namespace LocalEntry
+
+/-
+`val` is of type `NumUniT` because locals need to be of a value type,
+and `StackEntry`s can e.g. be labels.
+TODO: change `NumUniT` to a full value type when we add vectors.
+-/
+structure LocalEntry where
+  name : Option String
+  val  : Option NumUniT
+  type : Type'
+deriving BEq
+
+end LocalEntry
+open LocalEntry
+
+abbrev Locals := List LocalEntry
+
+def findLocalByName? (ls : Locals) (x : String) : Option LocalEntry :=
+  ls.find? (.some x == ·.name)
 
 /-
 The `List Operation` in the `Continuation` type represents an optional 'final'
@@ -197,7 +212,8 @@ The monads in the stack:
 
 -/
 abbrev EngineM :=
-  ExceptT Continuation (StateT (List StackEntry) (Except EngineErrors))
+  ExceptT Continuation $ StateT (List StackEntry) $
+    StateT Locals $ Except EngineErrors
 
 instance : Inhabited (EngineM α) where
   default := throw default
@@ -213,30 +229,22 @@ def pile : List StackEntry → EngineM PUnit := fun xs => do set $ xs ++ (←get
 def σmap : (List StackEntry → List StackEntry) → EngineM PUnit :=
   fun f => do set $ f (←get)
 
+def getLocals : EngineM Locals := getThe Locals
+def modifyLocals (f : Locals → Locals) : EngineM PUnit := modifyThe Locals f
+def setLocals (ls : Locals) : EngineM PUnit := modifyLocals fun _ => ls
+
 mutual
 
-  partial def getSO (locals : List (Option String × Option StackEntry))
-                    : Get' → EngineM StackEntry
+  partial def getSO : Get' → EngineM StackEntry
     | .from_stack => bite
-    | .from_operation o => do runOp locals o; bite
-    -- TODO: names are erased in production. See what do we want to do with this code path.
-    | .by_name n => match n.name with
-      | .none => throwEE .local_with_no_name_given
-      | .some name => match findLocalByName? locals name with
-        | .none => throwEE $ .local_with_given_name_missing name
-        | .some l => pure l
-    | .by_index i => match locals.get? i.index with
-      | .some (_, .some se) => pure se
-      | _ => throwEE $ .local_with_given_id_missing i.index
+    | .from_operation o => do runOp o; bite
 
   partial def computeContinuation
-                      (blocktypes : List Type')
-                      (locals : List (Option String × Option StackEntry))
-                      (ops' : List Operation)
-                      : EngineM PUnit := do
+                    (blocktypes : List Type') (ops' : List Operation)
+                    : EngineM PUnit := do
     let rec go
     | [] => pure ()
-    | op :: ops => do match ←(runOp locals op).run (←get) with
+    | op :: ops => do match ←(runOp op).run (←get) with
       | (.error cont, stack') => set stack'; go cont
       | (.ok _, stack') => set stack'; go ops
 
@@ -247,25 +255,24 @@ mutual
       else throwEE .stack_incompatible_with_results
 
   -- TODO: check that typechecking is done everywhere!
-  partial def runOp (locals : List (Option String × Option StackEntry))
-                    : Operation → EngineM PUnit := fun op =>
+  partial def runOp : Operation → EngineM PUnit := fun op =>
     let runIUnop g unop := do
-      match (←getSO locals g) with
+      match (←getSO g) with
         -- TODO: check bitsize and overflow!
       | .num (.i ⟨b, i⟩) =>
           push $ .num $ .i ⟨b, unop i⟩
       | _ => throwEE .param_type_incompatible
     let runIBinop g0 g1 binop := do
-      let operand0 ← getSO locals g0
-      let operand1 ← getSO locals g1
+      let operand0 ← getSO g0
+      let operand1 ← getSO g1
       match operand0, operand1 with
         -- TODO: check bitsize and overflow!
       | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) =>
           push $ .num $ .i ⟨b0, binop i0 i1⟩
       | _, _ => throwEE .param_type_incompatible
     let runFBinop g0 g1 binop := do -- sad we can't generalise over constructors
-      let operand0 ← getSO locals g0
-      let operand1 ← getSO locals g1
+      let operand0 ← getSO g0
+      let operand1 ← getSO g1
       match operand0, operand1 with
         -- TODO: check bitsize and overflow!
       | .num (.f ⟨b0, f0⟩), .num (.f ⟨_b1, f1⟩) =>
@@ -273,14 +280,14 @@ mutual
       | _, _ => throwEE .param_type_incompatible
     let blockOp ts ops contLabel := do
       let innerStack := contLabel :: stackLabels ⟨←get⟩
-      let es' ← (computeContinuation ts locals ops).run innerStack
+      let es' ← (computeContinuation ts ops).run innerStack
       pile es'.2
     let unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
       match t with
       | .i bs => f (unsign x bs) (unsign y bs)
       | .f _ => unreachable!
     let checkTop_i32 (f : Int → EngineM PUnit) := do
-      match (←getSO locals .from_stack) with
+      match (←getSO .from_stack) with
       | .num (.i ⟨32, n⟩) => f n
       | _ => throwEE .typecheck_failed
     let checkLabel (li : LabelIndex) (f : Label → EngineM PUnit) := do
@@ -354,7 +361,7 @@ mutual
       -- still pass in all the labels currently reachable.
     | .loop ts ops => blockOp ts ops $ .label ⟨ts.length, [.loop ts ops]⟩
     | .if ts thens elses => checkTop_i32 fun n =>
-      runOp locals $ .block ts (if n ≠ 0 then thens else elses)
+      runOp $ .block ts (if n ≠ 0 then thens else elses)
     | .br li => checkLabel li fun ⟨n, cont⟩ => do
       let (topn, rest) := (←get).splitAt n
       if (stackValues ⟨topn⟩).length = n
@@ -365,7 +372,7 @@ mutual
           | _ => throwEE .typecheck_failed
         else throwEE .not_enough_stuff_on_stack
     | .br_if li => checkTop_i32 fun n =>
-        if n = 0 then pure () else runOp locals (.br li)
+        if n = 0 then pure () else runOp (.br li)
 end
 
 def runDo (_s : Store m)
@@ -375,15 +382,16 @@ def runDo (_s : Store m)
   let bite acc x := do
     match (←acc).1 with
     | [] => .error .not_enough_stuff_on_stack
-    | y :: rest =>
-      if stackEntryTypecheck x.type y
+    | .num y :: rest =>
+      if stackEntryTypecheck x.type $ .num y
       then .ok (rest, y :: (←acc).2)
       else .error .param_type_incompatible
+    | _ :: _ => .error .param_type_incompatible
   let pσ ← f.params.foldl bite $ .ok (σ.es, [])
   let locals := (f.params ++ f.locals).map
-    fun l => (l.name, pσ.2.get? l.index)
-  let ses ← (f.ops.forM fun op => discard $ runOp locals op).run pσ.1
-  pure $ Stack.mk ses.2
+    fun l => ⟨l.name, pσ.2.get? l.index, l.type⟩
+  let ses ← (f.ops.forM runOp).run pσ.1 locals
+  pure $ Stack.mk ses.1.2
 
 -- This is sort of a debug function, returning the full resulting stack instead
 -- of just the values specified in the result fields.
