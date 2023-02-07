@@ -45,6 +45,15 @@ structure Local where
 instance : ToString Local where
   toString x := s!"(Local.mk {x.index} {x.type})"
 
+inductive LocalLabel where
+  | by_index : Nat → LocalLabel
+  | by_name : String → LocalLabel
+  deriving Repr, DecidableEq
+
+instance : ToString LocalLabel where
+  toString | .by_index n => s!"(LocalLabel.by_index {n})"
+           | .by_name  n => s!"(LocalLabel.by_name \"{n}\")"
+
 end Local
 open Local
 
@@ -127,6 +136,9 @@ mutual
   | shr_s : Type' → Get' → Get' → Operation
   | rotl : Type' → Get' → Get' → Operation
   | rotr : Type' → Get' → Get' → Operation
+  | local_get : LocalLabel → Operation
+  | local_set : LocalLabel → Operation
+  | local_tee : LocalLabel → Operation
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
   | if : List Type' → List Operation → List Operation → Operation
@@ -195,6 +207,9 @@ mutual
       s!"(Operation.rotl {t} {getToString g1} {getToString g2})"
     | .rotr t g1 g2 =>
       s!"(Operation.rotr {t} {getToString g1} {getToString g2})"
+    | .local_get l => s!"(Operation.local_get {l})"
+    | .local_set l => s!"(Operation.local_set {l})"
+    | .local_tee l => s!"(Operation.local_tee {l})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
     | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"

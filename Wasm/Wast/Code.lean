@@ -34,3 +34,5 @@ def reindexParamsAndLocals (f : Func) : (List Local × List Local) :=
   let ls := reindexLocals (ps.length) f.locals
   (ps, ls)
 
+def replaceNth (xs : List α) (idx : Nat) (x : α) :=
+  xs.take idx ++ x :: xs.drop (idx+1)

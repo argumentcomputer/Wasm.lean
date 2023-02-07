@@ -107,7 +107,6 @@ structure FunctionInstance (x : Module) where
   index : Nat
   ops : List Operation
 
-
 /- TODO: Unify this with Bytes.indexFuncs -/
 def instantiateFs (m : Module) : List (FunctionInstance m) :=
   let go acc f :=
@@ -233,6 +232,16 @@ def getLocals : EngineM Locals := getThe Locals
 def modifyLocals (f : Locals → Locals) : EngineM PUnit := modifyThe Locals f
 def setLocals (ls : Locals) : EngineM PUnit := modifyLocals fun _ => ls
 
+def checkAndReplace (replace : Locals → LocalEntry → LocalEntry → Locals)
+                    (err : EngineErrors)
+                    : StackEntry → Option LocalEntry → EngineM PUnit
+  | se@(.num n), .some l =>
+    if stackEntryTypecheck l.type se
+    then do setLocals $ replace (←getLocals) l {l with val := .some n}
+    else throwEE .param_type_incompatible
+  | .num _, _ => throwEE err
+  | _, _ => throwEE .typecheck_failed
+
 mutual
 
   partial def getSO : Get' → EngineM StackEntry
@@ -354,6 +363,25 @@ mutual
       | .ofNat   _ => x <<< ((bs : Int) - k)
       | .negSucc _ => x >>> ((bs : Int) + k)
     | .rotr _ _ _ => throwEE .typecheck_failed
+    | .local_get (.by_index idx) => do match (←getLocals).get? idx with
+      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | _ => throwEE $ .local_with_given_id_missing idx
+    | .local_get (.by_name name) => do
+      -- TODO: names are erased in production. See what do we want to do with this code path.
+      match findLocalByName? (←getLocals) name with
+      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | _ => throwEE $ .local_with_given_name_missing name
+    | .local_set (.by_index idx) => do
+          -- we can't use locals.replace because that one replaces
+          -- _the first_ occurrence, which might be earlier than on the idx
+        checkAndReplace (fun locals _ => replaceNth locals idx)
+          (.local_with_given_id_missing idx) (←bite) ((←getLocals).get? idx)
+    | .local_set (.by_name name) => do
+        checkAndReplace List.replace (.local_with_given_name_missing name)
+          (←bite) (findLocalByName? (←getLocals) name)
+    | .local_tee l => do match ←bite with
+      | val@(.num _) => push val; push val; runOp $ .local_set l
+      | _ => throwEE .typecheck_failed
     | .block ts ops => blockOp ts ops $ .label ⟨ts.length, []⟩
       -- TODO: currently, we only support simple [] → [valuetype*] blocks,
       -- not type indices. For this reason, we start the block execution

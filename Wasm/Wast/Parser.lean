@@ -49,6 +49,10 @@ def typeP : Parsec Char String Unit Type' := do
   | "f" => pure $ Type'.f bits
   | _ => parseError $ .trivial ps.offset .none $ hints0 Char
 
+def localLabelP : Parsec Char String Unit LocalLabel :=
+  .by_index <$> (hexP <|> decimalP) <|>
+  .by_name <$> nameP
+
 def resultP : Parsec Char String Unit (List Type') :=
   string "result" *> ignoreP *> sepEndBy' typeP owP
 
@@ -69,6 +73,13 @@ private def constP : Parsec Char String Unit Operation := do
   -- let _ps ← getParserState
   let x ← numUniTP
   pure $ Operation.const (numUniType x) x
+
+private def localOpP : Parsec Char String Unit Operation := do
+  let op ← (string "local.get" *> pure Operation.local_get)
+       <|> (string "local.set" *> pure .local_set)
+       <|> (string "local.tee" *> pure .local_tee)
+  ignoreP
+  pure $ op (←localLabelP)
 
 private def brP : Parsec Char String Unit Operation := do
   string "br" *> ignoreP
@@ -106,7 +117,7 @@ private def brifP : Parsec Char String Unit Operation := do
       iBinopP "shl" .shl <|>
       iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
       iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
-      blockP <|> loopP <|> ifP <|>
+      localOpP <|> blockP <|> loopP <|> ifP <|>
       brP <|> brifP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
