@@ -143,7 +143,7 @@ partial def loop (rs : ByteArray) (os : ByteArray) : Bool :=
 
 /- Generic Wasm module test that uses loop to check for stuff. -/
 partial def testGeneric : String → ByteArray → ByteArray → TestSeq
-  | mod, rs, os => test s!"Generic test of {mod}" $ loop rs os
+  | mod, rs, os => test s!"Binary representation is compatible with {fname mod}\n=== CODE ===\n{mod}\n||| END OF CODE |||" $ loop rs os
 
 /- Here's how Main used to test a particular module:
 
