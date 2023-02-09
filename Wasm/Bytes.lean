@@ -46,17 +46,20 @@ def lindex (bss : ByteArray) : ByteArray :=
 
 -- TODO: Refactor completely and support locals!
 def extractTypes (m : Module) : ByteArray :=
+  -- For each function, extract signatures.
   let sigs := m.func.map $ fun x =>
     let params := x.params.map $ (b ∘ ttoi ∘ fun x => x.type)
     let header := b 0x60 ++ uLeb128 params.length
     let res := params.foldl Append.append header
     res ++ (match x.results with -- TODO: test multi-result functions
     | List.nil => b 0x00
-    | ts => b 0x7b ++ uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
+    -- | ts => b 0x7b ++ uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
+    | ts => uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
     )
   sigs.foldl
     Append.append $
       b 0x01 ++ uLeb128 (1 + totalLength sigs) ++ uLeb128 sigs.length
+
 
 /- Function section -/
 def extractFuncIds (m : Module) : ByteArray :=
@@ -348,8 +351,10 @@ mutual
     | .rotr t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRotr t
     | .block ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
-      b 0x02 ++ bts ++ lindex obs ++ b 0x0b
+      -- let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)
+      let obs := bts ++ flatten (ops.map extractOp)
+      -- b 0x02 ++ bts ++ lindex obs ++ b 0x0b
+      b 0x02 ++ obs ++ b 0x0b
     | .loop ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
       let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map extractOp)

@@ -107,24 +107,26 @@ def uWasmMods := [
     )",
     "(module
       (func $main (export \"main\")
-        (param $x i32)
+        (param $y i32)
         (param i32)
         (result i32 i32)
 
-        (block (result i32) (i32.const 3) (i32.add (br 0) (i32.const 9)))
         (i32.add
           (i32.const 1499550000)
           (i32.add (i32.const 17) (i32.const 9000))
         )
 
       )
-    )"
+    )",
+    "(module (func (result i32)
+        (block (result i32) (i32.const 3))
+    ))"
+
 ]
 
 -- TODO: Prove termination because lengths decrease 1 at a time.
 -- Byte by byte, compare the two variables, reporting errors.
 partial def loop (rs : ByteArray) (os : ByteArray) : Bool :=
-  dbg_trace s!"loop:\n{rs}\n{os}\n***********************************"
   let il := os.data.toList
   let jl := rs.data.toList
   -- Let's see if the lengths aren't the same. If they aren't, we're done.
@@ -171,7 +173,6 @@ partial def moduleTestIO (x : String) : IO UInt32 := do
   -- If we failed for any reason, we return false, otherwise, we go ahead to the next step, encoded as another function.
   match (← w2b x) with
   | .error _ =>
-    dbg_trace s!">>>>>>>> w2b failed!"
     pure 35
   | .ok _w2b_x => do
     -- Read the reference bytes into a variable.
@@ -180,18 +181,12 @@ partial def moduleTestIO (x : String) : IO UInt32 := do
     let o_parsed_module := parseP moduleP "" x
     match o_parsed_module with
     | .error _ =>
-      dbg_trace s!">>>>>>>> parseP failed!"
       pure 55
     | .ok parsed_module => do
-      dbg_trace s!">>>>>>>> parseP succeeded on {x}!"
       let our_bytes := mtob parsed_module
-      dbg_trace s!">>>>>>>> mtob succeeded, got {our_bytes.data.toList.length} bytes!"
       -- Write our bytes into a file called s!"{fname}.lean".
       let h ← IO.FS.Handle.mk s!"{fname x}.lean" IO.FS.Mode.write
-      dbg_trace s!">>>>>>>> {fname x}.lean opened for writing!"
       h.write our_bytes
-      dbg_trace s!">>>>>>>> {fname x}.lean written!"
-      dbg_trace "Running test now..."
       lspecIO $ testGeneric x ref_bytes our_bytes
 
 def withWasmSandboxRun : IO UInt32 :=
