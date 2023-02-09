@@ -8,6 +8,7 @@ import Megaparsec.Errors
 import Megaparsec.Errors.Bundle
 import Megaparsec.Parsec
 import Megaparsec.MonadParsec
+import YatimaStdLib.Cached
 import YatimaStdLib.NonEmpty
 
 open Wasm.Wast.Parser.Common
@@ -19,6 +20,19 @@ open Megaparsec.Errors.Bundle
 open Megaparsec.Parsec
 open MonadParsec
 open Cached
+
+-- Turns a negative integer into a positive by taking its
+-- bit representation and interpreting it as unsigned.
+-- `size` is the number of bits to assume
+def unsign (i : Int) (size : BitSize := 64) : Int :=
+  match i with
+  | .ofNat m => m
+  | .negSucc _ => i + ((2 : Int) ^ (size : Nat))
+
+def toNBits (i : Int) (size : BitSize := 64) : List Bit :=
+  let bits := i.toBits
+  let padbit := if i ≥ 0 then .zero else .one
+  List.replicate (size - bits.length) padbit ++ bits
 
 namespace Wasm.Wast.Num
 

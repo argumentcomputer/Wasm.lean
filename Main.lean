@@ -144,7 +144,7 @@ def main : IO Unit := do
 
   IO.println "* * *"
   IO.println "i32.add (i32.const 42) is represented as:"
-  void $ parseTestP addP "i32.add (i32.const 42)"
+  void $ parseTestP (iBinopP "add" .add) "i32.add (i32.const 42)"
   IO.println "* * *"
 
   IO.println "* * *"

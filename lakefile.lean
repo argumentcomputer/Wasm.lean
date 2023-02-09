@@ -9,16 +9,16 @@ package Wasm {
 lean_lib Wasm
 
 require LSpec from git
-  "https://github.com/yatima-inc/LSpec" @ "89798a6cb76b2b29469ff752af2fd8543b3a5515"
+  "https://github.com/yatima-inc/LSpec" @ "88f7d23e56a061d32c7173cea5befa4b2c248b41"
 
 require YatimaStdLib from git
-  "https://github.com/yatima-inc/YatimaStdLib.lean" @ "f905b68f529de2af44cf6ea63489b7e3cd090050"
+  "https://github.com/yatima-inc/YatimaStdLib.lean" @ "533d71efa5853ff014f42c174d6321d74251209f"
 
 require Megaparsec from git
-  "https://github.com/yatima-inc/Megaparsec.lean" @ "50f9beb2af165f5736155d30cdda2774784b677b"
+  "https://github.com/yatima-inc/Megaparsec.lean" @ "0572258b1cfee6a399d0b867a764cee97e73a254"
 
-require Yatima from git
-  "https://github.com/yatima-inc/yatima-lang" @ "26e896debf14cf3bb09a7a8a00f70583ae95469d"
+-- require Yatima from git
+--   "https://github.com/yatima-inc/yatima-lang" @ "26e896debf14cf3bb09a7a8a00f70583ae95469d"
 
 @[default_target]
 lean_exe wasm {

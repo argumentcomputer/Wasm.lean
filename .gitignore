@@ -2,3 +2,4 @@
 result*
 build/
 lean_packages/
+lake-packages/
