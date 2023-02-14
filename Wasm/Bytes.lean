@@ -392,10 +392,32 @@ def extractFuncs (fs : List Func) : ByteArray :=
   )
   header ++ (lindex $ uLeb128 fs.length ++ fbs)
 
--- TODO
-def extractModName (_ : Module) : ByteArray := b0
--- TODO
-def extractFuncNames (_ : List Func) : ByteArray := b0
+def modHeader : ByteArray := b 0x00
+
+def extractModIdentifier : Module → ByteArray
+| ⟨.none, _⟩ => b0
+| ⟨.some n, _⟩ => modHeader ++ (lindex $ lindex n.toUTF8)
+
+def funcHeader : ByteArray := b 0x01
+
+def extractFuncIdentifier : Func → ByteArray
+| ⟨ .none, _, _, _, _, _ ⟩  => b0
+| ⟨ .some x, _, _, _, _, _ ⟩  => lindex x.toUTF8
+
+def flattenWithIndecies : List ByteArray → ByteArray
+  | [] => b0
+  | bs => (bs.foldl (fun (acc, n) x => match x.data with
+    | #[] => (acc, n)
+    | _x => ((uLeb128 n ++ x ++ acc), n + 1)) (b0, 0)).1
+
+-- Same as extractModIdentifier, but maps a list of functions into a length-prefixed wasm array.
+def extractFuncIdentifiers (fs : List Func) : ByteArray :=
+  let fbs :=
+    flattenWithIndecies $ fs.map extractFuncIdentifier
+  if fbs.size = 0 then
+    b0
+  else
+    funcHeader ++ (lindex $ uLeb128 fs.length ++ fbs)
 
 /-
                        ___________________________________________________
@@ -429,7 +451,7 @@ __-' { |          \    | /
       _-
 
 -/
-def indexNamedLocals (f : Func) : List (Nat × Local) :=
+def indexIdentifiedLocals (f : Func) : List (Nat × Local) :=
   let go (acc : (Nat × List (Nat × Local))) (x : Local) :=
     let i := acc.1
     if x.name.isSome then (i + 1, (i, x) :: acc.2) else (i + 1, acc.2)
@@ -438,11 +460,11 @@ def indexNamedLocals (f : Func) : List (Nat × Local) :=
   let locals_proper := (f.locals.foldl go (indexed_params.1, [])).2.reverse
   params ++ locals_proper
 
-def indexFunctionsWithNamedLocals (fs : List Func)
+def indexFunctionsWithIdentifiedLocals (fs : List Func)
   : List (Nat × List (Nat × Local)) :=
   let go (acc : (Nat × List (Nat × List (Nat × Local)))) (x : Func) :=
     let i := acc.1
-    let ls := indexNamedLocals x
+    let ls := indexIdentifiedLocals x
     if !ls.isEmpty then (i + 1, (i, ls) :: acc.2) else (i + 1, acc.2)
   (fs.foldl go (0, [])).2.reverse
 
@@ -462,23 +484,23 @@ def encodeFunc (f : (Nat × List (Nat × Local))) : ByteArray :=
   let locals := f.2.map encodeLocal
   uLeb128 f.1 ++ uLeb128 f.2.length ++ flatten locals
 
-def extractLocalNames (fs : List Func) : ByteArray :=
-  let subsection_header := b 0x02
-  let ifs := (indexFunctionsWithNamedLocals fs).map encodeFunc
+def extractLocalIdentifiers (fs : List Func) : ByteArray :=
+  let subsectionHeader := b 0x02
+  let ifs := (indexFunctionsWithIdentifiedLocals fs).map encodeFunc
   if !ifs.isEmpty then
-    subsection_header ++ (lindex $ uLeb128 ifs.length ++ flatten ifs)
+    subsectionHeader ++ (lindex $ uLeb128 ifs.length ++ flatten ifs)
   else
     b0
 
-def extractNames (m : Module) : ByteArray :=
+def extractIdentifiers (m : Module) : ByteArray :=
   let header := b 0x00
   -- let name := ByteArray.mk #[0x6e, 0x61, 0x6d, 0x65] -- == literal "name"
-  let name := "name".toUTF8
-  let modName := extractModName m
-  let funcNames := extractFuncNames m.func
-  let locNames := extractLocalNames m.func
-  if (modName.size > 0 || funcNames.size > 0 || locNames.size > 0) then
-    header ++ (lindex $ (lindex name) ++ modName ++ funcNames ++ locNames)
+  let nameSectionStarts := "name".toUTF8
+  let modIdentifier := extractModIdentifier m
+  let funcIdentifiers := extractFuncIdentifiers m.func
+  let locIdentifiers := extractLocalIdentifiers m.func
+  if (modIdentifier.size > 0 || funcIdentifiers.size > 0 || locIdentifiers.size > 0) then
+    header ++ (lindex $ (lindex nameSectionStarts) ++ modIdentifier ++ funcIdentifiers ++ locIdentifiers)
   else
     b0
 
@@ -509,4 +531,4 @@ def mtob (m : Module) : ByteArray :=
   (extractFuncIds m) ++
   (extractExports m) ++
   (extractFuncs m.func) ++
-  (extractNames m)
+  (extractIdentifiers m)

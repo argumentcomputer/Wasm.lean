@@ -35,7 +35,7 @@ def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name 
 
 def main : IO Unit := do
 
-  let i := "(module
+  let i := "(module $something_special
     (func $main (export \"main\")
       (param $x i32)
       (param i32)

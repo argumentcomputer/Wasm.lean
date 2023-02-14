@@ -93,11 +93,35 @@ def uWasmMods := [
       )",
     "(module
       (func $main (export \"main\")
+        (param $xblock1nobr i32)
+        (param i32)
+        (result i32)
+
+        (block (result i32) (i32.const 3) (i32.add (i32.const 0) (i32.const 9)))
+      )
+    )",
+    "(module
+      (func $main (export \"main\")
+        (param $xblock1 i32)
+        (param i32)
+        (result i32)
+
+        (block (result i32) (i32.const 3) (i32.add (br 0) (i32.const 9)))
+      )
+    )",
+    "(module
+      (func $main (export \"main\")
         (param $x i32)
         (param i32)
         (result i32 i32)
 
         (block (result i32) (i32.const 3) (i32.add (br 0) (i32.const 9)))
+
+        (i32.add
+          (i32.const 1499550000)
+          (i32.add (i32.const 9000) (i32.const 17))
+        )
+
         (i32.add
           (i32.const 1499550000)
           (i32.add (i32.const 9000) (i32.const 17))
@@ -106,10 +130,15 @@ def uWasmMods := [
       )
     )",
     "(module
-      (func $main (export \"main\")
+      (func $main1 (export \"main\")
         (param $y i32)
         (param i32)
-        (result i32 i32)
+        (result i32) (result i32)
+
+        (i32.add
+          (i32.const 1499550000)
+          (i32.add (i32.const 17) (i32.const 9000))
+        )
 
         (i32.add
           (i32.const 1499550000)
@@ -120,8 +149,21 @@ def uWasmMods := [
     )",
     "(module (func (result i32)
         (block (result i32) (i32.const 3))
-    ))"
-
+    ))",
+    "(module (func (result i32)
+        (block (result i32) (i32.add (i32.const 3) (i32.const 39)))
+    ))",
+    "(module (func (result i32 i32) (i32.const 3) (i32.const 39)))",
+    "(module (func (result i32) (i32.add (i32.const 1) (i32.add (i32.const 2) (i32.const 3)))))",
+    "(module (func (result i32) (i32.add (i32.const 1499550000) (i32.add (i32.const 17) (i32.const 9000)))))",
+    "(module (func (param $a i32) (param i32)))",
+    "(module (func (param $a i32) (param i32) (result i32) (i32.const 42)))",
+    "(module (func $zoinkerino))",
+    "(module (func $crain (result i32) (i32.const 42)))",
+    "(module (func $main161 (param $a i32) (param i32) (result i32) (i32.const 42)))",
+    "(module $T (func $G (param $X i32)))",
+    "(module $T (func $G (param $X i32)) (func $H (param $Y i32)))",
+    "(module (func))"
 ]
 
 -- TODO: Prove termination because lengths decrease 1 at a time.
@@ -192,6 +234,45 @@ partial def moduleTestIO (x : String) : IO UInt32 := do
 def withWasmSandboxRun : IO UInt32 :=
   -- For each element in uWasmMods, run moduleTestIO on it.
   uWasmMods.foldlM (fun _ x => moduleTestIO x) 0
+  -- Uh. So for some reason the following happens when we run this:
+  -- × Binary representation is compatible with ./wast-dump-19680L350.bytes
+  -- === CODE ===
+  -- (module
+  --       (func $main (export "main")
+  --         (param $y i32)
+  --         (param i32)
+  --         (result i32 i32)
+
+  --         (i32.add
+  --           (i32.const 1499550000)
+  --           (i32.add (i32.const 17) (i32.const 9000))
+  --         )
+
+  --         (i32.add
+  --           (i32.const 1499550000)
+  --           (i32.add (i32.const 17) (i32.const 9000))
+  --         )
+
+  --       )
+  --     )
+  -- ||| END OF CODE |||
+  --     Expected to be equal: 'false' and 'true'
+  -- ✓ Binary representation is compatible with ./wast-dump-5319L76.bytes
+  -- === CODE ===
+  -- (module (func (result i32)
+  --         (block (result i32) (i32.const 3))
+  --     ))
+  -- ||| END OF CODE |||
+  -- ✓ Binary representation is compatible with ./wast-dump-7037L101.bytes
+  -- === CODE ===
+  -- (module (func (result i32)
+  --         (block (result i32) (i32.add (i32.const 3) (i32.const 39)))
+  --     ))
+  -- ||| END OF CODE |||
+  --
+  -- All tests passed!
+  ---------------------------------
+  -- NOTE "ALL TESTS PASSED!". Seems wrong.
 
 def withWasmSandboxFail : IO UInt32 :=
   lspecIO $ testCrow
