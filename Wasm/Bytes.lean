@@ -35,36 +35,16 @@ def ttoi (x : Type') : UInt8 :=
   | .f 32 => 0x7d
   | .f 64 => 0x7c
 
-def copp [Append α] : α → α → α :=
-  fun a x => x ++ a
-
-def totalLength (bss : List ByteArray) : Nat :=
-  bss.foldl (fun acc x => acc + x.data.size) 0
-
 def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
 
--- TODO: Refactor completely and support locals!
-def extractTypes (m : Module) : ByteArray :=
-  let sigs := m.func.map $ fun x =>
-    let params := x.params.map $ (b ∘ ttoi ∘ fun x => x.type)
-    -- TODO: check if we support > 255 params. Do the same for each length and size entries!
-    let header := b 0x60 ++ uLeb128 params.length
-    let res := params.foldl Append.append header
-    res ++ (match x.results with -- TODO: test multi-result functions
-    | List.nil => b 0x00
-    | ts => b 0x7b ++ uLeb128 ts.length ++ flatten (ts.map $ b ∘ ttoi)
-    )
-  sigs.foldl
-    Append.append $
-      b 0x01 ++ uLeb128 (1 + totalLength sigs) ++ uLeb128 sigs.length
+def mkVec (xs : List α) (xtobs : α → ByteArray) : ByteArray :=
+  let bs := flatten $ xs.map xtobs
+  uLeb128 xs.length ++ bs
 
-/- Function section -/
-def extractFuncIds (m : Module) : ByteArray :=
-  let funs :=
-    b m.func.length.toUInt8 ++
-    m.func.foldl (fun acc _x => (acc ++ (b ∘ Nat.toUInt8) acc.data.size)) b0
-  b 0x03 ++ uLeb128 funs.data.size ++ funs
+def mkStr (x : String) : ByteArray :=
+  uLeb128 x.length ++ x.toUTF8
+
 def indexLocals (f : Func) : List (Nat × Local) :=
   let idxParams := f.params.enum
   let idxLocals := f.locals.enumFrom f.params.length
@@ -370,19 +350,18 @@ mutual
     | .local_tee ll => b 0x22 ++ extractLocalLabel ls ll
     | .block ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map (extractOp ls))
+      let obs := bts ++ mkVec ops (extractOp ls)
       b 0x02 ++ bts ++ lindex obs ++ b 0x0b
     | .loop ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs := bts ++ uLeb128 ops.length ++ flatten (ops.map (extractOp ls))
+      let obs := bts ++ mkVec ops (extractOp ls)
       b 0x03 ++ bts ++ lindex obs ++ b 0x0b
     | .if ts thens elses =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let bth := uLeb128 thens.length ++ flatten (thens.map (extractOp ls))
-      let belse := if elses.isEmpty then b0
-        else
-          let bel := uLeb128 elses.length ++ flatten (elses.map (extractOp ls))
-          b 0x05 ++ lindex bel
+      let bth := mkVec thens (extractOp ls)
+      let belse := if elses.isEmpty then b0 else
+        let bel := mkVec elses (extractOp ls)
+        b 0x05 ++ lindex bel
       b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
     | .br li => b 0x0c ++ sLeb128 li
     | .br_if li => b 0x0d ++ sLeb128 li
@@ -394,21 +373,40 @@ def extractOps (locals : List (Nat × Local)) (ops : List Operation)
   : ByteArray :=
   flatten $ ops.map (extractOp locals)
 
-def extractFuncs (fs : List Func) : ByteArray :=
-  let header := b 0x0a -- ← here we'll add the whole size of the section.
-  let fbs := flatten $ fs.map (fun x =>
-    -- ← now for each function's code section, we'll add its size after we do all the other
-    --   computations.
+def extractFuncTypes (f : Func) : ByteArray :=
+  let header := b 0x60
+  let params := mkVec f.params (b ∘ ttoi ∘ fun l => l.type)
+  let result := mkVec f.results (b ∘ ttoi)
+  header ++ params ++ result
 
-    -- TODO: handle Locals!
-    -- let locals := b 0x0
-    let locals := b 0x00
+def extractTypes (m : Module) : ByteArray :=
+  let header := b 0x01
+  let funcs := mkVec m.func extractFuncTypes
+  header ++ lindex funcs
 
-    let obs := extractOps (indexNamedLocals x) x.ops
+/- Function section -/
+def extractFuncIds (m : Module) : ByteArray :=
+  let funs :=
+    uLeb128 m.func.length ++
+    m.func.foldl (fun acc _x => acc ++ b acc.data.size.toUInt8) b0
+  b 0x03 ++ lindex funs
 
-    lindex $ locals ++ obs ++ b 0x0b
-  )
-  header ++ (lindex $ uLeb128 fs.length ++ fbs)
+def extractFuncBody (f : Func) : ByteArray :=
+  -- Locals are encoded with counts of subgroups of the same type.
+  let localGroups := f.locals.groupBy (fun l1 l2 => l1.type = l2.type)
+  let extractCount
+    | ls@(l::_) => uLeb128 ls.length ++ b (ttoi l.type)
+    | [] => b0
+  let locals := mkVec localGroups extractCount
+
+  let obs := extractOps (indexNamedLocals f) f.ops
+
+  -- for each function's code section, we'll add its size after we do
+  -- all the other computations.
+  lindex $ locals ++ obs ++ b 0x0b
+
+def extractFuncBodies (fs : List Func) : ByteArray :=
+  b 0x0a ++ lindex (mkVec fs extractFuncBody)
 
 -- TODO
 def extractModName (_ : Module) : ByteArray := b0
@@ -450,24 +448,22 @@ __-' { |          \    | /
 
 def encodeLocal (l : Nat × Local) : ByteArray :=
   match l.2.name with
-  | .some n => uLeb128 l.1 ++ uLeb128 n.length ++ n.toUTF8
+  | .some n => uLeb128 l.1 ++ mkStr n
   | .none   => uLeb128 l.1 -- TODO: check logic
 
 def encodeFunc (f : (Nat × List (Nat × Local))) : ByteArray :=
-  let locals := f.2.map encodeLocal
-  uLeb128 f.1 ++ uLeb128 f.2.length ++ flatten locals
+  uLeb128 f.1 ++ mkVec f.2 encodeLocal
 
 def extractLocalNames (fs : List Func) : ByteArray :=
   let subsection_header := b 0x02
-  let ifs := (indexFunctionsWithNamedLocals fs).map encodeFunc
+  let ifs := indexFuncsWithNamedLocals fs
   if !ifs.isEmpty then
-    subsection_header ++ (lindex $ uLeb128 ifs.length ++ flatten ifs)
+    subsection_header ++ lindex (mkVec ifs encodeFunc)
   else
     b0
 
 def extractNames (m : Module) : ByteArray :=
   let header := b 0x00
-  -- let name := ByteArray.mk #[0x6e, 0x61, 0x6d, 0x65] -- == literal "name"
   let name := "name".toUTF8
   let modName := extractModName m
   let funcNames := extractFuncNames m.func
@@ -477,23 +473,14 @@ def extractNames (m : Module) : ByteArray :=
   else
     b0
 
-def mkVec (xs : List α) (xtobs : α → ByteArray) : ByteArray :=
-  let n := xs.length
-  let bs := flatten $ xs.map xtobs
-  uLeb128 n ++ bs
-
-def nMkStr (x : String) : ByteArray :=
-  uLeb128 x.length ++ x.toUTF8
-
 def extractExports (m : Module) : ByteArray :=
-  let exports := m.func.filter (fun f => Option.toBool f.export_)
+  let exports := indexFuncs $ m.func.filter (·.export_.isSome)
   if !exports.isEmpty then
     let header := b 0x07
-    let extractExport := fun f => match f.2.export_ with
-      | .some x => nMkStr x ++ b 0x00 ++ uLeb128 f.1
+    let extractExport | (idx, f) => match f.export_ with
+      | .some x => mkStr x ++ b 0x00 ++ uLeb128 idx
       | .none => b0
-    let fs := indexFuncs ∘ m.func.filter $ fun f => Option.toBool f.export_
-    header ++ (lindex $ mkVec fs extractExport)
+    header ++ lindex (mkVec exports extractExport)
   else
     b0
 
@@ -503,5 +490,5 @@ def mtob (m : Module) : ByteArray :=
   (extractTypes m) ++
   (extractFuncIds m) ++
   (extractExports m) ++
-  (extractFuncs m.func) ++
+  (extractFuncBodies m.func) ++
   (extractNames m)
