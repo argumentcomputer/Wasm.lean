@@ -15,7 +15,7 @@ inductive Type' where
   | f : BitSize → Type'
   | i : BitSize → Type'
   -- | v : BitSizeSIMD → Type'
-  deriving BEq
+  deriving DecidableEq
 
 instance : ToString Type' where
   toString x := match x with
@@ -40,10 +40,19 @@ structure Local where
   index : Nat
   name : Option String
   type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
-  deriving BEq
+  deriving DecidableEq
 
 instance : ToString Local where
   toString x := s!"(Local.mk {x.index} {x.type})"
+
+inductive LocalLabel where
+  | by_index : Nat → LocalLabel
+  | by_name : String → LocalLabel
+  deriving Repr, DecidableEq
+
+instance : ToString LocalLabel where
+  toString | .by_index n => s!"(LocalLabel.by_index {n})"
+           | .by_name  n => s!"(LocalLabel.by_name \"{n}\")"
 
 end Local
 open Local
@@ -67,25 +76,6 @@ end LabelIndex
 open LabelIndex
 
 
-namespace Get
-
-inductive Get (x : Type') where
-| from_stack
-| by_name : Local → Get x
-| by_index : Local → Get x
-
-instance : ToString (Get α) where
-  toString x := "(" ++ (
-    match x with
-    | .from_stack => "Get.from_stack"
-    | .by_name n => "Get.by_name " ++ toString n
-    | .by_index i => "Get.by_index " ++ toString i
-  ) ++ " : Get " ++ toString α ++ ")"
-
-end Get
-open Get
-
-
 /- TODO: Instructions are rigid WAT objects. If we choose to only support
 S-Expressions at this point, we don't need this concept. -/
 namespace Instruction
@@ -99,8 +89,6 @@ mutual
   inductive Get' where
   | from_stack
   | from_operation : Operation → Get'
-  | by_name : Local → Get'
-  | by_index : Local → Get'
 
 -- TODO: add support for function type indexes for blocktypes
 -- TODO: branching ops can produce and consume operands themselves,
@@ -110,6 +98,7 @@ mutual
 -- can't be populated with `ConstFloat`!
   inductive Operation where
   | nop
+  | drop
   | const : Type' → NumUniT → Operation
   | eqz : Type' → Get' → Operation
   | eq  : Type' → Get' → Get' → Operation
@@ -147,6 +136,9 @@ mutual
   | shr_s : Type' → Get' → Get' → Operation
   | rotl : Type' → Get' → Get' → Operation
   | rotr : Type' → Get' → Get' → Operation
+  | local_get : LocalLabel → Operation
+  | local_set : LocalLabel → Operation
+  | local_tee : LocalLabel → Operation
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
   | if : List Type' → List Operation → List Operation → Operation
@@ -155,17 +147,13 @@ mutual
 end
 
 mutual
-  private partial def getToString (x : Get') : String :=
-    "(Get'" ++ (
-      match x with
-      | .from_stack => ".from_stack"
-      | .from_operation o => s!".from_operation {operationToString o}"
-      | .by_name n => ".by_name " ++ toString n
-      | .by_index i => ".by_index " ++ toString i
-    ) ++ ")"
+  private partial def getToString : Get' → String
+    | .from_stack => "(Get'.from_stack)"
+    | .from_operation o => s!"(Get'.from_operation {operationToString o})"
 
   private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"
+    | .drop => "(Operation.drop)"
     | .const t n => s!"(Operation.const {t} {n})"
     | .eqz t g => s!"(Operation.eqz {t} {getToString g})"
     | .eq  t g1 g2 => s!"(Operation.eq {t} {getToString g1} {getToString g2})"
@@ -219,6 +207,9 @@ mutual
       s!"(Operation.rotl {t} {getToString g1} {getToString g2})"
     | .rotr t g1 g2 =>
       s!"(Operation.rotr {t} {getToString g1} {getToString g2})"
+    | .local_get l => s!"(Operation.local_get {l})"
+    | .local_set l => s!"(Operation.local_set {l})"
+    | .local_tee l => s!"(Operation.local_tee {l})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
     | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"

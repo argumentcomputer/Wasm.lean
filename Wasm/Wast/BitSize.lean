@@ -14,13 +14,13 @@ We define BitSize inductive to then combine it with respective constructors. -/
 inductive BitSize :=
 | thirtyTwo
 | sixtyFour
-deriving BEq
+deriving DecidableEq
 
 /- Webassembly supports SIMD instructions over blobs of 128 bits.
 In case they'll support other sizes of blobs, we recorded this fact into an inductive. -/
 inductive BitSizeSIMD :=
 | hundredTwentyEight
-deriving BEq
+deriving DecidableEq
 
 -- Boring instances
 

@@ -405,6 +405,7 @@ open Num.Float
 inductive NumUniT where
 | i : ConstInt → NumUniT
 | f : ConstFloat → NumUniT
+  deriving BEq
 
 instance : ToString NumUniT where
   toString | .i ci => toString ci
