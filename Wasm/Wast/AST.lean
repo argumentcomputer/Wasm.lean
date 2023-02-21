@@ -57,6 +57,20 @@ instance : ToString LocalLabel where
 end Local
 open Local
 
+namespace Global
+
+inductive GlobalLabel where
+  | by_index : Nat → GlobalLabel
+  | by_name : String → GlobalLabel
+  deriving Repr, DecidableEq
+
+instance : ToString GlobalLabel where
+  toString | .by_index n => s!"(GlobalLabel.by_index {n})"
+           | .by_name  n => s!"(GlobalLabel.by_name \"{n}\")"
+
+end Global
+open Global
+
 namespace LabelIndex
 
 structure LabelIndex where
@@ -228,6 +242,30 @@ end Operation
 open Operation
 
 
+namespace Global
+
+structure GlobalType where
+  var : Bool
+  type : Type'
+  deriving DecidableEq
+
+instance : ToString GlobalType where
+  toString
+    | ⟨false, t⟩ => s!"(GlobalType const {t})"
+    | ⟨true,  t⟩ => s!"(GlobalType var {t})"
+
+structure Global where
+  index : Nat
+  name : Option String
+  type : GlobalType
+  init : Operation
+
+instance : ToString Global where
+  toString x := s!"(Global {x.index} {x.type} {x.init})"
+
+end Global
+open Global
+
 namespace Func
 
 structure Func where
@@ -250,6 +288,7 @@ namespace Module
 
 structure Module where
   name : Option String
+  globals : List Global
   func : List Func
 
 instance : ToString Module where

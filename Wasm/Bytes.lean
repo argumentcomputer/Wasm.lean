@@ -5,6 +5,7 @@ import Wasm.Leb128
 
 open Wasm.Leb128
 open Wasm.Wast.Code
+open Wasm.Wast.AST.Global
 open Wasm.Wast.AST.Module
 open Wasm.Wast.AST.Type'
 open Wasm.Wast.AST.Local
@@ -295,6 +296,12 @@ def extractLocalLabel (ls : List (Nat × Local)) : LocalLabel → ByteArray
     | .some (idx,_) => sLeb128 idx
     | .none => sorry
 
+def extractGlobalLabel (gs : List (Nat × Global)) : GlobalLabel → ByteArray
+  | .by_index idx => sLeb128 idx
+  | .by_name name => match gs.find? (·.2.name = .some name) with
+    | .some (idx,_) => sLeb128 idx
+    | .none => sorry
+
 mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
   partial def extractGet' (ls : List (Nat × Local)) (x : Get') : ByteArray :=
@@ -446,6 +453,20 @@ __-' { |          \    | /
 
 -/
 
+def extractGlobalType : GlobalType → ByteArray
+  | ⟨mut?, t⟩ => b (ttoi t) ++ b (if mut? then 0x01 else 0x00)
+
+def extractGlobal (g : Global) : ByteArray :=
+  let egt := extractGlobalType g.type
+  let einit := match g.init with -- some copy paste to avoid passing locals
+  | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
+  | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val
+  | _ => unreachable! -- TODO: upon supporting imports, add that global.get case
+  egt ++ einit ++ b 0x0b
+
+def extractGlobals (gs : List Global) : ByteArray :=
+  b 0x06 ++ mkVec gs extractGlobal
+
 def encodeLocal (l : Nat × Local) : ByteArray :=
   match l.2.name with
   | .some n => uLeb128 l.1 ++ mkStr n
@@ -489,6 +510,7 @@ def mtob (m : Module) : ByteArray :=
   version ++
   (extractTypes m) ++
   (extractFuncIds m) ++
+  (extractGlobals m.globals) ++
   (extractExports m) ++
   (extractFuncBodies m.func) ++
   (extractNames m)

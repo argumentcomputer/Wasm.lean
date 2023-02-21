@@ -33,6 +33,7 @@ section textparser
 
 open Type'
 open Local
+open Global
 open Operation
 open Func
 open Module
@@ -50,6 +51,10 @@ def typeP : Parsec Char String Unit Type' := do
   | _ => parseError $ .trivial ps.offset .none $ hints0 Char
 
 def localLabelP : Parsec Char String Unit LocalLabel :=
+  .by_index <$> (hexP <|> decimalP) <|>
+  .by_name <$> nameP
+
+def globalLabelP : Parsec Char String Unit GlobalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
   .by_name <$> nameP
 
@@ -119,6 +124,7 @@ private def brifP : Parsec Char String Unit Operation := do
       iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
       localOpP <|> blockP <|> loopP <|> ifP <|>
       brP <|> brifP
+      <* owP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
@@ -185,21 +191,16 @@ private def brifP : Parsec Char String Unit Operation := do
 end
 
 
-def exportP : Parsec Char String Unit String := do
-  Char.between '(' ')' do
-    discard $ string "export"
-    ignoreP
+def exportP : Parsec Char String Unit String :=
+  Char.between '(' ')' $
+    string "export" *> ignoreP *>
     -- TODO: are escaped quotation marks legal export names?
-    let export_label ← Char.between '\"' '\"' $ many' $ noneOf "\"".data
-    pure $ String.mk export_label
+    let export_label := Char.between '\"' '\"' $ many' $ noneOf "\"".data
+    String.mk <$> export_label
 
-def genLocalP (x : String) : Parsec Char String Unit Local := do
-  discard $ string x
-  let olabel ← (option' ∘ attempt) (ignoreP *> nameP)
-  let typ ← ignoreP *> typeP
-  pure $ match olabel with
-  | .none => Local.mk 0 .none typ
-  | .some l => Local.mk 0 (.some l) typ
+def genLocalP (x : String) : Parsec Char String Unit Local :=
+  string x *> ignoreP *>
+  Local.mk 0 <$> option' (nameP <* ignoreP) <*> typeP
 
 def paramP : Parsec Char String Unit Local :=
   genLocalP "param"
@@ -220,7 +221,30 @@ def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
     ) (start, [])
   ).2.reverse
 
-def funcP : Parsec Char String Unit Func := do
+def globalTypeP : Parsec Char String Unit GlobalType :=
+  let mutP := owP *> string "mut" *> ignoreP
+  (GlobalType.mk false <$> typeP) <|>
+  (Char.between '(' ')' $ GlobalType.mk true <$> (mutP *> typeP))
+
+/-
+TODO: the initial expression for a global has to be a constant expression.
+Currently, for us this means only `iₙ.const`. However, we should extend this
+when we add support for:
+- `ref.null`
+- `ref.func x`
+- imports: it also accepts `global.get i` where `i`s init is of constP form
+see https://webassembly.github.io/spec/core/valid/instructions.html#constant-expressions
+-/
+def globalP : Parsec Char String Unit Global :=
+  Char.between '(' ')' do
+    owP *> string "global" *> ignoreP
+    let oname ← option' (nameP <* ignoreP)
+    let gt ← globalTypeP
+    let init ← ignoreP *>
+      Char.between '(' ')' (owP *> constP <* owP)
+    pure ⟨0, oname, gt, init⟩
+
+def funcP : Parsec Char String Unit Func :=
   Char.between '(' ')' do
     owP <* (string "func")
     -- let oname ← option' (ignoreP *> nameP)
@@ -237,15 +261,18 @@ def funcP : Parsec Char String Unit Func := do
     owP
     pure $ Func.mk oname oexp ps rtypes ls ops
 
-
-def moduleP : Parsec Char String Unit Module := do
+-- TODO: A module consists of a sequence of fields that can occur in any order. -- All definitions and their respective bound identifiers scope over the entire
+-- module, including the text preceding them.
+def moduleP : Parsec Char String Unit Module :=
   Char.between '(' ')' do
-    owP <* (string "module")
+    owP <* string "module"
     let oname ← option' (attempt $ ignoreP *> nameP)
-    let ofuns ← option' (attempt $ ignoreP *> sepEndBy' funcP owP)
+    let oglobals ← option' (ignoreP *> sepEndBy' (attempt globalP) owP)
+    let globals := optional oglobals []
+    let ofuns ← option' (attempt $ owP *> sepEndBy' funcP owP)
     let funs := optional ofuns []
     owP
-    pure $ Module.mk oname funs
+    pure $ Module.mk oname globals funs
 
 
 end textparser
