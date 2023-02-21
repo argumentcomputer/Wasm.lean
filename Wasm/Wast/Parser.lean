@@ -83,8 +83,12 @@ private def localOpP : Parsec Char String Unit Operation := do
   let op ← (string "local.get" *> pure Operation.local_get)
        <|> (string "local.set" *> pure .local_set)
        <|> (string "local.tee" *> pure .local_tee)
-  ignoreP
-  pure $ op (←localLabelP)
+  ignoreP *> op <$> localLabelP
+
+private def globalOpP : Parsec Char String Unit Operation := do
+  let op ← (string "global.get" *> pure Operation.global_get)
+       <|> (string "global.set" *> pure .global_set)
+  ignoreP *> op <$> globalLabelP
 
 private def brP : Parsec Char String Unit Operation := do
   string "br" *> ignoreP
@@ -122,7 +126,7 @@ private def brifP : Parsec Char String Unit Operation := do
       iBinopP "shl" .shl <|>
       iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
       iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
-      localOpP <|> blockP <|> loopP <|> ifP <|>
+      localOpP <|> globalOpP <|> blockP <|> loopP <|> ifP <|>
       brP <|> brifP
       <* owP
 

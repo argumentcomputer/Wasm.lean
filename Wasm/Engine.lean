@@ -5,6 +5,7 @@ import YatimaStdLib
 
 open Wasm.Wast.AST
 open Wasm.Wast.AST.Func
+open Wasm.Wast.AST.Global
 open Wasm.Wast.AST.LabelIndex
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Module
@@ -21,9 +22,11 @@ inductive EngineErrors where
 | stack_incompatible_with_results
 | param_type_incompatible
 | typecheck_failed
-| local_with_no_name_given
 | local_with_given_name_missing : String → EngineErrors
 | local_with_given_id_missing : Nat → EngineErrors
+| global_with_given_name_missing : String → EngineErrors
+| global_with_given_id_missing : Nat → EngineErrors
+| cant_mutate_const_global
 | label_not_found
 | function_not_found
 | other -- JACKAL
@@ -34,9 +37,11 @@ instance : ToString EngineErrors where
   | .stack_incompatible_with_results => "stack incompatible with result types"
   | .param_type_incompatible => "param type incompatible"
   | .typecheck_failed => s!"typecheck failed"
-  | .local_with_no_name_given => s!"local with no name given"
   | .local_with_given_id_missing i => s!"local #{i} not found"
   | .local_with_given_name_missing n => s!"local ``{n}'' not found"
+  | .global_with_given_id_missing i => s!"global #{i} not found"
+  | .global_with_given_name_missing n => s!"global ``{n}'' not found"
+  | .cant_mutate_const_global => "cannot change value of a const global"
   | .function_not_found => s!"function not found"
   | .label_not_found => s!"label not found"
   | .other => "non-specified"
@@ -97,6 +102,34 @@ def fetchLabel (stack : Stack) (idx : LabelIndex) : Option Label :=
     | .label _ :: es, n+1 => go es n
   go stack.es idx.li
 
+namespace GlobalInstance
+
+/-
+`val` is of type `NumUniT` because locals need to be of a value type,
+and `StackEntry`s can e.g. be labels.
+TODO: change `NumUniT` to a full value type when we add vectors.
+-/
+structure GlobalInstance where
+  name  : Option String
+  val   : Option NumUniT
+  type  : GlobalType
+deriving BEq
+
+end GlobalInstance
+open GlobalInstance
+
+abbrev Globals := List GlobalInstance
+
+def instantiateGlobals (gs : List Global) : Globals :=
+  gs.map fun g =>
+    let val := match g.init with
+    | .const _t cv => cv
+    | _ => unreachable! -- TODO: global.get case
+    ⟨g.name, val, g.type⟩
+
+def findGlobalByName? (gs : Globals) (x : String) : Option GlobalInstance :=
+  gs.find? (.some x == ·.name)
+
 /- TODO: This will eventually depend on ModuleInstance! -/
 structure FunctionInstance (x : Module) where
   name : Option String
@@ -124,10 +157,11 @@ def instantiateFs (m : Module) : List (FunctionInstance m) :=
   (m.func.foldl go []).reverse
 
 structure Store (m : Module) where
+  globals : Globals
   func : List (FunctionInstance m)
 
 def mkStore (m : Module) : Store m :=
-  Store.mk $ instantiateFs m
+  ⟨instantiateGlobals m.globals, instantiateFs m⟩
 
 def funcByName (s : Store m) (x : String) : Option $ FunctionInstance m :=
   match s.func.filter (fun f => f.export_ == .some x) with
@@ -212,7 +246,7 @@ The monads in the stack:
 -/
 abbrev EngineM :=
   ExceptT Continuation $ StateT (List StackEntry) $
-    StateT Locals $ Except EngineErrors
+    StateT Locals $ StateT Globals $ Except EngineErrors
 
 instance : Inhabited (EngineM α) where
   default := throw default
@@ -232,13 +266,30 @@ def getLocals : EngineM Locals := getThe Locals
 def modifyLocals (f : Locals → Locals) : EngineM PUnit := modifyThe Locals f
 def setLocals (ls : Locals) : EngineM PUnit := modifyLocals fun _ => ls
 
-def checkAndReplace (replace : Locals → LocalEntry → LocalEntry → Locals)
-                    (err : EngineErrors)
-                    : StackEntry → Option LocalEntry → EngineM PUnit
+def checkreplaceLocals (replace : Locals → LocalEntry → LocalEntry → Locals)
+                       (err : EngineErrors)
+                       : StackEntry → Option LocalEntry → EngineM PUnit
   | se@(.num n), .some l =>
     if stackEntryTypecheck l.type se
-    then do setLocals $ replace (←getLocals) l {l with val := .some n}
+    then modifyLocals (replace · l {l with val := .some n})
     else throwEE .param_type_incompatible
+  | .num _, _ => throwEE err
+  | _, _ => throwEE .typecheck_failed
+
+def getGlobals : EngineM Globals := getThe Globals
+def modifyGlobals (f : Globals → Globals) : EngineM PUnit := modifyThe Globals f
+def setGlobals (ls : Globals) : EngineM PUnit := modifyGlobals fun _ => ls
+
+def checkreplaceGlobals
+        (replace : Globals → GlobalInstance → GlobalInstance → Globals)
+        (err : EngineErrors)
+        : StackEntry → Option GlobalInstance → EngineM PUnit
+  | se@(.num n), .some g =>
+    if !g.type.mut? then throwEE .cant_mutate_const_global
+    else
+      if stackEntryTypecheck g.type.type se
+      then modifyGlobals (replace · g {g with val := .some n})
+      else throwEE .param_type_incompatible
   | .num _, _ => throwEE err
   | _, _ => throwEE .typecheck_failed
 
@@ -367,21 +418,33 @@ mutual
       | .some ⟨_, .some n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_id_missing idx
     | .local_get (.by_name name) => do
-      -- TODO: names are erased in production. See what do we want to do with this code path.
       match findLocalByName? (←getLocals) name with
       | .some ⟨_, .some n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_name_missing name
     | .local_set (.by_index idx) => do
           -- we can't use locals.replace because that one replaces
           -- _the first_ occurrence, which might be earlier than on the idx
-        checkAndReplace (fun locals _ => replaceNth locals idx)
+        checkreplaceLocals (fun locals _ => replaceNth locals idx)
           (.local_with_given_id_missing idx) (←bite) ((←getLocals).get? idx)
     | .local_set (.by_name name) => do
-        checkAndReplace List.replace (.local_with_given_name_missing name)
+        checkreplaceLocals List.replace (.local_with_given_name_missing name)
           (←bite) (findLocalByName? (←getLocals) name)
     | .local_tee l => do match ←bite with
       | val@(.num _) => push val; push val; runOp $ .local_set l
       | _ => throwEE .typecheck_failed
+    | .global_get (.by_index idx) => do match (←getGlobals).get? idx with
+      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | _ => throwEE $ .global_with_given_id_missing idx
+    | .global_get (.by_name name) => do
+      match findGlobalByName? (←getGlobals) name with
+      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | _ => throwEE $ .global_with_given_name_missing name
+    | .global_set (.by_index idx) => do
+        checkreplaceGlobals (fun globals _ => replaceNth globals idx)
+          (.global_with_given_id_missing idx) (←bite) ((←getGlobals).get? idx)
+    | .global_set (.by_name name) => do
+        checkreplaceGlobals List.replace (.global_with_given_name_missing name)
+          (←bite) (findGlobalByName? (←getGlobals) name)
     | .block ts ops => blockOp ts ops $ .label ⟨ts.length, []⟩
       -- TODO: currently, we only support simple [] → [valuetype*] blocks,
       -- not type indices. For this reason, we start the block execution
@@ -403,10 +466,10 @@ mutual
         if n = 0 then pure () else runOp (.br li)
 end
 
-def runDo (_s : Store m)
+def runDo (s : Store m)
           (f : FunctionInstance m)
           (σ : Stack)
-          : Except EngineErrors Stack := do
+          : Except EngineErrors (Globals × Stack) := do
   let bite acc x := do
     match (←acc).1 with
     | [] => .error .not_enough_stuff_on_stack
@@ -418,21 +481,21 @@ def runDo (_s : Store m)
   let pσ ← f.params.foldl bite $ .ok (σ.es, [])
   let locals := (f.params ++ f.locals).map
     fun l => ⟨l.name, pσ.2.get? l.index, l.type⟩
-  let ses ← (f.ops.forM runOp).run pσ.1 locals
-  pure $ Stack.mk ses.1.2
+  let ses ← (f.ops.forM runOp).run pσ.1 locals s.globals
+  pure (ses.2, Stack.mk ses.1.1.2)
 
 -- This is sort of a debug function, returning the full resulting stack instead
 -- of just the values specified in the result fields.
-def runFullStack (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors Stack :=
+def runFullStack (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors (Globals × Stack) :=
   match s.func.get? fid with
   | .none => .error .function_not_found
   | .some f => runDo s f σ
 
-def run (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors Stack :=
+def run (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors (Globals × Stack) :=
   match s.func.get? fid with
   | .none => .error .function_not_found
   | .some f => do
-    let rstack ← runDo s f σ
-    if resultsTypecheck f.results rstack.es
-      then pure rstack
+    let res ← runDo s f σ
+    if resultsTypecheck f.results res.2.es
+      then pure res
       else throw .stack_incompatible_with_results

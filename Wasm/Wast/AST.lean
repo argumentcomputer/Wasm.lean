@@ -153,6 +153,8 @@ mutual
   | local_get : LocalLabel → Operation
   | local_set : LocalLabel → Operation
   | local_tee : LocalLabel → Operation
+  | global_get : GlobalLabel → Operation
+  | global_set : GlobalLabel → Operation
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
   | if : List Type' → List Operation → List Operation → Operation
@@ -224,6 +226,8 @@ mutual
     | .local_get l => s!"(Operation.local_get {l})"
     | .local_set l => s!"(Operation.local_set {l})"
     | .local_tee l => s!"(Operation.local_tee {l})"
+    | .global_get l => s!"(Operation.global_get {l})"
+    | .global_set l => s!"(Operation.global_set {l})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
     | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"
@@ -245,7 +249,7 @@ open Operation
 namespace Global
 
 structure GlobalType where
-  var : Bool
+  mut? : Bool
   type : Type'
   deriving DecidableEq
 
