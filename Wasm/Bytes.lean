@@ -452,8 +452,11 @@ def extractFuncIdentifier : Func → ByteArray
 | ⟨ .none, _, _, _, _, _ ⟩ => b0
 | ⟨ .some x, _, _, _, _, _ ⟩ => lindex x.toUTF8
 
-def flattenWithIndices (bs : List ByteArray) : ByteArray :=
-  flatten $ bs.enum.map fun (n,x) => uLeb128 n ++ x
+def flattenWithIndices : List ByteArray → ByteArray
+  | [] => b0
+  | bs => (bs.foldl (fun (acc, n) x => match x.data with
+    | #[] => (acc, n)
+    | _x => ((acc ++ uLeb128 n ++ x), n + 1)) (b0, 0)).1
 
 -- Same as extractModIdentifier, but maps a list of functions into a length-prefixed wasm array.
 def extractFuncIdentifiers (fs : List Func) : ByteArray :=
