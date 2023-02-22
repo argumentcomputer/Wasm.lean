@@ -37,13 +37,14 @@ open Type'
 namespace Local
 
 structure Local where
-  index : Nat
   name : Option String
   type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
   deriving DecidableEq
 
 instance : ToString Local where
-  toString x := s!"(Local.mk {x.index} {x.type})"
+  toString
+    | ⟨.some name, t⟩ => s!"(Local.mk \"{name}\" {t})"
+    | ⟨.none,      t⟩ => s!"(Local.mk {t})"
 
 inductive LocalLabel where
   | by_index : Nat → LocalLabel
@@ -56,6 +57,20 @@ instance : ToString LocalLabel where
 
 end Local
 open Local
+
+namespace Global
+
+inductive GlobalLabel where
+  | by_index : Nat → GlobalLabel
+  | by_name : String → GlobalLabel
+  deriving Repr, DecidableEq
+
+instance : ToString GlobalLabel where
+  toString | .by_index n => s!"(GlobalLabel.by_index {n})"
+           | .by_name  n => s!"(GlobalLabel.by_name \"{n}\")"
+
+end Global
+open Global
 
 namespace LabelIndex
 
@@ -139,6 +154,8 @@ mutual
   | local_get : LocalLabel → Operation
   | local_set : LocalLabel → Operation
   | local_tee : LocalLabel → Operation
+  | global_get : GlobalLabel → Operation
+  | global_set : GlobalLabel → Operation
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
   | if : List Type' → List Operation → List Operation → Operation
@@ -210,6 +227,8 @@ mutual
     | .local_get l => s!"(Operation.local_get {l})"
     | .local_set l => s!"(Operation.local_set {l})"
     | .local_tee l => s!"(Operation.local_tee {l})"
+    | .global_get l => s!"(Operation.global_get {l})"
+    | .global_set l => s!"(Operation.global_set {l})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
     | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"
@@ -227,6 +246,31 @@ instance : ToString Operation where
 end Operation
 open Operation
 
+
+namespace Global
+
+structure GlobalType where
+  mut? : Bool
+  type : Type'
+  deriving DecidableEq
+
+instance : ToString GlobalType where
+  toString
+    | ⟨false, t⟩ => s!"(GlobalType const {t})"
+    | ⟨true,  t⟩ => s!"(GlobalType var {t})"
+
+structure Global where
+  name : Option String
+  type : GlobalType
+  init : Operation
+
+instance : ToString Global where
+  toString
+    | ⟨.some name, type, init⟩ => s!"(Global \"{name}\" {type} {init})"
+    | ⟨.none,      type, init⟩ => s!"(Global {type} {init})"
+
+end Global
+open Global
 
 namespace Func
 
@@ -250,6 +294,7 @@ namespace Module
 
 structure Module where
   name : Option String
+  globals : List Global
   func : List Func
 
 instance : ToString Module where

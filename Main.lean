@@ -383,6 +383,9 @@ def main : IO Unit := do
 
   -- TODO: pack more ascii into the easter egg with i64
   let i := "(module
+    (global $a i32 (i32.const 1499550000))
+    (global i32 (i32.const 17))
+
     (func $main (export \"main\")
       (param $x i32)
       (param i32)
@@ -390,8 +393,8 @@ def main : IO Unit := do
 
       (block (result i32) (i32.const 3) (i32.add (br 0) (i32.const 9)))
       (i32.add
-        (i32.const 1499550000)
-        (i32.add (i32.const 9000) (i32.const 17))
+        (global.get $a)
+        (i32.add (i32.const 9000) (global.get 1))
       )
 
     )
@@ -423,7 +426,7 @@ def main : IO Unit := do
     | .some fid =>
       let eres := run store fid $ Stack.mk [se_zero, se_zero]
       match eres with
-      | .ok stack2 => match stack2.es with
+      | .ok (_, stack2) => match stack2.es with
         | [] => "UNEXPECTED RESULT"
         | xs => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{xs}"
       | .error ee => s!"FAILED TO RUN `main` CORRECTLY: {ee}"
