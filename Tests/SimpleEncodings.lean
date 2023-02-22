@@ -77,21 +77,21 @@ def testFuncIsFunc : TestSeq :=
 open Wasm.Wast.AST.Local
 
 def testParamIsActuallyLocal : TestSeq :=
-  test "param $t i32 is (Local.mk 0 .none (Type'.i 32))" $ testParse paramP "param $t i32" (Local.mk 0 (.some "t") (Type'.i 32))
+  test "param $t i32 is (Local.mk 0 .none (Type'.i 32))" $ testParse paramP "param $t i32" (Local.mk (.some "t") (Type'.i 32))
 
 def testSomeParamsParse : TestSeq :=
   test "(param $t i32) (param $coocoo f32) (param i64) parses correctly." $
     testParse nilParamsP "(param $t i32) (param $coocoo f32) (param i64)" $
-      [Local.mk 0 (.some "t") (Type'.i 32),
-       Local.mk 0 (.some "coocoo") (Type'.f 32),
-       Local.mk 0 .none (Type'.i 64)]
+      [Local.mk (.some "t") (Type'.i 32),
+       Local.mk (.some "coocoo") (Type'.f 32),
+       Local.mk .none (Type'.i 64)]
 
 def testSpacesAreIgnoredWhileParsingParams : TestSeq :=
   test "(param i32) (param $coocoo f32)  ( param i64 ) ( something_else ) parses alright" $
     testParse nilParamsP "(param i32) (param $coocoo f32)  ( param i64 ) ( something_else )" $
-      [Local.mk 0 .none (Type'.i 32),
-       Local.mk 0 (.some "coocoo") (Type'.f 32),
-       Local.mk 0 .none (Type'.i 64)]
+      [Local.mk .none (Type'.i 32),
+       Local.mk (.some "coocoo") (Type'.f 32),
+       Local.mk .none (Type'.i 64)]
 
 def testResultParses : TestSeq :=
   test "( result i32) parses to [Type'.i 32]" $
@@ -101,15 +101,15 @@ def testFuncParses : TestSeq :=
   test "(func (param $x i32) (param $y i32) (result i32)
   ) parses" $
     testParse funcP "(func (param $x i32) (param $y i32) (result i32)
-  )" $ (Func.mk .none .none [(Local.mk 0 (.some "x") (Type'.i 32)), (Local.mk 1 (.some "y") (Type'.i 32))] [(Type'.i 32)] [] [])
+  )" $ (Func.mk .none .none [(Local.mk (.some "x") (Type'.i 32)), (Local.mk (.some "y") (Type'.i 32))] [(Type'.i 32)] [] [])
 
 def testAnotherFuncParses : TestSeq :=
   test "(func (param $x i32) (param i32) (result i32)) parses" $
-    testParse funcP "(func (param $x i32) (param i32) (result i32))" $ (Func.mk .none .none [(Local.mk 0 (.some "x") (Type'.i 32)), (Local.mk 1 .none (Type'.i 32))] [(Type'.i 32)] [] [])
+    testParse funcP "(func (param $x i32) (param i32) (result i32))" $ (Func.mk .none .none [(Local.mk (.some "x") (Type'.i 32)), (Local.mk .none (Type'.i 32))] [(Type'.i 32)] [] [])
 
 def testYetAnotherFuncParses : TestSeq :=
   test "(func (param $x i32) (param i32) (result i32) (result i64)) parses" $
-    testParse funcP "(func (param $x i32) (param i32) (result i32) (result i64))" $ (Func.mk .none .none [(Local.mk 0 (.some "x") (Type'.i 32)), (Local.mk 1 .none (Type'.i 32))] [(Type'.i 32), (Type'.i 64)] [] [])
+    testParse funcP "(func (param $x i32) (param i32) (result i32) (result i64))" $ (Func.mk .none .none [(Local.mk (.some "x") (Type'.i 32)), (Local.mk .none (Type'.i 32))] [(Type'.i 32), (Type'.i 64)] [] [])
 
 def testFlawedFuncDoesntParse : TestSeq :=
   test "(func func (param $x i32) (param i32) (result i32) (result i64) (result i64)) DOES NOT parse" $
@@ -130,7 +130,7 @@ def testAFuncWithImplementationParses : TestSeq :=
   test "(func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2))) parses" $
     testParse funcP "(func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))" $
       (Func.mk .none .none
-        [(Local.mk 0 (.some "x") (Type'.i 32)), (Local.mk 1 .none (.i 32))]
+        [(Local.mk (.some "x") (Type'.i 32)), (Local.mk .none (.i 32))]
         [(.i 32)] []
         [(.add (.i 32) (.from_operation (.const (.i 32) (.i (ConstInt.mk 32 40))))
           (.from_operation (.const (.i 32) (.i (ConstInt.mk 32 2))))
