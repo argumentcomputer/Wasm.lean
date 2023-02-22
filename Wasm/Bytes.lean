@@ -39,29 +39,48 @@ def ttoi (x : Type') : UInt8 :=
 def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
 
+def mkVecM (xs : List α) (xtobs : α → m ByteArray) [Monad m] : m ByteArray := do
+  let bs ← flatten <$> xs.mapM xtobs
+  pure $ uLeb128 xs.length ++ bs
+
 def mkVec (xs : List α) (xtobs : α → ByteArray) : ByteArray :=
-  let bs := flatten $ xs.map xtobs
-  uLeb128 xs.length ++ bs
+  mkVecM (m := Id) xs xtobs
 
 def mkStr (x : String) : ByteArray :=
   uLeb128 x.length ++ x.toUTF8
 
-def indexLocals (f : Func) : List (Nat × Local) :=
+abbrev Locals := List (Nat × Local)
+abbrev Globals := List (Nat × Global)
+
+abbrev ExtractM := ReaderT Globals $ ReaderM Locals
+
+def eapp : ByteArray → ExtractM ByteArray → ExtractM ByteArray :=
+  Applicative.liftA₂ Append.append ∘ pure
+
+instance : HAppend ByteArray (ExtractM ByteArray) (ExtractM ByteArray) := ⟨eapp⟩
+instance : HAppend (ExtractM ByteArray) ByteArray (ExtractM ByteArray) where
+  hAppend eb b := eapp b eb
+instance : Append (ExtractM ByteArray) := ⟨Applicative.liftA₂ Append.append⟩
+
+def readLocals : ExtractM Locals := readThe Locals
+def readGlobals : ExtractM Globals := readThe Globals
+
+def indexLocals (f : Func) : Locals :=
   let idxParams := f.params.enum
   let idxLocals := f.locals.enumFrom f.params.length
   idxParams ++ idxLocals
 
-def indexNamedLocals (f : Func) : List (Nat × Local) :=
+def indexNamedLocals (f : Func) : Locals :=
   let onlyNamed := List.filter (·.2.name.isSome)
   onlyNamed $ indexLocals f
 
 def indexFuncs (fs : List Func) : List (Nat × Func) := fs.enum
 
 def indexFuncsWithNamedLocals (fs : List Func)
-  : List (Nat × List (Nat × Local)) :=
+  : List (Nat × Locals) :=
   (fs.map indexNamedLocals).enum.filter (!·.2.isEmpty)
 
-def indexNamedGlobals (gs : List Global) : List (Nat × Global) :=
+def indexNamedGlobals (gs : List Global) : Globals :=
   let onlyNamed := List.filter (·.2.name.isSome)
   onlyNamed gs.enum
 
@@ -294,101 +313,96 @@ def extractRotr (α : Type') : ByteArray :=
   | .i 64 => 0x8a
   | _ => unreachable!
 
-def extractLocalLabel (ls : List (Nat × Local)) : LocalLabel → ByteArray
-  | .by_index idx => sLeb128 idx
-  | .by_name name => match ls.find? (·.2.name = .some name) with
-    | .some (idx,_) => sLeb128 idx
+def extractLocalLabel : LocalLabel → ExtractM ByteArray
+  | .by_index idx => pure $ sLeb128 idx
+  | .by_name name => do match (←readLocals).find? (·.2.name = .some name) with
+    | .some (idx, _) => pure $ sLeb128 idx
     | .none => sorry
 
-def extractGlobalLabel (gs : List (Nat × Global)) : GlobalLabel → ByteArray
-  | .by_index idx => sLeb128 idx
-  | .by_name name => match gs.find? (·.2.name = .some name) with
-    | .some (idx,_) => sLeb128 idx
+def extractGlobalLabel : GlobalLabel → ExtractM ByteArray
+  | .by_index idx => pure $ sLeb128 idx
+  | .by_name name => do match (←readGlobals).find? (·.2.name = .some name) with
+    | .some (idx, _) => pure $ sLeb128 idx
     | .none => sorry
 
 mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
-  partial def extractGet' (gs : List (Nat × Global))
-                          (ls : List (Nat × Local))
-                          (x : Get') : ByteArray :=
+  partial def extractGet' (x : Get') : ExtractM ByteArray :=
     match x with
-    | .from_stack => b0
-    | .from_operation o => extractOp gs ls o
+    | .from_stack => pure b0
+    | .from_operation o => extractOp o
 
-  partial def extractOp (gs : List (Nat × Global))
-                        (ls : List (Nat × Local))
-                        : Operation → ByteArray
-    | .nop => b 0x01
-    | .drop => b 0x1a
+  partial def extractOp (op : Operation) : ExtractM ByteArray := do
+    match op with
+    | .nop => pure $ b 0x01
+    | .drop => pure $ b 0x1a
     -- TODO: signed consts exist??? We should check the spec carefully.
-    | .const (.i 32) (.i ci) => b 0x41 ++ sLeb128 ci.val
-    | .const (.i 64) (.i ci) => b 0x42 ++ sLeb128 ci.val
+    | .const (.i 32) (.i ci) => pure $ b 0x41 ++ sLeb128 ci.val
+    | .const (.i 64) (.i ci) => pure $ b 0x42 ++ sLeb128 ci.val
     | .const _ _ => sorry -- TODO: float binary encoding
-    | .eqz    t g => extractGet' gs ls g ++ extractEqz t
-    | .eq t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractEq t
-    | .ne t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractNe t
-    | .lt_u t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractLtu t
-    | .lt_s t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractLts t
-    | .gt_u t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractGtu t
-    | .gt_s t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractGts t
-    | .le_u t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractLeu t
-    | .le_s t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractLes t
-    | .ge_u t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractGeu t
-    | .ge_s t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractGes t
-    | .lt t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractLt t
-    | .gt t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractGt t
-    | .le t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractLe t
-    | .ge t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractGe t
-    | .clz    t g => extractGet' gs ls g ++ extractClz t
-    | .ctz    t g => extractGet' gs ls g ++ extractCtz t
-    | .popcnt t g => extractGet' gs ls g ++ extractPopcnt t
-    | .add t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractAdd t
-    | .sub t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractSub t
-    | .mul t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractMul t
-    | .div t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractDiv t
-    | .min t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractMin t
-    | .max t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractMax t
-    | .div_s t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractDivS t
-    | .div_u t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractDivU t
-    | .rem_s t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractRemS t
-    | .rem_u t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractRemU t
-    | .and t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractAnd t
-    | .or  t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractOr  t
-    | .xor t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractXor t
-    | .shl t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractShl t
-    | .shr_u t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractShrU t
-    | .shr_s t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractShrS t
-    | .rotl t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractRotl t
-    | .rotr t g1 g2 => extractGet' gs ls g1 ++ extractGet' gs ls g2 ++ extractRotr t
-    | .local_get ll => b 0x20 ++ extractLocalLabel ls ll
-    | .local_set ll => b 0x21 ++ extractLocalLabel ls ll
-    | .local_tee ll => b 0x22 ++ extractLocalLabel ls ll
-    | .global_get gl => b 0x23 ++ extractGlobalLabel gs gl
-    | .global_set gl => b 0x24 ++ extractGlobalLabel gs gl
+    | .eqz    t g => extractGet' g ++ extractEqz t
+    | .eq t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractEq t
+    | .ne t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractNe t
+    | .lt_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLtu t
+    | .lt_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLts t
+    | .gt_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGtu t
+    | .gt_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGts t
+    | .le_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLeu t
+    | .le_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLes t
+    | .ge_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGeu t
+    | .ge_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGes t
+    | .lt t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLt t
+    | .gt t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGt t
+    | .le t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLe t
+    | .ge t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGe t
+    | .clz    t g => extractGet' g ++ extractClz t
+    | .ctz    t g => extractGet' g ++ extractCtz t
+    | .popcnt t g => extractGet' g ++ extractPopcnt t
+    | .add t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAdd t
+    | .sub t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractSub t
+    | .mul t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMul t
+    | .div t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDiv t
+    | .min t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMin t
+    | .max t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMax t
+    | .div_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivS t
+    | .div_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivU t
+    | .rem_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRemS t
+    | .rem_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRemU t
+    | .and t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAnd t
+    | .or  t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractOr  t
+    | .xor t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractXor t
+    | .shl t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShl t
+    | .shr_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShrU t
+    | .shr_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShrS t
+    | .rotl t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRotl t
+    | .rotr t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRotr t
+    | .local_get ll => b 0x20 ++ extractLocalLabel ll
+    | .local_set ll => b 0x21 ++ extractLocalLabel ll
+    | .local_tee ll => b 0x22 ++ extractLocalLabel ll
+    | .global_get gl => b 0x23 ++ extractGlobalLabel gl
+    | .global_set gl => b 0x24 ++ extractGlobalLabel gl
     | .block ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs := bts ++ mkVec ops (extractOp gs ls)
-      b 0x02 ++ bts ++ lindex obs ++ b 0x0b
+      let obs ← bts ++ mkVecM ops extractOp
+      pure $ b 0x02 ++ bts ++ lindex obs ++ b 0x0b
     | .loop ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs := bts ++ mkVec ops (extractOp gs ls)
-      b 0x03 ++ bts ++ lindex obs ++ b 0x0b
+      let obs ← bts ++ mkVecM ops extractOp
+      pure $ b 0x03 ++ bts ++ lindex obs ++ b 0x0b
     | .if ts thens elses =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let bth := mkVec thens (extractOp gs ls)
-      let belse := if elses.isEmpty then b0 else
-        let bel := mkVec elses (extractOp gs ls)
-        b 0x05 ++ lindex bel
-      b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
-    | .br li => b 0x0c ++ sLeb128 li
-    | .br_if li => b 0x0d ++ sLeb128 li
+      let bth ← mkVecM thens extractOp
+      let belse ← if elses.isEmpty then pure b0 else
+        b 0x05 ++ lindex <$> mkVecM elses extractOp
+      pure $ b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
+    | .br li => pure $ b 0x0c ++ sLeb128 li
+    | .br_if li => pure $ b 0x0d ++ sLeb128 li
 
 
 end
 
-def extractOps (globals : List (Nat × Global)) (locals : List (Nat × Local)) (ops : List Operation)
-  : ByteArray :=
-  flatten $ ops.map (extractOp globals locals)
+def extractOps (ops : List Operation) : ExtractM ByteArray :=
+  flatten <$> ops.mapM extractOp
 
 def extractFuncTypes (f : Func) : ByteArray :=
   let header := b 0x60
@@ -408,7 +422,7 @@ def extractFuncIds (m : Module) : ByteArray :=
     m.func.foldl (fun acc _x => acc ++ b acc.data.size.toUInt8) b0
   b 0x03 ++ lindex funs
 
-def extractFuncBody (globals : List (Nat × Global)) (f : Func) : ByteArray :=
+def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
   -- Locals are encoded with counts of subgroups of the same type.
   let localGroups := f.locals.groupBy (fun l1 l2 => l1.type = l2.type)
   let extractCount
@@ -416,7 +430,7 @@ def extractFuncBody (globals : List (Nat × Global)) (f : Func) : ByteArray :=
     | [] => b0
   let locals := mkVec localGroups extractCount
 
-  let obs := extractOps globals (indexNamedLocals f) f.ops
+  let obs : ByteArray := (extractOps f.ops).run globals (indexNamedLocals f)
 
   -- for each function's code section, we'll add its size after we do
   -- all the other computations.
@@ -484,7 +498,7 @@ def encodeLocal (l : Nat × Local) : ByteArray :=
   | .some n => uLeb128 l.1 ++ mkStr n
   | .none   => uLeb128 l.1 -- TODO: check logic
 
-def encodeFunc (f : (Nat × List (Nat × Local))) : ByteArray :=
+def encodeFunc (f : (Nat × Locals)) : ByteArray :=
   uLeb128 f.1 ++ mkVec f.2 encodeLocal
 
 def extractLocalNames (fs : List Func) : ByteArray :=
