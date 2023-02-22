@@ -37,13 +37,14 @@ open Type'
 namespace Local
 
 structure Local where
-  index : Nat
   name : Option String
   type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
   deriving DecidableEq
 
 instance : ToString Local where
-  toString x := s!"(Local.mk {x.index} {x.type})"
+  toString
+    | ⟨.some name, t⟩ => s!"(Local.mk \"{name}\" {t})"
+    | ⟨.none,      t⟩ => s!"(Local.mk {t})"
 
 inductive LocalLabel where
   | by_index : Nat → LocalLabel
@@ -259,13 +260,14 @@ instance : ToString GlobalType where
     | ⟨true,  t⟩ => s!"(GlobalType var {t})"
 
 structure Global where
-  index : Nat
   name : Option String
   type : GlobalType
   init : Operation
 
 instance : ToString Global where
-  toString x := s!"(Global {x.index} {x.type} {x.init})"
+  toString
+    | ⟨.some name, type, init⟩ => s!"(Global \"{name}\" {type} {init})"
+    | ⟨.none,      type, init⟩ => s!"(Global {type} {init})"
 
 end Global
 open Global

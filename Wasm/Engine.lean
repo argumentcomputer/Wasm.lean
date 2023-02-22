@@ -143,12 +143,11 @@ structure FunctionInstance (x : Module) where
 /- TODO: Unify this with Bytes.indexFuncs -/
 def instantiateFs (m : Module) : List (FunctionInstance m) :=
   let go acc f :=
-    let pl := reindexParamsAndLocals f
     let fi := FunctionInstance.mk f.name
                                   f.export_
-                                  pl.1
+                                  f.params
                                   f.results
-                                  pl.2
+                                  f.locals
                                   0
                                   f.ops
     match acc with
@@ -479,8 +478,8 @@ def runDo (s : Store m)
       else .error .param_type_incompatible
     | _ :: _ => .error .param_type_incompatible
   let pσ ← f.params.foldl bite $ .ok (σ.es, [])
-  let locals := (f.params ++ f.locals).map
-    fun l => ⟨l.name, pσ.2.get? l.index, l.type⟩
+  let locals := (f.params ++ f.locals).enum.map
+    fun l => ⟨l.2.name, pσ.2.get? l.1, l.2.type⟩
   let ses ← (f.ops.forM runOp).run pσ.1 locals s.globals
   pure (ses.2, Stack.mk ses.1.1.2)
 

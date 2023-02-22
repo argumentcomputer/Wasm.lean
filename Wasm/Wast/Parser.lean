@@ -204,7 +204,7 @@ def exportP : Parsec Char String Unit String :=
 
 def genLocalP (x : String) : Parsec Char String Unit Local :=
   string x *> ignoreP *>
-  Local.mk 0 <$> option' (nameP <* ignoreP) <*> typeP
+  Local.mk <$> option' (nameP <* ignoreP) <*> typeP
 
 def paramP : Parsec Char String Unit Local :=
   genLocalP "param"
@@ -217,13 +217,6 @@ def nilParamsP : Parsec Char String Unit (List Local) := do
 
 def nilLocalsP : Parsec Char String Unit (List Local) :=
   manyLispP localP
-
-def reindexLocals (start : Nat := 0) (ps : List Local) : List Local :=
-  (ps.foldl (
-      fun acc x =>
-        (acc.1 + 1, {x with index := acc.1} :: acc.2)
-    ) (start, [])
-  ).2.reverse
 
 def globalTypeP : Parsec Char String Unit GlobalType :=
   let mutP := owP *> string "mut" *> ignoreP
@@ -246,7 +239,7 @@ def globalP : Parsec Char String Unit Global :=
     let gt ← globalTypeP
     let init ← ignoreP *>
       Char.between '(' ')' (owP *> constP <* owP)
-    pure ⟨0, oname, gt, init⟩
+    pure ⟨oname, gt, init⟩
 
 def funcP : Parsec Char String Unit Func :=
   Char.between '(' ')' do
@@ -255,11 +248,10 @@ def funcP : Parsec Char String Unit Func :=
     let oname ← option' (attempt $ ignoreP *> nameP)
     let oexp ← option' (attempt $ owP *> exportP)
     let ops ← option' (attempt $ owP *> nilParamsP)
-    let ps := reindexLocals 0 $ optional ops []
-    let psn := ps.length
+    let ps := optional ops []
     let rtypes ← attempt $ owP *> brResultsP
     let ols ← option' (attempt $ owP *> nilLocalsP)
-    let ls := reindexLocals psn $ optional ols []
+    let ls := optional ols []
     let oops ← option' (attempt $ owP *> opsP)
     let ops := optional oops []
     owP

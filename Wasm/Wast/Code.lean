@@ -27,12 +27,5 @@ open Wasm.Wast.Num.Num.Float
 
 namespace Wasm.Wast.Code
 
-open Local in
-open Func in
-def reindexParamsAndLocals (f : Func) : (List Local × List Local) :=
-  let ps := reindexLocals 0 f.params
-  let ls := reindexLocals (ps.length) f.locals
-  (ps, ls)
-
 def replaceNth (xs : List α) (idx : Nat) (x : α) :=
   xs.take idx ++ x :: xs.drop (idx+1)
