@@ -39,11 +39,21 @@ def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
 
 def mkVecM (xs : List α) (xtobs : α → m ByteArray) [Monad m] : m ByteArray := do
-  let bs ← flatten <$> xs.mapM xtobs
-  pure $ uLeb128 xs.length ++ bs
+  (flatten <$> xs.mapM xtobs) >>=
+    (pure $ uLeb128 xs.length ++ ·)
 
 def mkVec (xs : List α) (xtobs : α → ByteArray) : ByteArray :=
   mkVecM (m := Id) xs xtobs
+
+def null_byte : ByteArray := ByteArray.mk #[0]
+
+-- Enforce that when something is converted to a byte array, it is not empty or not null.
+-- If it isn't, finally run the first argument function on it.
+def enf (g : ByteArray → ByteArray) (f : α → ByteArray) (x : α) : ByteArray :=
+  match f x with
+  | ⟨ #[] ⟩ => b0
+  | ⟨ #[0] ⟩ => b0
+  | y => g y
 
 def mkStr (x : String) : ByteArray :=
   uLeb128 x.length ++ x.toUTF8
@@ -510,8 +520,8 @@ def extractGlobal (g : Global) : ByteArray :=
   | _ => unreachable! -- TODO: upon supporting imports, add that global.get case
   egt ++ einit ++ b 0x0b
 
-def extractGlobals (gs : List Global) : ByteArray :=
-  b 0x06 ++ mkVec gs extractGlobal
+def extractGlobals : List Global → ByteArray :=
+  enf (b 0x06 ++ ·) (mkVec · extractGlobal)
 
 def encodeLocal (l : Nat × Local) : ByteArray :=
   match l.2.name with
