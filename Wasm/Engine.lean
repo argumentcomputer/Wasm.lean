@@ -1,7 +1,8 @@
 import Wasm.Wast.AST
 import Wasm.Wast.Code
 import Wasm.Wast.Num
-import YatimaStdLib
+import YatimaStdLib.Cached
+import YatimaStdLib.Int
 
 open Wasm.Wast.AST
 open Wasm.Wast.AST.Func
