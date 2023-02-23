@@ -66,9 +66,10 @@ abbrev ExtractM := ReaderT Globals $ ReaderM Locals
 def eapp : ByteArray → ExtractM ByteArray → ExtractM ByteArray :=
   Applicative.liftA₂ Append.append ∘ pure
 
+
 instance : HAppend ByteArray (ExtractM ByteArray) (ExtractM ByteArray) := ⟨eapp⟩
 instance : HAppend (ExtractM ByteArray) ByteArray (ExtractM ByteArray) where
-  hAppend eb b := eapp b eb
+  hAppend eb b := eb ++ pure b
 instance : Append (ExtractM ByteArray) := ⟨Applicative.liftA₂ Append.append⟩
 
 def readLocals : ExtractM Locals := readThe Locals
