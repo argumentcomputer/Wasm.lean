@@ -67,10 +67,10 @@ def eapp : ByteArray → ExtractM ByteArray → ExtractM ByteArray :=
   Applicative.liftA₂ Append.append ∘ pure
 
 
+instance : Append (ExtractM ByteArray) := ⟨Applicative.liftA₂ Append.append⟩
 instance : HAppend ByteArray (ExtractM ByteArray) (ExtractM ByteArray) := ⟨eapp⟩
 instance : HAppend (ExtractM ByteArray) ByteArray (ExtractM ByteArray) where
   hAppend eb b := eb ++ pure b
-instance : Append (ExtractM ByteArray) := ⟨Applicative.liftA₂ Append.append⟩
 
 def readLocals : ExtractM Locals := readThe Locals
 def readGlobals : ExtractM Globals := readThe Globals

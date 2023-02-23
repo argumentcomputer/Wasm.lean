@@ -180,9 +180,14 @@ partial def moduleTestIO (x : String) : IO UInt32 := do
       h.write our_bytes
       lspecIO $ testGeneric x ref_bytes our_bytes
 
+def preservingErrorCode (acc : UInt32) (x : IO UInt32) : IO UInt32 := do
+  match (← x) with
+  | 0 => pure acc
+  | n => pure n
+
 def withWasmSandboxRun : IO UInt32 :=
   -- For each element in uWasmMods, run moduleTestIO on it.
-  uWasmMods.foldlM (fun _ x => moduleTestIO x) 0
+  uWasmMods.foldlM (fun acc x => preservingErrorCode acc $ moduleTestIO x) 0
 
 def withWasmSandboxFail : IO UInt32 :=
   lspecIO $ testCrow
