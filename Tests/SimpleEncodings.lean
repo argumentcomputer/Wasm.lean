@@ -123,7 +123,7 @@ def testBlockResultConstEndParses : TestSeq :=
 def testIfParses : TestSeq :=
   test "if (result i32) then (i32.const 42) else (i32.const 9) parses" $
     testParse ifP "if (result i32) then (i32.const 42) else (i32.const 9)" $
-      (.if [(Type'.i 32)] [(.const (Type'.i 32) (.i (ConstInt.mk 32 42)))]
+      (.if [(Type'.i 32)] (.from_stack) [(.const (Type'.i 32) (.i (ConstInt.mk 32 42)))]
            [(.const (Type'.i 32) (.i (ConstInt.mk 32 9)))])
 
 def testAFuncWithImplementationParses : TestSeq :=

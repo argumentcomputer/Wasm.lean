@@ -397,14 +397,15 @@ mutual
       pure $ b 0x02 ++ obs ++ b 0x0b
     | .loop ts ops =>
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs ← bts ++ mkVecM ops extractOp
-      pure $ b 0x03 ++ bts ++ lindex obs ++ b 0x0b
-    | .if ts thens elses =>
+      let obs ← bts ++ flatten <$> ops.mapM extractOp
+      pure $ b 0x03 ++ obs ++ b 0x0b
+    | .if ts g thens elses =>
+      let bg ← extractGet' g
       let bts := flatten $ ts.map (b ∘ ttoi)
-      let bth ← mkVecM thens extractOp
+      let bth ← flatten <$> thens.mapM extractOp
       let belse ← if elses.isEmpty then pure b0 else
-        b 0x05 ++ lindex <$> mkVecM elses extractOp
-      pure $ b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
+        b 0x05 ++ flatten <$> elses.mapM extractOp
+      pure $ bg ++ b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
     | .br li => pure $ b 0x0c ++ sLeb128 li
     | .br_if li => pure $ b 0x0d ++ sLeb128 li
 

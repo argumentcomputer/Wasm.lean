@@ -144,18 +144,39 @@ def uWasmMods := [
         )
 
       )
-    )",
-    "(module (func (result i32)
-        (block (result i32) (i32.const 3))
-    ))"
+    )"
 ]
+
+def modsControl :=
+  [ "(module (func) (func (nop)))"
+  , "(module (func (result i32)
+        (block (result i32) (i32.const 3))
+     ))"
+  , "(module (func (result i32)
+        (if (result i32) (i32.const 0)
+          (then (i32.const 1)) (else (i32.const 0))
+        )
+     ))"
+  , "(module (func (result i32)
+        (loop (result i32) (i32.const 3))
+     ))"
+  , "(module (func (result i64)
+        (block (result i64)
+          (i64.const 6)
+          (i64.add (br 0))
+        )
+     ))"
+  , "(module (func (result i32)
+        (block (result i32) (i32.ctz (br_if 0)))
+     ))"
+  ]
 
 open IO.Process (run) in
 def doesWasmSandboxRun? :=
   run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
 
 def withWasmSandboxRun : IO UInt32 :=
-  let testCases := [ uWasmMods ]
+  let testCases := [ uWasmMods, modsControl ]
   lspecEachIO testCases.join moduleTestSeq
 
 def withWasmSandboxFail : IO UInt32 :=

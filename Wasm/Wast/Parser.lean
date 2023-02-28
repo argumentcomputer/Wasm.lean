@@ -117,15 +117,10 @@ private def globalOpP : Parsec Char String Unit Operation := do
        <|> (string "global.set" *> pure .global_set)
   ignoreP *> op <$> globalLabelP
 
-private def brP : Parsec Char String Unit Operation := do
-  string "br" *> ignoreP
-  let idx ← hexP <|> decimalP
-  pure $ .br ⟨idx⟩
-
-private def brifP : Parsec Char String Unit Operation := do
-  string "br_if" *> ignoreP
-  let idx ← hexP <|> decimalP
-  pure $ .br ⟨idx⟩
+private def brOpP : Parsec Char String Unit Operation := do
+  let op ← (string "br_if" *> pure Operation.br_if)
+       <|> (string "br" *> pure .br)
+  ignoreP *> op <$> (hexP <|> decimalP)
 
  mutual
 
@@ -152,7 +147,7 @@ private def brifP : Parsec Char String Unit Operation := do
     iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
     iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
     localOpP <|> globalOpP <|>
-    blockP <|> loopP <|> ifP <|> brifP <|> brP
+    blockP <|> loopP <|> ifP <|> brOpP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
@@ -174,12 +169,11 @@ private def brifP : Parsec Char String Unit Operation := do
   partial def ifP : Parsec Char String Unit Operation := do
     string "if" *> ignoreP
     let ts ← brResultsP
-    string "then" *> ignoreP
-    let thens ← opsP
-    string "else" *> ignoreP
-    let elses ← opsP
-    owP <* option' (string "end")
-    pure $ .if ts thens elses
+    let g ← getP
+    let thens ← bracketedWs $ string "then" *> ignoreP *> opsP
+    let elses ← bracketedWs $ string "else" *> ignoreP *> opsP
+    discard $ option' (string "end")
+    pure $ .if ts g thens elses
 
   partial def iUnopP (opS : String) (unopMk : Type' → Get' → Operation)
               : Parsec Char String Unit Operation := do
