@@ -421,16 +421,18 @@ def extractFuncTypes (f : Func) : ByteArray :=
   header ++ params ++ result
 
 def extractTypes (m : Module) : ByteArray :=
-  let header := b 0x01
-  let funcs := mkVec m.func extractFuncTypes
-  header ++ lindex funcs
+  if m.func.isEmpty then b0 else
+    let header := b 0x01
+    let funcs := mkVec m.func extractFuncTypes
+    header ++ lindex funcs
 
 /- Function section -/
 def extractFuncIds (m : Module) : ByteArray :=
-  let funs :=
+  if m.func.isEmpty then b0 else
+    let funs :=
     uLeb128 m.func.length ++
     m.func.foldl (fun acc _x => acc ++ b acc.data.size.toUInt8) b0
-  b 0x03 ++ lindex funs
+    b 0x03 ++ lindex funs
 
 def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
   -- Locals are encoded with counts of subgroups of the same type.
@@ -447,9 +449,10 @@ def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
   lindex $ locals ++ obs ++ b 0x0b
 
 def extractFuncBodies (m : Module) : ByteArray :=
-  let header := b 0x0a
-  let extractFBwGlobals := extractFuncBody $ indexIdentifiedGlobals m.globals
-  header ++ lindex (mkVec m.func extractFBwGlobals)
+  if m.func.isEmpty then b0 else
+    let header := b 0x0a
+    let extractFBwGlobals := extractFuncBody $ indexIdentifiedGlobals m.globals
+    header ++ lindex (mkVec m.func extractFBwGlobals)
 
 def modHeader : ByteArray := b 0x00
 

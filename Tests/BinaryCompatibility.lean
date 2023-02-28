@@ -117,6 +117,7 @@ def uWasmMods := [
     "(module
         ( func )
       )",
+    "(module)",
     "(module
       (func $main (export \"main\")
         (param $x i32)
