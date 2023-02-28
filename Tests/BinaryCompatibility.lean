@@ -209,12 +209,39 @@ def modsLocal :=
   ))"
   ]
 
+def modsGlobal :=
+  [
+    "(module
+       (global $a i32 (i32.const -2)) (global i32 (i32.const -3))
+       (global $b i64 (i64.const -5))
+       (func (result i64) (global.get $b))
+       (func (export \"as-if-else\") (result i32)
+         (if (result i32) (i32.const 0)
+           (then (i32.const 2)) (else (global.get 1))
+         )
+       )
+     )"
+  , "(module (global $a i32 (i32.const -2)))"
+  , "(module
+       (global i32 (i32.const 17)) (global $a i32 (i32.const -2))
+       (func (param i32) (result i32)
+         (local.get 0) (i32.const 5) (global.set 0) (global.set $a)
+       )
+     )"
+  , "(module (global i64 (i64.const 99999999999)))"
+  , "(module (global $x i32 (i32.const 0))
+       (func (export \"as-binary-operand\") (result i32)
+         (i32.mul (global.get $x) (global.get $x))
+       )
+     )"
+  ]
+
 open IO.Process (run) in
 def doesWasmSandboxRun? :=
   run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
 
 def withWasmSandboxRun : IO UInt32 :=
-  let testCases := [ uWasmMods, modsControl, modsLocal ]
+  let testCases := [ uWasmMods, modsControl, modsLocal, modsGlobal ]
   lspecEachIO testCases.join moduleTestSeq
 
 def withWasmSandboxFail : IO UInt32 :=

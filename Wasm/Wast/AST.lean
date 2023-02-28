@@ -302,7 +302,7 @@ structure Module where
   func : List Func
 
 instance : ToString Module where
-  toString x := s!"(Module.mk {x.name} {x.func})"
+  toString x := s!"(Module.mk {x.name} {x.globals} {x.func})"
 
 end Module
 

@@ -530,7 +530,7 @@ def extractGlobal (g : Global) : ByteArray :=
   egt ++ einit ++ b 0x0b
 
 def extractGlobals : List Global → ByteArray :=
-  enf (b 0x06 ++ ·) (mkVec · extractGlobal)
+  enf (b 0x06 ++ lindex ·) (mkVec · extractGlobal)
 
 def encodeLocal (l : Nat × Local) : ByteArray :=
   match l.2.name with
