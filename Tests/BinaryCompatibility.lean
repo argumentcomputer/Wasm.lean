@@ -149,6 +149,7 @@ def uWasmMods := [
 
 def modsControl :=
   [ "(module (func) (func (nop)))"
+  , "(module (func (result i32) (i32.const 0)) (func (result i32) (i32.const 1)))" -- Here we check if non-0-output function return types are also mashed together.
   , "(module (func (result i32)
         (block (result i32) (i32.const 3))
      ))"
@@ -241,7 +242,11 @@ def doesWasmSandboxRun? :=
   run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
 
 def withWasmSandboxRun : IO UInt32 :=
+<<<<<<< HEAD
   let testCases := [ uWasmMods, modsControl, modsLocal, modsGlobal ]
+=======
+  let testCases := [ uWasmMods, modsControl, modsLocal ]
+>>>>>>> b5e870b (Hypothesis: All the duplicate types should be "compressed")
   lspecEachIO testCases.join moduleTestSeq
 
 def withWasmSandboxFail : IO UInt32 :=

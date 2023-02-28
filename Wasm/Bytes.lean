@@ -42,12 +42,22 @@ def extractBlockType (ts : List Type') : ByteArray :=
 def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
 
-def mkVecM (xs : List α) (xtobs : α → m ByteArray) [Monad m] : m ByteArray := do
-  (flatten <$> xs.mapM xtobs) >>=
-    (pure $ uLeb128 xs.length ++ ·)
+def vectorise (bs : List ByteArray) : ByteArray :=
+  uLeb128 bs.length ++ flatten bs
+
+def mkVecM (xs : List α) (xtobs : α → m ByteArray) [Monad m] : m ByteArray :=
+  vectorise <$> xs.mapM xtobs
 
 def mkVec (xs : List α) (xtobs : α → ByteArray) : ByteArray :=
   mkVecM (m := Id) xs xtobs
+
+def mkIndexedVecM (xs : List (Nat × α))
+                  (xtobs : α → m ByteArray) [Monad m] : m ByteArray :=
+  let xbs := xs.mapM fun (idx, x) => (uLeb128 idx ++ ·) <$> xtobs x
+  vectorise <$> xbs
+
+def mkIndexedVec (xs : List (Nat × α)) (xtobs : α → ByteArray) : ByteArray :=
+  mkIndexedVecM (m := Id) xs xtobs
 
 def null_byte : ByteArray := ByteArray.mk #[0]
 
@@ -425,19 +435,30 @@ def extractFuncTypes (f : Func) : ByteArray :=
   let result := mkVec f.results (b ∘ ttoi)
   header ++ params ++ result
 
-def extractTypes (m : Module) : ByteArray :=
-  if m.func.isEmpty then b0 else
-    let header := b 0x01
-    let funcs := mkVec m.func extractFuncTypes
-    header ++ lindex funcs
+
+/-- Take a list and deduplicate it in `O(n²)`, depending only on `BEq`. -/
+/- Sadly, we can't use `RBSet` and the like to achieve better performance.
+For us, the order in the original list, i.e. the original order of functions
+that produce this list, matters, and it's not capturable in a `cmp` function. -/
+private def poorMansDeduplicate (xs : List α) [BEq α] : List α :=
+  let rec go acc
+    | [] => acc.toList
+    | x::xs => if acc.contains x then go acc xs else go (acc.push x) xs
+  go #[] xs
+
+def typeHeader := b 0x01
+
+def extractTypes (m : Module) : List ByteArray :=
+  if m.func.isEmpty then [] else
+    poorMansDeduplicate $ m.func.map extractFuncTypes
 
 /- Function section -/
-def extractFuncIds (m : Module) : ByteArray :=
+
+def extractFuncIds (m : Module) (types : List ByteArray) : ByteArray :=
   if m.func.isEmpty then b0 else
-    let funs :=
-    uLeb128 m.func.length ++
-    m.func.foldl (fun acc _x => acc ++ b acc.data.size.toUInt8) b0
-    b 0x03 ++ lindex funs
+    let getIndex f := types.indexOf (extractFuncTypes f)
+    let funcIds := mkVec m.func (uLeb128 ∘ getIndex)
+    b 0x03 ++ lindex funcIds
 
 def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
   -- Locals are encoded with counts of subgroups of the same type.
@@ -573,10 +594,15 @@ def extractExports (m : Module) : ByteArray :=
     b0
 
 def mtob (m : Module) : ByteArray :=
+  -- we extract deduplicated types here since we need it to
+  -- look up correct function indices in the funcids section
+  let types := extractTypes m
+  let typeSection := if m.func.isEmpty then b0 else
+    typeHeader ++ lindex (vectorise types)
   magic ++
   version ++
-  (extractTypes m) ++
-  (extractFuncIds m) ++
+  typeSection ++
+  (extractFuncIds m types) ++
   (extractGlobals m.globals) ++
   (extractExports m) ++
   (extractFuncBodies m) ++
