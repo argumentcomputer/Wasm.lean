@@ -170,8 +170,8 @@ private def brOpP : Parsec Char String Unit Operation := do
     string "if" *> ignoreP
     let ts ← brResultsP
     let g ← getP
-    let thens ← bracketedWs $ string "then" *> ignoreP *> opsP
-    let elses ← bracketedWs $ string "else" *> ignoreP *> opsP
+    let thens ← bracketedWs $ string "then" *> owP *> opsP
+    let elses ← bracketedWs $ string "else" *> owP *> opsP
     discard $ option' (string "end")
     pure $ .if ts g thens elses
 
@@ -212,12 +212,24 @@ private def brOpP : Parsec Char String Unit Operation := do
 
 end
 
-
 def exportP : Parsec Char String Unit String := bracketed $
   string "export" *> ignoreP *>
   -- TODO: are escaped quotation marks legal export names?
   let export_label := Char.between '\"' '\"' $ many' $ noneOf "\"".data
   String.mk <$> export_label
+
+private def anonLocalsP : Parsec Char String Unit (List Local) := do
+  let ts ← sepEndBy' typeP owP
+  pure $ ts.map (Local.mk .none)
+
+private def identifiedLocalP : Parsec Char String Unit (List Local) := do
+  let id ← nameP <* ignoreP
+  let t ← typeP
+  pure [Local.mk (.some id) t]
+
+def brLocsP (x : String) : Parsec Char String Unit (List Local) :=
+  let p := string x *> ignoreP *> (identifiedLocalP <|> anonLocalsP)
+  List.join <$> manyLispP p
 
 def genLocalP (x : String) : Parsec Char String Unit Local :=
   string x *> ignoreP *>
@@ -230,10 +242,10 @@ def localP : Parsec Char String Unit Local :=
   genLocalP "local"
 
 def nilParamsP : Parsec Char String Unit (List Local) := do
-  manyLispP paramP
+  brLocsP "param"
 
 def nilLocalsP : Parsec Char String Unit (List Local) :=
-  manyLispP localP
+  brLocsP "local"
 
 def globalTypeP : Parsec Char String Unit GlobalType :=
   let mutP := string "mut" *> ignoreP

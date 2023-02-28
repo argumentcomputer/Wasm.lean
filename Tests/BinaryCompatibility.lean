@@ -171,12 +171,50 @@ def modsControl :=
      ))"
   ]
 
+def modsLocal :=
+  [
+    "(module (func (export \"type-local-i32\") (result i32)
+        (local i32) (local.get 0)
+      ))"
+  , "(module (func (export \"type-param-i64\") (param i64) (result i64)
+         (local.get 0)
+      ))"
+  , "(module (func (param i32) (result i32)
+        (loop (result i32) (local.get 0))
+      ))"
+  , "(module (func (param i32) (result i32)
+        (block (result i32) (local.get 0) (i32.const 1) (br_if 0))
+      ))"
+  , "(module (func (result i32) (local $a i32)
+        (block (result i32) (local.get $a) (local.get 0) (br_if 0))
+      ))"
+  , "(module (func (export \"as-block-value\") (param i32)
+        (block (i32.const 1) (local.set 0))
+  ))"
+  , "(module (func (param i32)
+        (loop (i32.const 3) (local.set 0))
+  ))"
+  , "(module (func (param i32)
+        (if (local.get 0) (then) (else (local.set 0) (i32.const 1)))
+  ))"
+  , "(module (func (param i32) (result i32)
+        (i32.ne (i32.const 10) (local.tee 0))
+  ))"
+  , "(module (func (export \"type-mixed\") (param i64 f32 f64 i32 i32) (local f32 i64 i64 f64)
+    (drop) (i64.const 0) (i64.eqz (local.tee 0))
+    (drop) (i32.const 0) (i32.eqz (local.tee 3))
+    (drop) (i32.const 0) (i32.eqz (local.tee 4))
+    (drop) (i64.const 0) (i64.eqz (local.tee 6))
+    (drop) (i64.const 0) (i64.eqz (local.tee 7))
+  ))"
+  ]
+
 open IO.Process (run) in
 def doesWasmSandboxRun? :=
   run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
 
 def withWasmSandboxRun : IO UInt32 :=
-  let testCases := [ uWasmMods, modsControl ]
+  let testCases := [ uWasmMods, modsControl, modsLocal ]
   lspecEachIO testCases.join moduleTestSeq
 
 def withWasmSandboxFail : IO UInt32 :=

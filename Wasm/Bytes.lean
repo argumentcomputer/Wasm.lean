@@ -35,6 +35,10 @@ def ttoi (x : Type') : UInt8 :=
   | .f 32 => 0x7d
   | .f 64 => 0x7c
 
+-- Currently we don't support type indices.
+def extractBlockType (ts : List Type') : ByteArray :=
+  if ts.isEmpty then b 0x40 else flatten $ ts.map (b ∘ ttoi)
+
 def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
 
@@ -392,16 +396,16 @@ mutual
     | .global_get gl => b 0x23 ++ extractGlobalLabel gl
     | .global_set gl => b 0x24 ++ extractGlobalLabel gl
     | .block ts ops =>
-      let bts := flatten $ ts.map (b ∘ ttoi)
+      let bts := extractBlockType ts
       let obs ← bts ++ flatten <$> ops.mapM extractOp
       pure $ b 0x02 ++ obs ++ b 0x0b
     | .loop ts ops =>
-      let bts := flatten $ ts.map (b ∘ ttoi)
+      let bts := extractBlockType ts
       let obs ← bts ++ flatten <$> ops.mapM extractOp
       pure $ b 0x03 ++ obs ++ b 0x0b
     | .if ts g thens elses =>
       let bg ← extractGet' g
-      let bts := flatten $ ts.map (b ∘ ttoi)
+      let bts := extractBlockType ts
       let bth ← flatten <$> thens.mapM extractOp
       let belse ← if elses.isEmpty then pure b0 else
         b 0x05 ++ flatten <$> elses.mapM extractOp
