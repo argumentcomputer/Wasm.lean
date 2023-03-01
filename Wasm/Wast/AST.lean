@@ -113,7 +113,9 @@ mutual
 -- can't be populated with `ConstFloat`!
   inductive Operation where
   | nop
+  --------------------- PARAMETRIC ----------------------
   | drop
+  ----------------------  NUMERIC -----------------------
   | const : Type' → NumUniT → Operation
   | eqz : Type' → Get' → Operation
   | eq  : Type' → Get' → Get' → Operation
@@ -151,14 +153,16 @@ mutual
   | shr_s : Type' → Get' → Get' → Operation
   | rotl : Type' → Get' → Get' → Operation
   | rotr : Type' → Get' → Get' → Operation
+  ---------------------- VARIABLE -----------------------
   | local_get : LocalLabel → Operation
   | local_set : LocalLabel → Operation
   | local_tee : LocalLabel → Operation
   | global_get : GlobalLabel → Operation
   | global_set : GlobalLabel → Operation
+  ----------------------- CONTROL -----------------------
   | block : List Type' → List Operation → Operation
   | loop : List Type' → List Operation → Operation
-  | if : List Type' → List Operation → List Operation → Operation
+  | if : List Type' → Get' → List Operation → List Operation → Operation
   | br : LabelIndex → Operation
   | br_if : LabelIndex → Operation
 end
@@ -231,7 +235,7 @@ mutual
     | .global_set l => s!"(Operation.global_set {l})"
     | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
     | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
-    | .if ts thens elses => s!"(Operation.if {ts} {thens.map operationToString} {elses.map operationToString})"
+    | .if ts g thens elses => s!"(Operation.if {ts} {getToString g} {thens.map operationToString} {elses.map operationToString})"
     | .br li => s!"(Operation.br {li})"
     | .br_if li => s!"(Operation.br_if {li})"
 
@@ -298,7 +302,7 @@ structure Module where
   func : List Func
 
 instance : ToString Module where
-  toString x := s!"(Module.mk {x.name} {x.func})"
+  toString x := s!"(Module.mk {x.name} {x.globals} {x.func})"
 
 end Module
 

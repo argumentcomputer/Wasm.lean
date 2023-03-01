@@ -35,15 +35,29 @@ def ttoi (x : Type') : UInt8 :=
   | .f 32 => 0x7d
   | .f 64 => 0x7c
 
+-- Currently we don't support type indices.
+def extractBlockType (ts : List Type') : ByteArray :=
+  if ts.isEmpty then b 0x40 else flatten $ ts.map (b ∘ ttoi)
+
 def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
 
-def mkVecM (xs : List α) (xtobs : α → m ByteArray) [Monad m] : m ByteArray := do
-  (flatten <$> xs.mapM xtobs) >>=
-    (pure $ uLeb128 xs.length ++ ·)
+def vectorise (bs : List ByteArray) : ByteArray :=
+  uLeb128 bs.length ++ flatten bs
+
+def mkVecM (xs : List α) (xtobs : α → m ByteArray) [Monad m] : m ByteArray :=
+  vectorise <$> xs.mapM xtobs
 
 def mkVec (xs : List α) (xtobs : α → ByteArray) : ByteArray :=
   mkVecM (m := Id) xs xtobs
+
+def mkIndexedVecM (xs : List (Nat × α))
+                  (xtobs : α → m ByteArray) [Monad m] : m ByteArray :=
+  let xbs := xs.mapM fun (idx, x) => (uLeb128 idx ++ ·) <$> xtobs x
+  vectorise <$> xbs
+
+def mkIndexedVec (xs : List (Nat × α)) (xtobs : α → ByteArray) : ByteArray :=
+  mkIndexedVecM (m := Id) xs xtobs
 
 def null_byte : ByteArray := ByteArray.mk #[0]
 
@@ -85,6 +99,10 @@ def indexIdentifiedLocals (f : Func) : Locals :=
   onlyIDed $ indexLocals f
 
 def indexFuncs (fs : List Func) : List (Nat × Func) := fs.enum
+
+def indexIdentifiedFuncs (fs : List Func) : List (Nat × Func) :=
+  let onlyIDed := List.filter (·.2.name.isSome)
+  onlyIDed fs.enum
 
 def indexFuncsWithIdentifiedLocals (fs : List Func)
   : List (Nat × Locals) :=
@@ -392,19 +410,20 @@ mutual
     | .global_get gl => b 0x23 ++ extractGlobalLabel gl
     | .global_set gl => b 0x24 ++ extractGlobalLabel gl
     | .block ts ops =>
-      let bts := flatten $ ts.map (b ∘ ttoi)
+      let bts := extractBlockType ts
       let obs ← bts ++ flatten <$> ops.mapM extractOp
       pure $ b 0x02 ++ obs ++ b 0x0b
     | .loop ts ops =>
-      let bts := flatten $ ts.map (b ∘ ttoi)
-      let obs ← bts ++ mkVecM ops extractOp
-      pure $ b 0x03 ++ bts ++ lindex obs ++ b 0x0b
-    | .if ts thens elses =>
-      let bts := flatten $ ts.map (b ∘ ttoi)
-      let bth ← mkVecM thens extractOp
+      let bts := extractBlockType ts
+      let obs ← bts ++ flatten <$> ops.mapM extractOp
+      pure $ b 0x03 ++ obs ++ b 0x0b
+    | .if ts g thens elses =>
+      let bg ← extractGet' g
+      let bts := extractBlockType ts
+      let bth ← flatten <$> thens.mapM extractOp
       let belse ← if elses.isEmpty then pure b0 else
-        b 0x05 ++ lindex <$> mkVecM elses extractOp
-      pure $ b 0x04 ++ bts ++ lindex (bth ++ belse) ++ b 0x0b
+        b 0x05 ++ flatten <$> elses.mapM extractOp
+      pure $ bg ++ b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
     | .br li => pure $ b 0x0c ++ sLeb128 li
     | .br_if li => pure $ b 0x0d ++ sLeb128 li
 
@@ -420,17 +439,30 @@ def extractFuncTypes (f : Func) : ByteArray :=
   let result := mkVec f.results (b ∘ ttoi)
   header ++ params ++ result
 
-def extractTypes (m : Module) : ByteArray :=
-  let header := b 0x01
-  let funcs := mkVec m.func extractFuncTypes
-  header ++ lindex funcs
+
+/-- Take a list and deduplicate it in `O(n²)`, depending only on `BEq`. -/
+/- Sadly, we can't use `RBSet` and the like to achieve better performance.
+For us, the order in the original list, i.e. the original order of functions
+that produce this list, matters, and it's not capturable in a `cmp` function. -/
+private def poorMansDeduplicate (xs : List α) [BEq α] : List α :=
+  let rec go acc
+    | [] => acc.toList
+    | x::xs => if acc.contains x then go acc xs else go (acc.push x) xs
+  go #[] xs
+
+def typeHeader := b 0x01
+
+def extractTypes (m : Module) : List ByteArray :=
+  if m.func.isEmpty then [] else
+    poorMansDeduplicate $ m.func.map extractFuncTypes
 
 /- Function section -/
-def extractFuncIds (m : Module) : ByteArray :=
-  let funs :=
-    uLeb128 m.func.length ++
-    m.func.foldl (fun acc _x => acc ++ b acc.data.size.toUInt8) b0
-  b 0x03 ++ lindex funs
+
+def extractFuncIds (m : Module) (types : List ByteArray) : ByteArray :=
+  if m.func.isEmpty then b0 else
+    let getIndex f := types.indexOf (extractFuncTypes f)
+    let funcIds := mkVec m.func (uLeb128 ∘ getIndex)
+    b 0x03 ++ lindex funcIds
 
 def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
   -- Locals are encoded with counts of subgroups of the same type.
@@ -447,9 +479,10 @@ def extractFuncBody (globals : Globals) (f : Func) : ByteArray :=
   lindex $ locals ++ obs ++ b 0x0b
 
 def extractFuncBodies (m : Module) : ByteArray :=
-  let header := b 0x0a
-  let extractFBwGlobals := extractFuncBody $ indexIdentifiedGlobals m.globals
-  header ++ lindex (mkVec m.func extractFBwGlobals)
+  if m.func.isEmpty then b0 else
+    let header := b 0x0a
+    let extractFBwGlobals := extractFuncBody $ indexIdentifiedGlobals m.globals
+    header ++ lindex (mkVec m.func extractFBwGlobals)
 
 def modHeader : ByteArray := b 0x00
 
@@ -463,6 +496,10 @@ def extractFuncIdentifier : Func → ByteArray
 | ⟨ .none, _, _, _, _, _ ⟩ => b0
 | ⟨ .some x, _, _, _, _, _ ⟩ => lindex x.toUTF8
 
+def extractGlobalIdentifier : Global → ByteArray
+| ⟨ .none, _, _ ⟩ => b0
+| ⟨ .some x, _, _ ⟩ => lindex x.toUTF8
+
 def flattenWithIndices : List ByteArray → ByteArray
   | [] => b0
   | bs => (bs.foldl (fun (acc, n) x => match x.data with
@@ -471,11 +508,17 @@ def flattenWithIndices : List ByteArray → ByteArray
 
 -- Same as extractModIdentifier, but maps a list of functions into a length-prefixed wasm array.
 def extractFuncIdentifiers (fs : List Func) : ByteArray :=
-  let fbs := flattenWithIndices $ fs.map extractFuncIdentifier
-  if fbs.size = 0 then
-    b0
-  else
-    funcHeader ++ (lindex $ uLeb128 fs.length ++ fbs)
+  let nfs := indexIdentifiedFuncs fs
+  if nfs.isEmpty then b0 else
+    let fbs := mkIndexedVec nfs extractFuncIdentifier
+    funcHeader ++ lindex fbs
+
+-- Very similar to extractFuncIdentifiers, but for globals.
+def extractGlobalIdentifiers (gs : List Global) : ByteArray :=
+  let ngs := indexIdentifiedGlobals gs
+  if ngs.isEmpty then b0 else
+    let gbs := mkIndexedVec ngs extractGlobalIdentifier
+    b 0x07 ++ lindex gbs
 
 /-
                        ___________________________________________________
@@ -522,7 +565,7 @@ def extractGlobal (g : Global) : ByteArray :=
   egt ++ einit ++ b 0x0b
 
 def extractGlobals : List Global → ByteArray :=
-  enf (b 0x06 ++ ·) (mkVec · extractGlobal)
+  enf (b 0x06 ++ lindex ·) (mkVec · extractGlobal)
 
 def encodeLocal (l : Nat × Local) : ByteArray :=
   match l.2.name with
@@ -546,15 +589,16 @@ def extractIdentifiers (m : Module) : ByteArray :=
   let modIdentifier := extractModIdentifier m
   let funcIdentifiers := extractFuncIdentifiers m.func
   let locIdentifiers := extractLocalIdentifiers m.func
-  if (modIdentifier.size > 0 || funcIdentifiers.size > 0 || locIdentifiers.size > 0)
+  let globalIdentifiers := extractGlobalIdentifiers m.globals
+  if (modIdentifier.size > 0 || funcIdentifiers.size > 0 || locIdentifiers.size > 0 || globalIdentifiers.size > 0)
   then header ++ (lindex $
     (lindex nameSectionStarts) ++ modIdentifier ++
-     funcIdentifiers ++ locIdentifiers)
+     funcIdentifiers ++ locIdentifiers ++ globalIdentifiers)
   else
     b0
 
 def extractExports (m : Module) : ByteArray :=
-  let exports := indexFuncs $ m.func.filter (·.export_.isSome)
+  let exports := m.func.enum.filter (·.2.export_.isSome)
   if !exports.isEmpty then
     let header := b 0x07
     let extractExport | (idx, f) => match f.export_ with
@@ -565,10 +609,15 @@ def extractExports (m : Module) : ByteArray :=
     b0
 
 def mtob (m : Module) : ByteArray :=
+  -- we extract deduplicated types here since we need it to
+  -- look up correct function indices in the funcids section
+  let types := extractTypes m
+  let typeSection := if m.func.isEmpty then b0 else
+    typeHeader ++ lindex (vectorise types)
   magic ++
   version ++
-  (extractTypes m) ++
-  (extractFuncIds m) ++
+  typeSection ++
+  (extractFuncIds m types) ++
   (extractGlobals m.globals) ++
   (extractExports m) ++
   (extractFuncBodies m) ++

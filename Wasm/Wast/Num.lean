@@ -35,6 +35,27 @@ def toNBits (i : Int) (size : BitSize := 64) : List Bit :=
   let padbit := if i ≥ 0 then .zero else .one
   List.replicate (size - bits.length) padbit ++ bits
 
+def UInt8.toHexString (n : UInt8) : String :=
+  let toLetter
+    | 10 => "a"
+    | 11 => "b"
+    | 12 => "c"
+    | 13 => "d"
+    | 14 => "e"
+    | 15 => "f"
+    | n => toString n
+  "0x" ++ toLetter (n / 16) ++ toLetter (n % 16)
+
+def ByteArray.toHexString (bs : ByteArray) : String := Id.run do
+  if bs.isEmpty then "b[]" else
+  let mut ans := "b["
+  for u in bs do
+    ans := ans ++ UInt8.toHexString u ++ ", "
+  return ans.dropRight 2 ++ "]"
+
+instance : Repr ByteArray where
+  reprPrec bs _ := ByteArray.toHexString bs
+
 namespace Wasm.Wast.Num
 
 namespace NumType

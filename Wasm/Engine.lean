@@ -346,8 +346,8 @@ mutual
       match t with
       | .i bs => f (unsign x bs) (unsign y bs)
       | .f _ => unreachable!
-    let checkTop_i32 (f : Int → EngineM PUnit) := do
-      match (←getSO .from_stack) with
+    let checkGet_i32 (g : Get') (f : Int → EngineM PUnit) := do
+      match (←getSO g) with
       | .num (.i ⟨32, n⟩) => f n
       | _ => throwEE .typecheck_failed
     let checkLabel (li : LabelIndex) (f : Label → EngineM PUnit) := do
@@ -451,7 +451,7 @@ mutual
       -- with an stack devoid of _values_ to simulate 0-input-arity, but we
       -- still pass in all the labels currently reachable.
     | .loop ts ops => blockOp ts ops $ .label ⟨ts.length, [.loop ts ops]⟩
-    | .if ts thens elses => checkTop_i32 fun n =>
+    | .if ts g thens elses => checkGet_i32 g fun n =>
       runOp $ .block ts (if n ≠ 0 then thens else elses)
     | .br li => checkLabel li fun ⟨n, cont⟩ => do
       let (topn, rest) := (←get).splitAt n
@@ -462,7 +462,7 @@ mutual
             raiseCont $ if li = ⟨0⟩ then cont else [.br ⟨li.li-1⟩]
           | _ => throwEE .typecheck_failed
         else throwEE .not_enough_stuff_on_stack
-    | .br_if li => checkTop_i32 fun n =>
+    | .br_if li => checkGet_i32 .from_stack fun n =>
         if n = 0 then pure () else runOp (.br li)
 end
 
