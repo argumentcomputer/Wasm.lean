@@ -117,6 +117,9 @@ def uWasmMods := [
     "(module
         ( func )
       )",
+    "(module
+        ( func ) (func $x)
+      )",
     "(module)",
     "(module
       (func $main (export \"main\")
@@ -235,6 +238,16 @@ def modsGlobal :=
          (i32.mul (global.get $x) (global.get $x))
        )
      )"
+  , "(module
+        (global $a i32 (i32.const -2))
+        (func $f (param $x i32)
+                 (result i32)
+
+                 (global.get $a)
+                 (local.set 0)
+                 (local.get $x)
+        )
+    )"
   ]
 
 open IO.Process (run) in

@@ -100,6 +100,10 @@ def indexIdentifiedLocals (f : Func) : Locals :=
 
 def indexFuncs (fs : List Func) : List (Nat × Func) := fs.enum
 
+def indexIdentifiedFuncs (fs : List Func) : List (Nat × Func) :=
+  let onlyIDed := List.filter (·.2.name.isSome)
+  onlyIDed fs.enum
+
 def indexFuncsWithIdentifiedLocals (fs : List Func)
   : List (Nat × Locals) :=
   (fs.map indexIdentifiedLocals).enum.filter (!·.2.isEmpty)
@@ -492,6 +496,10 @@ def extractFuncIdentifier : Func → ByteArray
 | ⟨ .none, _, _, _, _, _ ⟩ => b0
 | ⟨ .some x, _, _, _, _, _ ⟩ => lindex x.toUTF8
 
+def extractGlobalIdentifier : Global → ByteArray
+| ⟨ .none, _, _ ⟩ => b0
+| ⟨ .some x, _, _ ⟩ => lindex x.toUTF8
+
 def flattenWithIndices : List ByteArray → ByteArray
   | [] => b0
   | bs => (bs.foldl (fun (acc, n) x => match x.data with
@@ -500,11 +508,17 @@ def flattenWithIndices : List ByteArray → ByteArray
 
 -- Same as extractModIdentifier, but maps a list of functions into a length-prefixed wasm array.
 def extractFuncIdentifiers (fs : List Func) : ByteArray :=
-  let fbs := flattenWithIndices $ fs.map extractFuncIdentifier
-  if fbs.size = 0 then
-    b0
-  else
-    funcHeader ++ (lindex $ uLeb128 fs.length ++ fbs)
+  let nfs := indexIdentifiedFuncs fs
+  if nfs.isEmpty then b0 else
+    let fbs := mkIndexedVec nfs extractFuncIdentifier
+    funcHeader ++ lindex fbs
+
+-- Very similar to extractFuncIdentifiers, but for globals.
+def extractGlobalIdentifiers (gs : List Global) : ByteArray :=
+  let ngs := indexIdentifiedGlobals gs
+  if ngs.isEmpty then b0 else
+    let gbs := mkIndexedVec ngs extractGlobalIdentifier
+    b 0x07 ++ lindex gbs
 
 /-
                        ___________________________________________________
@@ -575,15 +589,16 @@ def extractIdentifiers (m : Module) : ByteArray :=
   let modIdentifier := extractModIdentifier m
   let funcIdentifiers := extractFuncIdentifiers m.func
   let locIdentifiers := extractLocalIdentifiers m.func
-  if (modIdentifier.size > 0 || funcIdentifiers.size > 0 || locIdentifiers.size > 0)
+  let globalIdentifiers := extractGlobalIdentifiers m.globals
+  if (modIdentifier.size > 0 || funcIdentifiers.size > 0 || locIdentifiers.size > 0 || globalIdentifiers.size > 0)
   then header ++ (lindex $
     (lindex nameSectionStarts) ++ modIdentifier ++
-     funcIdentifiers ++ locIdentifiers)
+     funcIdentifiers ++ locIdentifiers ++ globalIdentifiers)
   else
     b0
 
 def extractExports (m : Module) : ByteArray :=
-  let exports := indexFuncs $ m.func.filter (·.export_.isSome)
+  let exports := m.func.enum.filter (·.2.export_.isSome)
   if !exports.isEmpty then
     let header := b 0x07
     let extractExport | (idx, f) => match f.export_ with
