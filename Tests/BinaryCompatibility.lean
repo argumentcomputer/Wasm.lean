@@ -250,6 +250,160 @@ def modsGlobal :=
     )"
   ]
 
+def modsNumeric :=
+  [
+    ------------------- ibinops ---------------------
+    "(module
+        (func (param i32 i32) (result i32)
+          (i32.add (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.sub (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.mul (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.div_s (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.div_u (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.rem_s (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.rem_u (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.and (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.or (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.xor (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.shl (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.shr_u (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.shr_s (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (local.get 0) (i32.rotl)
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.rotr (local.get 0) (local.get 1))
+        )
+    )"
+    ------------------- iunops ---------------------
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.clz (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.ctz)
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.popcnt (local.get 1))
+        )
+    )"
+    ------------------- itestop ---------------------
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.eqz)
+        )
+    )"
+    ------------------- irelops ---------------------
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.eq (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.ne (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.lt_u (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.lt_s (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.gt_u (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.gt_s (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.le_u (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.le_s (local.get 0))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (i32.ge_u (local.get 0) (local.get 1))
+        )
+    )"
+  , "(module
+        (func (param i32 i32) (result i32)
+          (local.get 1) (i32.ge_s (local.get 0))
+        )
+    )"
+
+  ]
+
 def meaningfulPrograms :=
 [
   "(module
@@ -353,7 +507,8 @@ def doesWasmSandboxRun? :=
   run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
 
 def withWasmSandboxRun : IO UInt32 :=
-  let testCases := [ uWasmMods, modsControl, modsLocal, modsGlobal ]
+  let testCases :=
+    [ uWasmMods, modsControl, modsLocal, modsGlobal, modsNumeric ]
   -- TODO: test meaningful programs
   lspecEachIO testCases.join moduleTestSeq
 

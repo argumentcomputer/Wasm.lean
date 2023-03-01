@@ -180,7 +180,7 @@ private def brOpP : Parsec Char String Unit Operation := do
     let type : Type' ←
       string s!"i32.{opS}" *> (pure $ .i 32) <|>
       string s!"i64.{opS}" *> (pure $ .i 64)
-    ignoreP
+    owP
     let arg ← getP
     owP
     pure $ unopMk type arg
@@ -193,7 +193,7 @@ private def brOpP : Parsec Char String Unit Operation := do
     let type ←
       string s!"{tChar}32.{opS}" *> (pure $ con 32) <|>
       string s!"{tChar}64.{opS}" *> (pure $ con 64)
-    ignoreP
+    owP
     let arg_1 ← getP
     owP
     let arg_2 ← getP
