@@ -250,16 +250,111 @@ def modsGlobal :=
     )"
   ]
 
+def meaningfulPrograms :=
+[
+  "(module
+      (memory $m1 (export \"memory\") 1 1)
+
+      (func $ping (param $in i32)
+          (result i32)
+          (local.get $in)
+      )
+      (export \"ping\" (func $ping))
+
+      (func $get_max (param $len i32)
+          (result i32)
+          (local $total i32)
+          (local $max i32)
+          (local $ix i32)
+          (local $current i32)
+          (loop $loop
+              (call $parse_num (local.get $ix) (local.get $len))
+              (local.set $ix)
+              (local.set $current)
+
+              (i32.add (local.get $current) (local.get $total))
+              (local.set $total)
+
+              (i32.or
+                  (i32.eq (local.get $ix) (local.get $len))
+                  (i32.eq (i32.load8_u (i32.add (local.get $ix) (i32.const 1))) (i32.const 10))
+              )
+              (if
+                  (then
+                      (i32.gt_u (local.get $total) (local.get $max))
+                      (if
+                          (then
+                              (local.set $max (local.get $total))
+                          )
+                      )
+
+                      (local.set $total (i32.const 0))
+
+                      (i32.ne (local.get $ix) (local.get $len))
+                      (if
+                          (then
+                              (i32.add (local.get $ix) (i32.const 2))
+                              (local.set $ix)
+                              (br $loop)
+                          )
+                      )
+                  )
+                  (else
+                      (i32.add (local.get $ix) (i32.const 1))
+                      (local.set $ix)
+                      (br $loop)
+                  )
+              )
+          )
+
+          (local.get $max)
+      )
+      (export \"main\" (func $get_max))
+
+      (func $parse_num (param $ix i32) (param $len i32)
+          (result i32)
+          (result i32)
+          (local $num i32)
+          (loop $loop
+              (i32.and
+                  (i32.ne (i32.load8_u (local.get $ix)) (i32.const 10))
+                  (i32.ne (local.get $ix) (local.get $len))
+              )
+              (if
+                  (then
+                      (i32.add
+                          (i32.mul
+                              (local.get $num)
+                              (i32.const 10)
+                          )
+                          (i32.sub
+                              (i32.load8_u (local.get $ix))
+                              (i32.const 48)
+                          )
+                      )
+                      (local.set $num)
+
+                      (i32.add (local.get $ix) (i32.const 1))
+                      (local.set $ix)
+
+                      (br $loop)
+                  )
+              )
+          )
+
+          (local.get $num)
+          (local.get $ix)
+      )
+  )"
+]
+
 open IO.Process (run) in
 def doesWasmSandboxRun? :=
   run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
 
 def withWasmSandboxRun : IO UInt32 :=
-<<<<<<< HEAD
   let testCases := [ uWasmMods, modsControl, modsLocal, modsGlobal ]
-=======
-  let testCases := [ uWasmMods, modsControl, modsLocal ]
->>>>>>> b5e870b (Hypothesis: All the duplicate types should be "compressed")
+  -- TODO: test meaningful programs
   lspecEachIO testCases.join moduleTestSeq
 
 def withWasmSandboxFail : IO UInt32 :=
