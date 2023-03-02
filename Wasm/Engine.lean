@@ -7,7 +7,7 @@ import YatimaStdLib.Int
 open Wasm.Wast.AST
 open Wasm.Wast.AST.Func
 open Wasm.Wast.AST.Global
-open Wasm.Wast.AST.LabelIndex
+open Wasm.Wast.AST.BlockLabel
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Module
 open Wasm.Wast.AST.Operation
@@ -50,19 +50,11 @@ instance : ToString EngineErrors where
 instance : Inhabited EngineErrors where
   default := .other
 
-/- Likely unused hehe <---- I WISH -/
-structure Label where
-  arity : Nat
-  ops : List Operation
-
-instance : ToString Label where
-  toString x := s!"(Label.mk {x.arity} {x.ops})"
-
 namespace StackEntry
 
 inductive StackEntry where
 | num : NumUniT → StackEntry
-| label : Label → StackEntry
+| label : BlockLabel → StackEntry
 
 instance : ToString StackEntry where
   toString | .num n => s!"(StackEntry.num {n})"
@@ -92,16 +84,34 @@ def stackValues (stack : Stack) : List StackEntry :=
 def stackLabels (stack : Stack) : List StackEntry :=
   stack.es.filter isLabel
 
+def shadowLabel (es : List StackEntry) : Option String → List StackEntry
+  | .none => es
+  | .some s =>
+    let go
+      | .label l => if l.name = .some s
+          then .label {l with name := .none}
+          else .label l
+      | other => other
+    es.map go
+
 def skimValues (stack : Stack) : List StackEntry :=
   stack.es.dropWhile isValue
 
-def fetchLabel (stack : Stack) (idx : LabelIndex) : Option Label :=
-  let rec go
-    | [], _ => .none
-    | .label l :: _, 0 => .some l
-    | .num _ :: es, n => go es n
-    | .label _ :: es, n+1 => go es n
-  go stack.es idx.li
+-- When a label is found, returns not only that label but also its depth.
+-- Necessary for `.by_name` lookup
+def fetchLabel (stack : Stack) : BlockLabelId → Option (BlockLabel × Nat)
+  | .by_index li =>
+    let rec go
+      | [], _ => .none
+      | .label l :: _, 0 => .some (l, li)
+      | .num _ :: es, n => go es n
+      | .label _ :: es, n+1 => go es n
+    go stack.es li
+  | .by_name s =>
+    let findLabelById
+      | (idx, .label l) => if l.name = .some s then .some (l, idx) else .none
+      | _ => .none
+    stack.es.enum.findSome? findLabelById
 
 namespace GlobalInstance
 
@@ -293,6 +303,16 @@ def checkreplaceGlobals
   | .num _, _ => throwEE err
   | _, _ => throwEE .typecheck_failed
 
+def checkLabel (l : BlockLabelId) (f : BlockLabel → Nat → EngineM PUnit) := do
+  match fetchLabel ⟨←get⟩ l with
+  | .none => throwEE .label_not_found
+  | .some (label, depth) => f label depth
+
+def unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
+  match t with
+  | .i bs => f (unsign x bs) (unsign y bs)
+  | .f _ => unreachable!
+
 mutual
 
   partial def getSO : Get' → EngineM StackEntry
@@ -339,21 +359,14 @@ mutual
           push $ .num $ .f ⟨b0, binop f0 f1⟩
       | _, _ => throwEE .param_type_incompatible
     let blockOp ts ops contLabel := do
-      let innerStack := contLabel :: stackLabels ⟨←get⟩
+      let innerStack :=
+        .label contLabel :: shadowLabel (stackLabels ⟨←get⟩) contLabel.name
       let es' ← (computeContinuation ts ops).run innerStack
       pile es'.2
-    let unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
-      match t with
-      | .i bs => f (unsign x bs) (unsign y bs)
-      | .f _ => unreachable!
     let checkGet_i32 (g : Get') (f : Int → EngineM PUnit) := do
       match (←getSO g) with
       | .num (.i ⟨32, n⟩) => f n
       | _ => throwEE .typecheck_failed
-    let checkLabel (li : LabelIndex) (f : Label → EngineM PUnit) := do
-      match fetchLabel ⟨←get⟩ li with
-      | .none => throwEE .label_not_found
-      | .some label => f label
 
     match op with
     | .nop => pure ⟨⟩
@@ -445,25 +458,25 @@ mutual
     | .global_set (.by_name name) => do
         checkreplaceGlobals List.replace (.global_with_given_name_missing name)
           (←bite) (findGlobalByName? (←getGlobals) name)
-    | .block ts ops => blockOp ts ops $ .label ⟨ts.length, []⟩
+    | .block id ts ops => blockOp ts ops ⟨id, ts.length, []⟩
       -- TODO: currently, we only support simple [] → [valuetype*] blocks,
       -- not type indices. For this reason, we start the block execution
       -- with an stack devoid of _values_ to simulate 0-input-arity, but we
       -- still pass in all the labels currently reachable.
-    | .loop ts ops => blockOp ts ops $ .label ⟨ts.length, [.loop ts ops]⟩
-    | .if ts g thens elses => checkGet_i32 g fun n =>
-      runOp $ .block ts (if n ≠ 0 then thens else elses)
-    | .br li => checkLabel li fun ⟨n, cont⟩ => do
-      let (topn, rest) := (←get).splitAt n
-      if (stackValues ⟨topn⟩).length = n
+    | .loop id ts ops  => blockOp ts ops ⟨id, ts.length, [.loop id ts ops]⟩
+    | .if id ts g thens elses => checkGet_i32 g fun n =>
+      runOp $ .block id ts (if n ≠ 0 then thens else elses)
+    | .br l => checkLabel l fun ⟨_, arity, cont⟩ depth => do
+      let (topn, rest) := (←get).splitAt arity
+      if (stackValues ⟨topn⟩).length = arity
         then match skimValues ⟨rest⟩ with
           | .label _ :: bottom =>
             set $ topn ++ bottom
-            raiseCont $ if li = ⟨0⟩ then cont else [.br ⟨li.li-1⟩]
+            raiseCont $ if depth = 0 then cont else [.br $ .by_index (depth-1)]
           | _ => throwEE .typecheck_failed
         else throwEE .not_enough_stuff_on_stack
-    | .br_if li => checkGet_i32 .from_stack fun n =>
-        if n = 0 then pure () else runOp (.br li)
+    | .br_if l => checkGet_i32 .from_stack fun n =>
+        if n = 0 then pure () else runOp (.br l)
 end
 
 def runDo (s : Store m)

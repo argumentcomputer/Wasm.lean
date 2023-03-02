@@ -72,23 +72,35 @@ instance : ToString GlobalLabel where
 end Global
 open Global
 
-namespace LabelIndex
+namespace BlockLabel
 
-structure LabelIndex where
-  li : Nat
+inductive BlockLabelId where
+  | by_index : Nat → BlockLabelId
+  | by_name : String → BlockLabelId
   deriving Repr, DecidableEq
 
-instance : Coe Nat LabelIndex where
-  coe n := ⟨n⟩
+instance : Coe Nat BlockLabelId where
+  coe n := .by_index n
 
-instance : Coe LabelIndex Nat where
-  coe | ⟨n⟩ => n
+instance : ToString BlockLabelId where
+  toString | .by_index n => s!"(BlockLabelId.by_index {n})"
+           | .by_name ln => s!"(BlockLabelId.by_name {ln})"
 
-instance : ToString LabelIndex where
-  toString | ⟨n⟩ => s!"(LabelIndex {n})"
+-- structure LabelIndex where
+--   li : Nat
+--   deriving Repr, DecidableEq
 
-end LabelIndex
-open LabelIndex
+-- instance : Coe Nat LabelIndex where
+--   coe n := ⟨n⟩
+
+-- instance : Coe LabelIndex Nat where
+--   coe | ⟨n⟩ => n
+
+-- instance : ToString LabelIndex where
+--   toString | ⟨n⟩ => s!"(LabelIndex {n})"
+
+end BlockLabel
+open BlockLabel
 
 
 /- TODO: Instructions are rigid WAT objects. If we choose to only support
@@ -160,11 +172,12 @@ mutual
   | global_get : GlobalLabel → Operation
   | global_set : GlobalLabel → Operation
   ----------------------- CONTROL -----------------------
-  | block : List Type' → List Operation → Operation
-  | loop : List Type' → List Operation → Operation
-  | if : List Type' → Get' → List Operation → List Operation → Operation
-  | br : LabelIndex → Operation
-  | br_if : LabelIndex → Operation
+  | block : Option String → List Type' → List Operation → Operation
+  | loop : Option String → List Type' → List Operation → Operation
+  | if : Option String → List Type' → Get'
+            → List Operation → List Operation → Operation
+  | br : BlockLabelId → Operation
+  | br_if : BlockLabelId → Operation
 end
 
 mutual
@@ -233,11 +246,14 @@ mutual
     | .local_tee l => s!"(Operation.local_tee {l})"
     | .global_get l => s!"(Operation.global_get {l})"
     | .global_set l => s!"(Operation.global_set {l})"
-    | .block ts is => s!"(Operation.block {ts} {is.map operationToString})"
-    | .loop ts is => s!"(Operation.loop {ts} {is.map operationToString})"
-    | .if ts g thens elses => s!"(Operation.if {ts} {getToString g} {thens.map operationToString} {elses.map operationToString})"
-    | .br li => s!"(Operation.br {li})"
-    | .br_if li => s!"(Operation.br_if {li})"
+    | .block id ts is =>
+      s!"(Operation.block {id} {ts} {is.map operationToString})"
+    | .loop id ts is =>
+      s!"(Operation.loop {id} {ts} {is.map operationToString})"
+    | .if id ts g thens elses =>
+      s!"(Operation.if {id} {ts} {getToString g} {thens.map operationToString} {elses.map operationToString})"
+    | .br sl => s!"(Operation.br {sl})"
+    | .br_if sl => s!"(Operation.br_if {sl})"
 
 end
 
@@ -275,6 +291,18 @@ instance : ToString Global where
 
 end Global
 open Global
+
+namespace BlockLabel
+
+structure BlockLabel where
+  name : Option String
+  arity : Nat
+  ops : List Operation
+
+instance : ToString BlockLabel where
+  toString x := s!"(Label.mk {x.name} {x.arity} {x.ops})"
+
+end BlockLabel
 
 namespace Func
 
