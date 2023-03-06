@@ -34,6 +34,7 @@ section textparser
 open Type'
 open Local
 open Global
+open BlockLabel
 open Operation
 open Func
 open Module
@@ -88,6 +89,10 @@ def globalLabelP : Parsec Char String Unit GlobalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
   .by_name <$> nameP
 
+def structLabelP : Parsec Char String Unit BlockLabelId :=
+  .by_index <$> (hexP <|> decimalP) <|>
+  .by_name <$> nameP
+
 def resultP : Parsec Char String Unit (List Type') :=
   string "result" *> ignoreP *> sepEndBy' typeP owP
 
@@ -120,7 +125,7 @@ private def globalOpP : Parsec Char String Unit Operation := do
 private def brOpP : Parsec Char String Unit Operation := do
   let op ← (string "br_if" *> pure Operation.br_if)
        <|> (string "br" *> pure .br)
-  ignoreP *> op <$> (hexP <|> decimalP)
+  ignoreP *> op <$> structLabelP
 
  mutual
 
@@ -153,27 +158,30 @@ private def brOpP : Parsec Char String Unit Operation := do
     sepEndBy' opP owP
 
   partial def blockP : Parsec Char String Unit Operation := do
-    string "block" *> ignoreP
-    let ts ← brResultsP
+    discard $ string "block"
+    let id ← option' (attempt (ignoreP *> nameP))
+    let ts ← owP *> brResultsP
     let ops ← opsP
     discard $ option' (string "end")
-    pure $ .block ts ops
+    pure $ .block id ts ops
 
   partial def loopP : Parsec Char String Unit Operation := do
-    string "loop" *> ignoreP
-    let ts ← brResultsP
+    discard $ string "loop"
+    let id ← option' (attempt (ignoreP *> nameP))
+    let ts ← owP *> brResultsP
     let ops ← opsP
     discard $ option' (string "end")
-    pure $ .loop ts ops
+    pure $ .loop id ts ops
 
   partial def ifP : Parsec Char String Unit Operation := do
-    string "if" *> ignoreP
-    let ts ← brResultsP
+    discard $ string "if"
+    let id ← option' (attempt (ignoreP *> nameP))
+    let ts ← owP *> brResultsP
     let g ← getP
     let thens ← bracketedWs $ string "then" *> owP *> opsP
     let elses ← bracketedWs $ string "else" *> owP *> opsP
     discard $ option' (string "end")
-    pure $ .if ts g thens elses
+    pure $ .if id ts g thens elses
 
   partial def iUnopP (opS : String) (unopMk : Type' → Get' → Operation)
               : Parsec Char String Unit Operation := do

@@ -31,9 +31,7 @@ def fname (s : String) : String :=
 partial def testGeneric : String → ByteArray → ByteArray → TestSeq
   | mod, rs, os =>
     let str := s!"Binary representation is compatible with {fname mod}
-    === CODE ===
-    {mod}
-    ||| END OF CODE |||"
+    {mod}"
     test str $ rs = os
 
 /- Here's how Main used to test a particular module:
@@ -75,7 +73,7 @@ partial def moduleTestSeq (x : String) : IO TestSeq := do
       writeBinFile s!"{fname x}.lean" our_bytes
       pure $ testGeneric x ref_bytes our_bytes
   | .error e =>
-    pure $ test "failed to encode with wasm-sandbox" (ExternalFailure e)
+    pure $ test s!"failed to encode with wasm-sandbox: {x}" (ExternalFailure e)
 
 def uWasmMods := [
   "(module
@@ -172,6 +170,33 @@ def modsControl :=
      ))"
   , "(module (func (result i32)
         (block (result i32) (i32.ctz (br_if 0)))
+     ))"
+  , "(module (func (result i32)
+        (block $name (result i32) (i32.ctz (br_if 0)))
+     ))"
+  , "(module (func
+        (block $two (loop (block $zero (br_if $two))))
+     ))"
+  , "(module (func
+        (block $two (loop (block $zero (br_if $two))))
+        (block $xxx (nop))
+     ))"
+  , "(module (func
+        (block $two (loop (block $zero (br_if $two))))
+       )
+       (func $f
+        (block $one (nop))
+       )
+     )"
+  , "(module (func
+        (block $shadow (loop (block $shadow (br_if $shadow))))
+     ))"
+  , "(module (func (result i32)
+        (loop $aaaaaaaaaaaaaaaaaaaaa (result i32) (i32.const 3))
+     ))"
+  , "(module (func (result i32)
+        (if $x (result i32) (i32.const 1) (then (i32.const 4) (br $x))
+          (else (i32.const 256) (br 0)))
      ))"
   ]
 
