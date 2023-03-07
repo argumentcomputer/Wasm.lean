@@ -1,17 +1,13 @@
 import YatimaStdLib.Bit
+import YatimaStdLib.Int
 
 namespace Wasm.Leb128
 
-def nattob (x : Nat) (endianness : Endian := .big) : ByteArray :=
-  match endianness with
-  | .big => x.toByteArrayBE
-  | .little => x.toByteArrayLE
-
 def modPad (modulo : Nat) (bs : List Bit)
            (padWith : Bit := .zero) (endianness : Endian := .big)
-           : List Bit := Id.run $ do
+           : List Bit :=
   let rem := bs.length % modulo
-  let to_replicate := if rem == 0 then 0 else modulo - rem
+  let to_replicate := if rem = 0 then 0 else modulo - rem
   let pad := List.replicate to_replicate padWith
   match endianness with
   | .big => pad ++ bs
@@ -22,42 +18,74 @@ def ntob (n : Nat) (endianness : Endian := .big) : ByteArray :=
   | .big => n.toByteArrayBE
   | .little => n.toByteArrayLE
 
-def pad7 (xs : List Bit) : List Bit := modPad 7 xs
+def nmodPad (pad : Nat) (n : Nat) (endianness : Endian := .big) : List Bit :=
+  modPad pad ∘ Bit.unlead ∘ ByteArray.toBits $ ntob n endianness
 
-/- Remove all the leading zeroes -/
-def unlead (xs : List Bit) : List Bit := xs.dropWhile (· = .zero)
+/-- This is a textbook LEB128 implementation based on `Int` bitwise arithmetics:
+https://en.wikipedia.org/wiki/LEB128
 
-def npad7 := pad7 ∘ unlead ∘ ByteArray.toBits ∘ ntob
+The simplistic overview of the (unsigned) algorithm:
+1. split binary representation into groups of 7 bits
+2. add high bits to all but last (most significant) group to form bytes
 
-def sDisambiguatePosInt (xs : List Bit) : ByteArray :=
-  let go := Nat.toByteArrayLE ∘ Bit.bitsToNat
-  match xs with
-  | .zero :: .one :: rest => go (.one :: .one :: rest) ++ ByteArray.mk #[0]
-  | _ => go xs
+**Example from Wikipedia:**
+```
+N = 624485
+MSB ------------------ LSB
+      10011000011101100101  In raw binary
+     010011000011101100101  Padded to a multiple of 7 bits
+ 0100110  0001110  1100101  Split into 7-bit groups
+00100110 10001110 11100101  Add high 1 bits on all but last (most significant)
+                            group to form bytes
+    0x26     0x8E     0xE5  In hexadecimal
 
-def spad7 (x : Int) : List Bit :=
-  let padded := npad7 x.natAbs
-  if x >= 0 then padded else Bit.twosComplement padded
+→ 0xE5 0x8E 0x26            Output stream (LSB to MSB)
+```
 
-def reassemble (xs : List Bit) : List Bit :=
-  (xs.foldl (fun acc x =>
-    let leading_bit := if acc.1 then Bit.zero else Bit.one
-    let acc2' := if acc.2.1 == 6 then 0 else acc.2.1 + 1
-    let acc3' := if acc.2.1 == 0 then
-      acc.2.2 ++ [leading_bit, x]
-    else
-      acc.2.2 ++ [x]
-    (false, acc2', acc3')
-  ) (true, 0, [])).2.2
+The signed algorithm is largely the same.
 
-def LebCore : List Bit → ByteArray :=
-  Nat.toByteArrayLE ∘ Bit.bitsToNat ∘ reassemble
+The following function implements the following pseudocode from Wikipedia:
 
-def uLeb128 : Nat → ByteArray :=
-  LebCore ∘ npad7
+```
+while (more bytes) {
+  byte = low-order 7 bits of value;
+  value >>= 7; // shifts the value to the next "group of 7 bits"
 
-def sLeb128 (x : Int) : ByteArray :=
-  if x ≥ 0 then
-    sDisambiguatePosInt ∘ reassemble $ spad7 x
+  if    (value ==  0 && sign bit of byte is clear)
+     || (value == -1 && sign bit of byte is set)
+    more bytes = false;
   else
-    LebCore $ spad7 x
+    set high-order bit of byte;
+  add byte to result;
+}
+```
+
+We'll use three bitmaps:
+- 0x40 : 01000000. bitwise AND extracts the second-highest bit (sign bit)
+- 0x80 : 10000000. bitwise AND extracts the highest bit
+- 0x7f : 01111111. bitwise AND extracts the 7 lowest bits
+
+-/
+private partial def lebCore (unsigned? : Bool)
+                    (acc : ByteArray) (val byte : Int) : ByteArray :=
+  let lastByte? := if unsigned?
+    then val = 0 -- if unsigned leb, we only need to check if it's the last byte
+    else -- if signed...
+    -- if pos last byte AND sign bit is unset
+      (val =  0          &&  (byte &&& 0x40) = 0) ||
+      -- OR
+    -- if neg last byte AND sign bit is set
+      (val = -1          &&  (byte &&& 0x40) ≠ 0)
+  if lastByte?
+    then acc.push $ byte.toUInt8 -- if the sign bit is correct, we're done
+    else
+      let byte' := byte ||| 0x80 -- else, set the high bit to continue
+      lebCore unsigned? (acc.push $ byte'.toUInt8) (val >>> 7) (val &&& 0x7f)
+
+/-- Encode the given `Int` to a `ByteArray` using _unsigned_ Leb128. -/
+def uLeb128 (x : Nat) : ByteArray :=
+  lebCore true default (x >>> 7) (x &&& 0x7f)
+
+/-- Encode the given `Int` to a `ByteArray` using _signed_ Leb128. -/
+def sLeb128 (x : Int) : ByteArray :=
+  lebCore false default (x >>> 7) (x &&& 0x7f)

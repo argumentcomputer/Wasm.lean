@@ -10,7 +10,6 @@ import Megaparsec.Parsec
 import Megaparsec.MonadParsec
 import YatimaStdLib.Cached
 import YatimaStdLib.NonEmpty
-import YatimaStdLib.Cached
 
 open Wasm.Wast.Parser.Common
 
@@ -22,36 +21,10 @@ open Megaparsec.Parsec
 open MonadParsec
 open Cached
 
--- Turns a negative integer into a positive by taking its
--- bit representation and interpreting it as unsigned.
--- `size` is the number of bits to assume
-def unsign (i : Int) (size : BitSize := 64) : Int :=
-  match i with
-  | .ofNat m => m
-  | .negSucc _ => i + ((2 : Int) ^ (size : Nat))
-
 def toNBits (i : Int) (size : BitSize := 64) : List Bit :=
   let bits := i.toBits
   let padbit := if i ≥ 0 then .zero else .one
   List.replicate (size - bits.length) padbit ++ bits
-
-def UInt8.toHexString (n : UInt8) : String :=
-  let toLetter
-    | 10 => "a"
-    | 11 => "b"
-    | 12 => "c"
-    | 13 => "d"
-    | 14 => "e"
-    | 15 => "f"
-    | n => toString n
-  "0x" ++ toLetter (n / 16) ++ toLetter (n % 16)
-
-def ByteArray.toHexString (bs : ByteArray) : String := Id.run do
-  if bs.isEmpty then "b[]" else
-  let mut ans := "b["
-  for u in bs do
-    ans := ans ++ UInt8.toHexString u ++ ", "
-  return ans.dropRight 2 ++ "]"
 
 instance : Repr ByteArray where
   reprPrec bs _ := ByteArray.toHexString bs
@@ -158,6 +131,7 @@ def mkDigit (y : Char) (_label : String := "") : Option (Digit y) :=
     .none
 
 end Num.Digit
+open Num.Digit
 
 ----------------------------------------------------
 ---------------------- NATS ------------------------
@@ -451,5 +425,18 @@ def numUniTP : Parsec Char String Unit NumUniT :=
   .i <$> iP <|> .f <$> fP
 
 end Uni
+
+/-- Parse a byte, with or without a `0x` prefix. -/
+def uint8P (prefix? : Bool := true) : Parsec Char String Unit UInt8 := do
+  if prefix? then discard $ string "0x"
+  let d1 ← hexDigitP
+  let d2 ← option' hexDigitP
+  match d2 with
+  | .some dn => pure (d1 * 16 + dn).toUInt8
+  | .none => pure d1.toUInt8
+
+/-- Parse a bytearray from a string of hexform bytes, e.g. `ceb0`. -/
+def bytesFromHexP : Parsec Char String Unit ByteArray :=
+  (ByteArray.mk ∘ Array.mk) <$> many' (uint8P false) <* eof
 
 end Wasm.Wast.Num
