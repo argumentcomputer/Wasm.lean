@@ -72,14 +72,8 @@ def manyLispP (p : Parsec Char String Unit α)
     : Parsec Char String Unit (List α) :=
   sepEndBy' (attempt (bracketed p)) owP
 
-def typeP : Parsec Char String Unit Type' := do
-  let ps ← getParserState
-  let iorf ← (string "i" <|> string "f")
-  let bits ← bitSizeP
-  match iorf with
-  | "i" => pure $ Type'.i bits
-  | "f" => pure $ Type'.f bits
-  | _ => parseError $ .trivial ps.offset .none $ hints0 Char
+def typeP : Parsec Char String Unit Type' :=
+  (single 'i' *> .i <$> bitSizeP) <|> (single 'f' *> .f <$> bitSizeP)
 
 def localLabelP : Parsec Char String Unit LocalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
@@ -92,6 +86,44 @@ def globalLabelP : Parsec Char String Unit GlobalLabel :=
 def structLabelP : Parsec Char String Unit BlockLabelId :=
   .by_index <$> (hexP <|> decimalP) <|>
   .by_name <$> nameP
+
+def exportP : Parsec Char String Unit String := bracketed $
+  string "export" *> ignoreP *>
+  -- TODO: are escaped quotation marks legal export names?
+  let export_label := Char.between '\"' '\"' $ many' $ noneOf "\"".data
+  String.mk <$> export_label
+
+private def anonLocalsP : Parsec Char String Unit (List Local) := do
+  let ts ← sepEndBy' typeP owP
+  pure $ ts.map (Local.mk .none)
+
+private def identifiedLocalP : Parsec Char String Unit (List Local) := do
+  let id ← nameP <* ignoreP
+  let t ← typeP
+  pure [Local.mk (.some id) t]
+
+def brLocsP (x : String) : Parsec Char String Unit (List Local) :=
+  let p := string x *> ignoreP *> (identifiedLocalP <|> anonLocalsP)
+  List.join <$> manyLispP p
+
+def genLocalP (x : String) : Parsec Char String Unit Local :=
+  string x *> ignoreP *>
+  Local.mk <$> option' (nameP <* ignoreP) <*> typeP
+
+def paramP : Parsec Char String Unit Local :=
+  genLocalP "param"
+
+def localP : Parsec Char String Unit Local :=
+  genLocalP "local"
+
+def nilParamsP : Parsec Char String Unit (List Local) :=
+  brLocsP "param"
+
+def nilLocalsP : Parsec Char String Unit (List Local) :=
+  brLocsP "local"
+
+def singleResultP : Parsec Char String Unit Type' := bracketed $
+  string "result" *> ignoreP *> typeP
 
 def resultP : Parsec Char String Unit (List Type') :=
   string "result" *> ignoreP *> sepEndBy' typeP owP
@@ -152,36 +184,29 @@ private def brOpP : Parsec Char String Unit Operation := do
     iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
     iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
     localOpP <|> globalOpP <|>
-    blockP <|> loopP <|> ifP <|> brOpP
+    blockOpP <|> ifP <|> brOpP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
 
-  partial def blockP : Parsec Char String Unit Operation := do
-    discard $ string "block"
+  partial def blockOpP : Parsec Char String Unit Operation := do
+  let op ← (string "block" *> pure Operation.block)
+       <|> (string "loop" *> pure .loop)
     let id ← option' (attempt (ignoreP *> nameP))
-    let ts ← owP *> brResultsP
+    let pts ← owP *> nilParamsP
+    let rts ← owP *> brResultsP
     let ops ← opsP
-    discard $ option' (string "end")
-    pure $ .block id ts ops
-
-  partial def loopP : Parsec Char String Unit Operation := do
-    discard $ string "loop"
-    let id ← option' (attempt (ignoreP *> nameP))
-    let ts ← owP *> brResultsP
-    let ops ← opsP
-    discard $ option' (string "end")
-    pure $ .loop id ts ops
+    pure $ op id pts rts ops
 
   partial def ifP : Parsec Char String Unit Operation := do
     discard $ string "if"
     let id ← option' (attempt (ignoreP *> nameP))
-    let ts ← owP *> brResultsP
+    let pts ← owP *> nilParamsP
+    let rts ← owP *> brResultsP
     let g ← getP
     let thens ← bracketedWs $ string "then" *> owP *> opsP
     let elses ← bracketedWs $ string "else" *> owP *> opsP
-    discard $ option' (string "end")
-    pure $ .if id ts g thens elses
+    pure $ .if id pts rts g thens elses
 
   partial def iUnopP (opS : String) (unopMk : Type' → Get' → Operation)
               : Parsec Char String Unit Operation := do
@@ -219,41 +244,6 @@ private def brOpP : Parsec Char String Unit Operation := do
     iBinopP opS binopMk <|> fBinopP opS binopMk
 
 end
-
-def exportP : Parsec Char String Unit String := bracketed $
-  string "export" *> ignoreP *>
-  -- TODO: are escaped quotation marks legal export names?
-  let export_label := Char.between '\"' '\"' $ many' $ noneOf "\"".data
-  String.mk <$> export_label
-
-private def anonLocalsP : Parsec Char String Unit (List Local) := do
-  let ts ← sepEndBy' typeP owP
-  pure $ ts.map (Local.mk .none)
-
-private def identifiedLocalP : Parsec Char String Unit (List Local) := do
-  let id ← nameP <* ignoreP
-  let t ← typeP
-  pure [Local.mk (.some id) t]
-
-def brLocsP (x : String) : Parsec Char String Unit (List Local) :=
-  let p := string x *> ignoreP *> (identifiedLocalP <|> anonLocalsP)
-  List.join <$> manyLispP p
-
-def genLocalP (x : String) : Parsec Char String Unit Local :=
-  string x *> ignoreP *>
-  Local.mk <$> option' (nameP <* ignoreP) <*> typeP
-
-def paramP : Parsec Char String Unit Local :=
-  genLocalP "param"
-
-def localP : Parsec Char String Unit Local :=
-  genLocalP "local"
-
-def nilParamsP : Parsec Char String Unit (List Local) := do
-  brLocsP "param"
-
-def nilLocalsP : Parsec Char String Unit (List Local) :=
-  brLocsP "local"
 
 def globalTypeP : Parsec Char String Unit GlobalType :=
   let mutP := string "mut" *> ignoreP

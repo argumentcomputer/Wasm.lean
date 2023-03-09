@@ -11,7 +11,6 @@ open Wasm.Wast.AST.BlockLabel
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Module
 open Wasm.Wast.AST.Operation
-open Wasm.Wast.AST.Type'
 open Wasm.Wast.Code
 open Wasm.Wast.Num.Uni
 open Cached
@@ -308,6 +307,26 @@ def checkLabel (l : BlockLabelId) (f : BlockLabel → Nat → EngineM PUnit) := 
   | .none => throwEE .label_not_found
   | .some (label, depth) => f label depth
 
+/-- Taking a list of "in" types from the params list, get enough _values_
+from the stack. This passes all block label type stack entries to the inner
+stack, while preserving those labels "above" the last needed value in the
+outer stack. -/
+partial def populateParams (ps : List Local)
+            : EngineM (List StackEntry) := do
+  let rec go is
+    | []    => pure is.toList
+    | p::ps => do
+      match ←bite with
+      | l@(.label _) => go (is.push l) (p::ps)
+      | n@(.num _) =>
+        if stackEntryTypecheck p.type n
+          then go (is.push n) ps
+          else throwEE .param_type_incompatible
+
+  let innerStack ← go #[] ps
+  let restOfLabels := stackLabels ⟨←get⟩
+  pure $ innerStack ++ restOfLabels
+
 def unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
   match t with
   | .i bs => f (Int.unsign x bs) (Int.unsign y bs)
@@ -358,9 +377,17 @@ mutual
       | .num (.f ⟨b0, f0⟩), .num (.f ⟨_b1, f1⟩) =>
           push $ .num $ .f ⟨b0, binop f0 f1⟩
       | _, _ => throwEE .param_type_incompatible
-    let blockOp ts ops contLabel := do
+    let blockOp ps ts ops contLabel := do
+      /- To populate the block type `[valuetypeᵐ] → [valuetype*]`, we start
+      the block execution with the inner stack made up of:
+      1. the top of the stack up to the `m`th _value_ from the general stack.
+         This means it might be interspersed with labels.
+      2. The rest of the labels currently reachable. -/
       let innerStack :=
-        .label contLabel :: shadowLabel (stackLabels ⟨←get⟩) contLabel.name
+        .label contLabel :: shadowLabel (←populateParams ps) contLabel.name
+
+      -- Block params aren't reachable by variable instructions, so we don't
+      -- change the `Locals` part of `EngineM`.
       let es' ← (computeContinuation ts ops).run innerStack
       pile es'.2
     let checkGet_i32 (g : Get') (f : Int → EngineM PUnit) := do
@@ -390,11 +417,11 @@ mutual
     | .le _t g0 g1 => runFBinop g0 g1 (if · ≤ · then 1 else 0)
     | .ge _t g0 g1 => runFBinop g0 g1 (if · ≥ · then 1 else 0)
     | .clz t g => runIUnop g fun i =>
-      ((toNBits i $ bitsize t).takeWhile (· = .zero)).length
+      ((toNBits i t.bitsize).takeWhile (· = .zero)).length
     | .ctz t g => runIUnop g fun i =>
-      ((toNBits i $ bitsize t).reverse.takeWhile (· = .zero)).length
+      ((toNBits i t.bitsize).reverse.takeWhile (· = .zero)).length
     | .popcnt t g => runIUnop g fun i =>
-      ((toNBits i $ bitsize t).filter (· = .one)).length
+      ((toNBits i t.bitsize).filter (· = .one)).length
     | .add (.i _) g0 g1 => runIBinop g0 g1 (· + ·)
     | .add (.f _) g0 g1 => runFBinop g0 g1 (· + ·)
     | .sub (.i _) g0 g1 => runIBinop g0 g1 (· - ·)
@@ -458,14 +485,10 @@ mutual
     | .global_set (.by_name name) => do
         checkreplaceGlobals List.replace (.global_with_given_name_missing name)
           (←bite) (findGlobalByName? (←getGlobals) name)
-    | .block id ts ops => blockOp ts ops ⟨id, ts.length, []⟩
-      -- TODO: currently, we only support simple [] → [valuetype*] blocks,
-      -- not type indices. For this reason, we start the block execution
-      -- with an stack devoid of _values_ to simulate 0-input-arity, but we
-      -- still pass in all the labels currently reachable.
-    | .loop id ts ops  => blockOp ts ops ⟨id, ts.length, [.loop id ts ops]⟩
-    | .if id ts g thens elses => checkGet_i32 g fun n =>
-      runOp $ .block id ts (if n ≠ 0 then thens else elses)
+    | .block id ps ts ops => blockOp ps ts ops ⟨id, ts.length, []⟩
+    | .loop id ps ts ops => blockOp ps ts ops ⟨id, ts.length, [.loop id ps ts ops]⟩
+    | .if id ps ts g thens elses => checkGet_i32 g fun n =>
+      runOp $ .block id ps ts (if n ≠ 0 then thens else elses)
     | .br l => checkLabel l fun ⟨_, arity, cont⟩ depth => do
       let (topn, rest) := (←get).splitAt arity
       if (stackValues ⟨topn⟩).length = arity
@@ -476,7 +499,7 @@ mutual
           | _ => throwEE .typecheck_failed
         else throwEE .not_enough_stuff_on_stack
     | .br_if l => checkGet_i32 .from_stack fun n =>
-        if n = 0 then pure () else runOp (.br l)
+        do if n ≠ 0 then runOp (.br l)
 end
 
 def runDo (s : Store m)
