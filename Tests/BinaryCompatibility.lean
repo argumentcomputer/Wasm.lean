@@ -215,6 +215,13 @@ def modsControl :=
           )
         )
      )"
+  , "(module (func (param i32) (result i32 i32 i32)
+        (select
+          (local.get 0)
+          (block (result i32 i32 i32) (i32.const 1) (i32.const 2) (i32.const 3))
+          (i32.const 0)
+        )
+     ))"
   ]
 
 def modsLocal :=

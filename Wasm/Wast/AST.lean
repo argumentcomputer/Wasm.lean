@@ -142,6 +142,7 @@ mutual
   | nop
   --------------------- PARAMETRIC ----------------------
   | drop
+  | select : Option Type' → Get' → Get' → Get' → Operation
   ----------------------  NUMERIC -----------------------
   | const : Type' → NumUniT → Operation
   | eqz : Type' → Get' → Operation
@@ -203,6 +204,7 @@ mutual
   private partial def operationToString : Operation → String
     | .nop => "(Operation.nop)"
     | .drop => "(Operation.drop)"
+    | .select t g1 g2 g3 => s!"(Operation.select {t} {getToString g1} {getToString g2} {getToString g3})"
     | .const t n => s!"(Operation.const {t} {n})"
     | .eqz t g => s!"(Operation.eqz {t} {getToString g})"
     | .eq  t g1 g2 => s!"(Operation.eq {t} {getToString g1} {getToString g2})"

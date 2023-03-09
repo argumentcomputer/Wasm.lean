@@ -165,7 +165,7 @@ private def brOpP : Parsec Char String Unit Operation := do
     (.from_operation <$> attempt opP) <|> pure .from_stack
 
   partial def opP : Parsec Char String Unit Operation := bracketed $
-    nopP <|> dropP <|> constP <|>
+    nopP <|> dropP <|> constP <|> selectP <|>
     iUnopP "eqz" .eqz <|>
     binopP "eq" .eq <|> binopP "ne" .ne <|>
     iBinopP "lt_u" .lt_u <|> iBinopP "lt_s" .lt_s <|>
@@ -188,6 +188,14 @@ private def brOpP : Parsec Char String Unit Operation := do
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
+
+  partial def selectP : Parsec Char String Unit Operation := do
+    discard $ string "select"
+    let t? ← option' (attempt (ignoreP *> singleResultP)) <* owP
+    let g₁ ← getP <* owP
+    let g₂ ← getP <* owP
+    let g₃ ← getP <* owP
+    pure $ .select t? g₁ g₂ g₃
 
   partial def blockOpP : Parsec Char String Unit Operation := do
   let op ← (string "block" *> pure Operation.block)
