@@ -3,36 +3,20 @@ import Megaparsec.Parsec
 import Wasm.Wast.Parser
 import Wasm.Bytes
 
+import Wasm.Tests
+
 open LSpec
 open Megaparsec.Parsec
 open Wasm.Wast.Parser
 open Wasm.Bytes
 
-inductive ExternalFailure (e : IO.Error) : Prop
-instance : Testable (ExternalFailure e) := .isFailure s!"External failure: {e}"
-
-open Megaparsec.Errors.Bundle in
-inductive ParseFailure (src : String) (e : ParseErrorBundle Char String Unit) : Prop
-instance : Testable (ParseFailure src e) := .isFailure s!"Parsing:\n{src}\n{e}"
-
-open IO.Process (run) in
-def w2b (x : String) :=
-  run { cmd := "./wasm-sandbox", args := #["wast2bytes", x] } |>.toBaseIO
-
--- A very bad hasing function. It adds up the character codes of each of the string's characters, and then appends 'L' followed by the number of characters in the string to reduce the chance of collisions.
-def myHash (s : String) : String :=
-  let n := s.foldl (fun acc c => acc + c.toNat) 0
-  s!"{n}L{s.length}"
-
-def fname (s : String) : String :=
-  "./wast-dump-" ++ myHash s ++ ".bytes"
+open Wasm.Tests
 
 /- Generic Wasm module test. -/
 partial def testGeneric : String → ByteArray → ByteArray → TestSeq
   | mod, rs, os =>
-    let str := s!"Binary representation is compatible with {fname mod}
+    let str := s!"Binary representation is compatible with {dumpFname mod}
     {mod}"
-    test str $ rs = os
 
 /- Here's how Main used to test a particular module:
 
@@ -53,7 +37,7 @@ Instead of this, here, we're going to:
     as provided by function `w2b`.
  2. Read the reference bytes into a variable.
  3. Compile our bytes and read those into a variable.
- 4. Write our bytes into a file called s!"{fname}.lean".
+ 4. Write our bytes into a file called s!"{dumpFname}.lean".
  5. Byte by byte, compare the two variables, reporting errors.
 -/
 open IO.FS in
@@ -62,15 +46,15 @@ partial def moduleTestSeq (x : String) : IO TestSeq := do
   match ←w2b x with
   | .ok _ => do
     -- Read the reference bytes into a variable.
-    let ref_bytes ← readBinFile $ fname x
+    let ref_bytes ← readBinFile $ dumpFname x
     -- Compile our bytes and read those into a variable.
     match parse moduleP x with
     | .error pe =>
       pure $ test "parsing module" (ParseFailure x pe)
     | .ok module => do
       let our_bytes := mtob module
-      -- Write our bytes into a file called s!"{fname}.lean".
-      writeBinFile s!"{fname x}.lean" our_bytes
+      -- Write our bytes into a file called s!"{dumpFname}.lean".
+      writeBinFile s!"{dumpFname x}.lean" our_bytes
       pure $ testGeneric x ref_bytes our_bytes
   | .error e =>
     pure $ test s!"failed to encode with wasm-sandbox: {x}" (ExternalFailure e)
@@ -559,23 +543,8 @@ def meaningfulPrograms :=
   )"
 ]
 
-open IO.Process (run) in
-def doesWasmSandboxRun? :=
-  run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
-
-def withWasmSandboxRun : IO UInt32 :=
-  let testCases :=
-    [ uWasmMods, modsControl, modsLocal, modsGlobal, modsNumeric ]
-  -- TODO: test meaningful programs
-  lspecEachIO testCases.join moduleTestSeq
-
-def withWasmSandboxFail : IO UInt32 :=
-  lspecIO $ test "wasm-sandbox check"
-    (ExternalFailure "You need to have `wasm-sandbox` binary in your current work directory.
-    Please run:
-    wget https://github.com/cognivore/wasm-sandbox/releases/download/v1/wasm-sandbox && chmod +x ./wasm-sandbox")
-
 def main : IO UInt32 := do
   match (← doesWasmSandboxRun?) with
-  | .ok _ => withWasmSandboxRun
+  | .ok _ => withWasmSandboxRun moduleTestSeq [ uWasmMods, modsControl, modsLocal, modsGlobal, modsNumeric ]
+  -- TODO: test meaningful programs
   | _ => withWasmSandboxFail
