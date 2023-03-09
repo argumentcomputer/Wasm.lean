@@ -139,6 +139,7 @@ mutual
 -- TODO: generalise Consts the same way Get is generalised so that `i32.const`
 -- can't be populated with `ConstFloat`!
   inductive Operation where
+  | unreachable
   | nop
   --------------------- PARAMETRIC ----------------------
   | drop
@@ -202,6 +203,7 @@ mutual
     | .from_operation o => s!"(Get'.from_operation {operationToString o})"
 
   private partial def operationToString : Operation → String
+    | .unreachable => "(Operation.unreachable)"
     | .nop => "(Operation.nop)"
     | .drop => "(Operation.drop)"
     | .select t g1 g2 g3 => s!"(Operation.select {t} {getToString g1} {getToString g2} {getToString g3})"

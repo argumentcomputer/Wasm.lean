@@ -134,6 +134,9 @@ def brResultsP : Parsec Char String Unit (List Type') :=
 private def nopP : Parsec Char String Unit Operation :=
   string "nop" *> pure .nop
 
+private def unreachableP : Parsec Char String Unit Operation :=
+  string "unreachable" *> pure .nop
+
 private def dropP : Parsec Char String Unit Operation :=
   string "drop" *> pure .drop
 
@@ -165,7 +168,7 @@ private def brOpP : Parsec Char String Unit Operation := do
     (.from_operation <$> attempt opP) <|> pure .from_stack
 
   partial def opP : Parsec Char String Unit Operation := bracketed $
-    nopP <|> dropP <|> constP <|> selectP <|>
+    unreachableP <|> nopP <|> dropP <|> constP <|> selectP <|>
     iUnopP "eqz" .eqz <|>
     binopP "eq" .eq <|> binopP "ne" .ne <|>
     iBinopP "lt_u" .lt_u <|> iBinopP "lt_s" .lt_s <|>

@@ -468,6 +468,7 @@ mutual
 
   partial def extractOp (op : Operation) : ExtractM ByteArray := do
     match op with
+    | .unreachable => pure $ b 0x00
     | .nop => pure $ b 0x01
     | .drop => pure $ b 0x1a
     -- TODO: signed consts exist??? We should check the spec carefully.

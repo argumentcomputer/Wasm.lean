@@ -18,6 +18,7 @@ open Cached
 namespace Wasm.Engine
 
 inductive EngineErrors where
+| unreachable
 | not_enough_stuff_on_stack
 | stack_incompatible_with_results
 | param_type_incompatible
@@ -33,6 +34,7 @@ inductive EngineErrors where
 
 instance : ToString EngineErrors where
   toString x := match x with
+  | .unreachable => "unreachable"
   | .not_enough_stuff_on_stack => "not enough stuff on stack"
   | .stack_incompatible_with_results => "stack incompatible with result types"
   | .param_type_incompatible => "param type incompatible"
@@ -416,6 +418,7 @@ mutual
       | _ => throwEE .typecheck_failed
 
     match op with
+    | .unreachable => throwEE .unreachable
     | .nop => pure ⟨⟩
     | .drop => discard bite
     | .const _t n => push $ .num n
