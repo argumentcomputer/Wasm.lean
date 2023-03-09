@@ -9,13 +9,13 @@ namespace Wasm.Wast.AST
 section AST
 
 
-namespace Type'
-
 inductive Type' where
   | f : BitSize → Type'
   | i : BitSize → Type'
   -- | v : BitSizeSIMD → Type'
   deriving DecidableEq
+
+namespace Type'
 
 instance : ToString Type' where
   toString x := match x with
@@ -102,6 +102,21 @@ instance : ToString BlockLabelId where
 end BlockLabel
 open BlockLabel
 
+structure FunctionType where
+  ins  : List Type'
+  outs : List Type'
+  deriving DecidableEq, Inhabited
+
+namespace FunctionType
+
+instance : ToString FunctionType where
+  toString x := s!"(FunctionType {x.ins} {x.outs})"
+
+def mkFunctionType (param : List Local) (results : List Type') : FunctionType :=
+  ⟨param.map (·.type), results⟩
+
+end FunctionType
+open FunctionType
 
 /- TODO: Instructions are rigid WAT objects. If we choose to only support
 S-Expressions at this point, we don't need this concept. -/
@@ -172,9 +187,9 @@ mutual
   | global_get : GlobalLabel → Operation
   | global_set : GlobalLabel → Operation
   ----------------------- CONTROL -----------------------
-  | block : Option String → List Type' → List Operation → Operation
-  | loop : Option String → List Type' → List Operation → Operation
-  | if : Option String → List Type' → Get'
+  | block : Option String → List Local → List Type' → List Operation → Operation
+  | loop : Option String → List Local → List Type' → List Operation → Operation
+  | if : Option String → List Local → List Type' → Get'
             → List Operation → List Operation → Operation
   | br : BlockLabelId → Operation
   | br_if : BlockLabelId → Operation
@@ -246,12 +261,12 @@ mutual
     | .local_tee l => s!"(Operation.local_tee {l})"
     | .global_get l => s!"(Operation.global_get {l})"
     | .global_set l => s!"(Operation.global_set {l})"
-    | .block id ts is =>
-      s!"(Operation.block {id} {ts} {is.map operationToString})"
-    | .loop id ts is =>
-      s!"(Operation.loop {id} {ts} {is.map operationToString})"
-    | .if id ts g thens elses =>
-      s!"(Operation.if {id} {ts} {getToString g} {thens.map operationToString} {elses.map operationToString})"
+    | .block id pts rts is =>
+      s!"(Operation.block {id} {pts} {rts} {is.map operationToString})"
+    | .loop id pts rts is =>
+      s!"(Operation.loop {id} {pts} {rts} {is.map operationToString})"
+    | .if id pts rts g thens elses =>
+      s!"(Operation.if {id} {pts} {rts} {getToString g} {thens.map operationToString} {elses.map operationToString})"
     | .br sl => s!"(Operation.br {sl})"
     | .br_if sl => s!"(Operation.br_if {sl})"
 
@@ -304,8 +319,6 @@ instance : ToString BlockLabel where
 
 end BlockLabel
 
-namespace Func
-
 structure Func where
   name : Option String
   export_ : Option String
@@ -315,8 +328,13 @@ structure Func where
   locals : List Local
   ops : List Operation
 
+namespace Func
+
 instance : ToString Func where
   toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.results} {x.locals} {x.ops})"
+
+def toFunctionType (f : Func) : FunctionType :=
+  mkFunctionType f.params f.results
 
 end Func
 open Func

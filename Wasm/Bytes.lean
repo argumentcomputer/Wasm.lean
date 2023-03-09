@@ -4,11 +4,12 @@ import Wasm.Leb128
 
 open Wasm.Leb128
 open Wasm.Wast.Code
+open Wasm.Wast.AST
 open Wasm.Wast.AST.BlockLabel
+open Wasm.Wast.AST.FunctionType
 open Wasm.Wast.AST.Global
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Module
-open Wasm.Wast.AST.Type'
 open Wasm.Wast.AST.Operation
 open Wasm.Wast.AST.Func
 
@@ -35,10 +36,6 @@ def ttoi (x : Type') : UInt8 :=
   | .i 64 => 0x7e
   | .f 32 => 0x7d
   | .f 64 => 0x7c
-
--- Currently we don't support type indices.
-def extractBlockType (ts : List Type') : ByteArray :=
-  if ts.isEmpty then b 0x40 else flatten $ ts.map (b ∘ ttoi)
 
 def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
@@ -73,11 +70,13 @@ def enf (g : ByteArray → ByteArray) (f : α → ByteArray) (x : α) : ByteArra
 def mkStr (x : String) : ByteArray :=
   uLeb128 x.length ++ x.toUTF8
 
+abbrev FTypes := List ByteArray
 abbrev Locals := List (Nat × Local)
 abbrev Globals := List (Nat × Global)
 abbrev BlockLabels := List (Option String)
 
-abbrev ExtractM := ReaderT Globals $ ReaderT Locals $ StateM BlockLabels
+abbrev ExtractM := ReaderT FTypes $ ReaderT Globals $ ReaderT Locals
+                 $ StateM BlockLabels
 
 def push : Option String → ExtractM PUnit := fun x => do set $ x :: (←get)
 
@@ -90,7 +89,8 @@ instance : HAppend ByteArray (ExtractM ByteArray) (ExtractM ByteArray) := ⟨eap
 instance : HAppend (ExtractM ByteArray) ByteArray (ExtractM ByteArray) where
   hAppend eb b := eb ++ pure b
 
-def readLocals : ExtractM Locals := readThe Locals
+def readFTypes  : ExtractM FTypes  := readThe FTypes
+def readLocals  : ExtractM Locals  := readThe Locals
 def readGlobals : ExtractM Globals := readThe Globals
 
 def indexLocals (f : Func) : Locals :=
@@ -115,6 +115,93 @@ def indexFuncsWithIdentifiedLocals (fs : List Func)
 def indexIdentifiedGlobals (gs : List Global) : Globals :=
   let onlyIDed := List.filter (·.2.name.isSome)
   onlyIDed gs.enum
+
+-- This makes me cry in pain, but I don't see any way to cut out this pre-pass
+-- in this architecture.
+-- TODO: lens lib? 🥺
+mutual
+
+private partial def traverseGet' : Get' → List FunctionType
+  | .from_stack => []
+  | .from_operation o => traverseOp o
+
+private partial def traverseOp : Operation → List FunctionType
+  | .eqz    _ g => traverseGet' g
+  | .eq _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .ne _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .lt_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .lt_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .gt_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .gt_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .le_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .le_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .ge_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .ge_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .lt _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .gt _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .le _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .ge _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .clz    _ g => traverseGet' g
+  | .ctz    _ g => traverseGet' g
+  | .popcnt _ g => traverseGet' g
+  | .add _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .sub _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .mul _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .div _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .min _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .max _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .div_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .div_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .rem_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .rem_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .and _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .or  _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .xor _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .shl _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .shr_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .shr_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .rotl _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .rotr _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
+  | .block _ ps ts ops =>
+    let fts := (ops.map traverseOp).join
+    if !ps.isEmpty || !ts.length ≤ 1
+      then mkFunctionType ps ts :: fts
+      else fts
+  | .loop _ ps ts ops =>
+    let fts := (ops.map traverseOp).join
+    if !ps.isEmpty || !ts.length ≤ 1
+      then mkFunctionType ps ts :: fts
+      else fts
+  | .if _ ps ts g thens elses =>
+    let bg := traverseGet' g
+    let bts := if !ps.isEmpty || !ts.length ≤ 1
+      then [mkFunctionType ps ts]
+      else []
+    let bth := thens.map traverseOp
+    let belse := elses.map traverseOp
+    bg ++ bts ++ bth.join ++ belse.join
+  | _ => []
+
+end
+
+/-- Extract a 'function type' construct. -/
+def extractFunctionType (ft : FunctionType) : ByteArray :=
+  let header := b 0x60
+  let params := mkVec ft.ins (b ∘ ttoi)
+  let result := mkVec ft.outs (b ∘ ttoi)
+  header ++ params ++ result
+
+/-- Extract the head function type of a `Func`. -/
+def extractFuncHeadType (f : Func) : ByteArray :=
+  extractFunctionType ⟨f.params.map (·.type), f.results⟩
+
+/-- Extract function types of structured control instructions of a `Func`. -/
+def extractFuncBlockTypes (f : Func) : FTypes :=
+  f.ops.map traverseOp |>.join |>.map extractFunctionType
+
+/-- Extract all function types from a `Func`, including blocktypes. -/
+def extractFuncAllTypes (f : Func) : FTypes :=
+  extractFuncHeadType f :: extractFuncBlockTypes f
 
 -- TODO: maybe calculate the opcodes instead of having lots of lookup subtables?
 -- def extractIBinOp (α : Type') (offset : UInt8)
@@ -363,6 +450,14 @@ def extractBlockLabelId : BlockLabelId → ExtractM ByteArray
     | .some idx => pure $ sLeb128 idx
     | .none => sorry
 
+def extractBlockType : FunctionType → ExtractM ByteArray
+  | ⟨[],[]⟩ => pure $ b 0x40
+  | ⟨[],[t]⟩ => pure $ b (ttoi t)
+  | ft => do
+      let ftypes ← readFTypes
+      let tidx := ftypes.indexOf (extractFunctionType ft)
+      pure $ sLeb128 tidx
+
 mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
   partial def extractGet' (x : Get') : ExtractM ByteArray :=
@@ -419,24 +514,24 @@ mutual
     | .local_tee ll => b 0x22 ++ extractLocalLabel ll
     | .global_get gl => b 0x23 ++ extractGlobalLabel gl
     | .global_set gl => b 0x24 ++ extractGlobalLabel gl
-    | .block id ts ops =>
+    | .block id ps ts ops =>
       push id
-      let bts := extractBlockType ts
-      let obs ← bts ++ flatten <$> ops.mapM extractOp
-      pure $ b 0x02 ++ obs ++ b 0x0b
-    | .loop id ts ops =>
+      let bts := extractBlockType $ mkFunctionType ps ts
+      let obs := bts ++ flatten <$> ops.mapM extractOp
+      b 0x02 ++ obs ++ b 0x0b
+    | .loop id ps ts ops =>
       push id
-      let bts := extractBlockType ts
-      let obs ← bts ++ flatten <$> ops.mapM extractOp
-      pure $ b 0x03 ++ obs ++ b 0x0b
-    | .if id ts g thens elses =>
+      let bts := extractBlockType $ mkFunctionType ps ts
+      let obs := bts ++ flatten <$> ops.mapM extractOp
+      b 0x03 ++ obs ++ b 0x0b
+    | .if id ps ts g thens elses =>
       push id
       let bg ← extractGet' g
-      let bts := extractBlockType ts
+      let bts := extractBlockType $ mkFunctionType ps ts
       let bth ← flatten <$> thens.mapM extractOp
       let belse ← if elses.isEmpty then pure b0 else
         b 0x05 ++ flatten <$> elses.mapM extractOp
-      pure $ bg ++ b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
+      bg ++ b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
     | .br bl => b 0x0c ++ extractBlockLabelId bl
     | .br_if bl => b 0x0d ++ extractBlockLabelId bl
 
@@ -445,13 +540,6 @@ end
 
 def extractOps (ops : List Operation) : ExtractM ByteArray :=
   flatten <$> ops.mapM extractOp
-
-def extractFuncTypes (f : Func) : ByteArray :=
-  let header := b 0x60
-  let params := mkVec f.params (b ∘ ttoi ∘ fun l => l.type)
-  let result := mkVec f.results (b ∘ ttoi)
-  header ++ params ++ result
-
 
 /-- Take a list and deduplicate it in `O(n²)`, depending only on `BEq`. -/
 /- Sadly, we can't use `RBSet` and the like to achieve better performance.
@@ -465,19 +553,20 @@ private def poorMansDeduplicate (xs : List α) [BEq α] : List α :=
 
 def typeHeader := b 0x01
 
-def extractTypes (m : Module) : List ByteArray :=
+def extractTypes (m : Module) : FTypes :=
   if m.func.isEmpty then [] else
-    poorMansDeduplicate $ m.func.map extractFuncTypes
+    poorMansDeduplicate ∘ List.join $ m.func.map extractFuncAllTypes
 
 /- Function section -/
 
-def extractFuncIds (m : Module) (types : List ByteArray) : ByteArray :=
+def extractFuncIds (m : Module) (types : FTypes) : ByteArray :=
   if m.func.isEmpty then b0 else
-    let getIndex f := types.indexOf (extractFuncTypes f)
+    let getIndex f := types.indexOf (extractFuncHeadType f)
     let funcIds := mkVec m.func (uLeb128 ∘ getIndex)
     b 0x03 ++ lindex funcIds
 
-def extractFuncBody (gls : Globals) (f : Func) : (ByteArray × BlockLabels) :=
+def extractFuncBody (functypes : FTypes) (gls : Globals) (f : Func)
+                    : (ByteArray × BlockLabels) :=
   -- Locals are encoded with counts of subgroups of the same type.
   let localGroups := f.locals.groupBy (fun l1 l2 => l1.type = l2.type)
   let extractCount
@@ -487,7 +576,7 @@ def extractFuncBody (gls : Globals) (f : Func) : (ByteArray × BlockLabels) :=
 
   -- We also return all the previously collected block labels, as we'll
   -- need them in the names section.
-  let (obs, bls) := (extractOps f.ops).run gls (indexIdentifiedLocals f) []
+  let (obs, bls) := (extractOps f.ops).run functypes gls (indexIdentifiedLocals f) []
 
   -- for each function's code section, we'll add its size after we do
   -- all the other computations.
@@ -495,10 +584,11 @@ def extractFuncBody (gls : Globals) (f : Func) : (ByteArray × BlockLabels) :=
   -- whereas in extracting the func's body we need to break out from the bottom.
   (lindex $ locals ++ obs ++ b 0x0b, bls.reverse)
 
-def extractFuncBodies (m : Module) : (ByteArray × List BlockLabels) :=
+def extractFuncBodies (m : Module) (functypes : FTypes)
+                      : (ByteArray × List BlockLabels) :=
   if m.func.isEmpty then (b0, []) else
     let header := b 0x0a
-    let extractFBwGlobals := extractFuncBody $ indexIdentifiedGlobals m.globals
+    let extractFBwGlobals := extractFuncBody functypes $ indexIdentifiedGlobals m.globals
     let (fbs, bls) := List.unzip $ m.func.map extractFBwGlobals
     (header ++ lindex (vectorise fbs), bls)
 
@@ -652,7 +742,7 @@ def mtob (m : Module) : ByteArray :=
   let types := extractTypes m
   let typeSection := if m.func.isEmpty then b0 else
     typeHeader ++ lindex (vectorise types)
-  let (funcBodies, blockLabels) := extractFuncBodies m
+  let (funcBodies, blockLabels) := extractFuncBodies m types
   magic ++
   version ++
   typeSection ++

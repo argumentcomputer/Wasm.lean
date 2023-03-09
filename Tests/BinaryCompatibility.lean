@@ -198,6 +198,38 @@ def modsControl :=
         (if $x (result i32) (i32.const 1) (then (i32.const 4) (br $x))
           (else (i32.const 256) (br 0)))
      ))"
+  , "(module
+        (func (export \"break-multi-value\") (result i32 i32 i64)
+          (block (result i32 i32 i64)
+            (i32.const 0) (i32.const 0) (i64.const 0)
+            (loop (param i32 i32 i64)
+              (block (i32.const 18) (i32.const -18) (i64.const 18) (br 2))
+              (i32.const 20) (i32.const -20) (i64.const 20) (br 0)
+            )
+            (i32.const 19) (i32.const -19) (i64.const 19)
+          )
+        )
+        (func (param i64) (result i32) (local.get 0) (drop) (i32.const 4))
+     )"
+  , "(module
+       (func (result i32)
+          (i32.const 1)
+          (block (param i32) (result i32)
+            (i32.const 2)
+            (i32.add)
+          )
+        )
+     )"
+  , "(module
+       (func (result i64 i32)
+          (block (result i64 i32)
+            (i64.const 33)
+            (i32.const 1)
+            (i32.const 2)
+            (i32.add)
+          )
+        )
+     )"
   ]
 
 def modsLocal :=
