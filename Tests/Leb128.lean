@@ -1,28 +1,33 @@
 import LSpec
+import Megaparsec.Parsec
 
 import Wasm.Leb128
+import Wasm.Wast.Num
 
 import YatimaStdLib.Bit
+import YatimaStdLib.String
 
 open LSpec
+open Megaparsec.Parsec
 open Wasm.Leb128
+open Wasm.Wast.Num.Num.Int
+
+/- This uses the testsuite files from @mohanson's python leb128 implementation:
+https://github.com/mohanson/leb128/tree/master/test
+ -/
 
 -- https://npm.runkit.com/%40webassemblyjs%2Fleb128
 
-instance : DecidableEq ByteArray
-  | a, b => match decEq a.data b.data with
-    | isTrue h₁  => isTrue $ congrArg ByteArray.mk h₁
-    | isFalse h₂ => isFalse $ fun h => by cases h; exact (h₂ rfl)
-
+open Megaparsec.Errors.Bundle in
+inductive ParseFailure (src : String) (e : ParseErrorBundle Char String Unit) : Prop
+instance : Testable (ParseFailure src e) := .isFailure s!"Parsing:\n{src}\n{e}"
 
 def lebx : Nat := 624485
 def blebx : ByteArray := ntob lebx
-def bitlebx : List Bit := ByteArray.toBits blebx
-def ulebx : List Bit := unlead bitlebx
-def plebx : List Bit := pad7 ulebx
-def nplebx : List Bit := npad7 lebx
-
-def bigN := 1499559017
+def bitlebx : List Bit := blebx.toBits
+def ulebx : List Bit := Bit.unlead bitlebx
+def plebx : List Bit := modPad 7 ulebx
+def nplebx : List Bit := nmodPad 7 lebx
 
 /-
 5> erlang:length( "000010011000011101100101" ).
@@ -52,18 +57,8 @@ def testCanPad7Naturals : TestSeq :=
   -- 01001 10000 11101 10010 1 with spaces between each bit:
   --                          0 1 0 0 1|1 0 0 0 0|1 1 1 0 1|1 0 0 1 0|1
   let expected : List Bit := [0,1,0,0,1,1,0,0,0,0,1,1,1,0,1,1,0,0,1,0,1]
-  let actual := npad7 lebx
+  let actual := nmodPad 7 lebx
   test "Nat 7-bit padded" $ actual = expected ∧ actual = plebx
-
-def testBigN : TestSeq :=
-  group "Big number" $
-    test "big endian" (uLeb128 bigN = ByteArray.mk #[233, 232, 133, 203, 5]) $
-    test "7-bit padded, reassembled" $
-      -- 0000010111001011100001011110100011101001
-      let expected : List Bit :=
-        [0,0,0,0, 0,1,0,1, 1,1,0,0, 1,0,1,1, 1,0,0,0, 0,1,0,1, 1,1,1,0,
-         1,0,0,0, 1,1,1,0, 1,0,0,1]
-      reassemble (npad7 bigN) = expected
 
 def testUnsignedLeb128 : TestSeq :=
   group "Unsigned LEB128" $
@@ -79,10 +74,25 @@ def testSignedLeb128 : TestSeq :=
     test "of 624485" (sLeb128 624485 = ByteArray.mk #[229, 142, 38])
 
 
+open Wasm.Wast.Num (bytesFromHexP) in
+def testPair (unsigned? : Bool) (acc : TestSeq) (line : String) : TestSeq :=
+  if let [nstr, expectedstr] := line.splitOn
+    then match parseInt' "" nstr, parse bytesFromHexP expectedstr with
+    | .ok n, .ok expected => if unsigned?
+      then test s!"of {n}ᵤ" (uLeb128 n.natAbs = expected) acc
+      else test s!"of {n}ₛ" (sLeb128 n = expected) acc
+    | .error e, _ => test "number parsing" (ParseFailure nstr e)
+    | .ok _, .error e => test "bytes parsing" (ParseFailure expectedstr e)
+    else test "wrong line format" false
+
+open IO.FS in
 def main : IO UInt32 := do
+  let unsigneds ← lines "./Tests/Data/leb128/unsigned.txt"
+  let signeds ← lines "./Tests/Data/leb128/signed.txt"
   lspecIO $
     testLebx ++
     testCanPad7Naturals ++
-    testBigN ++
     testUnsignedLeb128 ++
-    testSignedLeb128
+    testSignedLeb128 ++
+    group "Unsigned LEB128" (unsigneds.toList.foldl (testPair true) .done) ++
+    group "Signed LEB128" (signeds.toList.foldl (testPair false) .done)

@@ -310,7 +310,7 @@ def checkLabel (l : BlockLabelId) (f : BlockLabel → Nat → EngineM PUnit) := 
 
 def unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
   match t with
-  | .i bs => f (unsign x bs) (unsign y bs)
+  | .i bs => f (Int.unsign x bs) (Int.unsign y bs)
   | .f _ => unreachable!
 
 mutual
