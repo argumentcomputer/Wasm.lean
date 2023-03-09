@@ -29,3 +29,4 @@ lean_exe Tests.Dependent
 lean_exe Tests.Leb128
 lean_exe Tests.SimpleEncodings
 lean_exe Tests.BinaryCompatibility
+lean_exe Tests.RuntimeCompatibility
