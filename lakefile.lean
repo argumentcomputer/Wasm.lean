@@ -12,10 +12,10 @@ require LSpec from git
   "https://github.com/yatima-inc/LSpec" @ "88f7d23e56a061d32c7173cea5befa4b2c248b41"
 
 require YatimaStdLib from git
-  "https://github.com/yatima-inc/YatimaStdLib.lean" @ "f616da79a3ffe29d1a04b956ed36ebfdc6e82a7f"
+  "https://github.com/yatima-inc/YatimaStdLib.lean" @ "9a49b49fc35a960ee333b47c4960390543defabd"
 
 require Megaparsec from git
-  "https://github.com/yatima-inc/Megaparsec.lean" @ "0572258b1cfee6a399d0b867a764cee97e73a254"
+  "https://github.com/yatima-inc/Megaparsec.lean" @ "8859f129d199d5be82962140e9b886c0fd49e89c"
 
 -- require Yatima from git
 --   "https://github.com/yatima-inc/yatima-lang" @ "26e896debf14cf3bb09a7a8a00f70583ae95469d"
