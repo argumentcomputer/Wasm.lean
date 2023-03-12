@@ -1,10 +1,16 @@
 import LSpec
+import Megaparsec.Errors.Bundle
 import Megaparsec.Parsec
+import Wasm.Engine
+import Wasm.Wast.AST
 import Wasm.Wast.Parser
 import Wasm.Bytes
 
 open LSpec
+open Megaparsec.Errors.Bundle
 open Megaparsec.Parsec
+open Wasm.Engine
+open Wasm.Wast.AST.Module
 open Wasm.Wast.Parser
 open Wasm.Bytes
 
@@ -20,6 +26,31 @@ instance : Testable (ParseFailure src e) := .isFailure s!"Parsing:\n{src}\n{e}"
 open IO.Process (run) in
 def w2b (x : String) :=
   run { cmd := "./wasm-sandbox", args := #["wast2bytes", x] } |>.toBaseIO
+
+open IO.Process (run) in
+def run_main (x : String) :=
+  run { cmd := "./wasm-sandbox", args := #["run_main", x] } |>.toBaseIO
+
+def runModule (m : Module) : Except EngineErrors Int := do
+  let store := mkStore m
+  let s₀ := Stack.mk []
+  match (fidByName store "main") with
+  | .none => Except.error EngineErrors.function_not_found
+  | .some fid =>
+    run store fid s₀ >>= fun (_, s₁) =>
+      match s₁ with
+      | ⟨ [y] ⟩ => match y with
+        | .num n => match n with
+          | .i n => pure n.val
+          | _ => Except.error EngineErrors.typecheck_failed
+        | _ => Except.error EngineErrors.typecheck_failed
+      | _ => Except.error EngineErrors.not_enough_stuff_on_stack
+
+
+def run_lean_main (x : String) : Except EngineErrors Int := do
+  match parseP moduleP "test" x with
+  | .error _ => Except.error $ EngineErrors.other
+  | .ok m => runModule m
 
 -- A very bad hasing function. It adds up the character codes of each of the string's characters, and then appends 'L' followed by the number of characters in the string to reduce the chance of collisions.
 def badHash (s : String) : String :=
