@@ -31,7 +31,10 @@ def dumpFname (s : String) : String :=
 
 open IO.Process (run) in
 def doesWasmSandboxRun? :=
-  run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } |>.toBaseIO
+  (
+    run { cmd := "./wasm-sandbox", args := #["wast2bytes", "(module)"] } *>
+    run { cmd := "./wasm-sandbox", args := #["run_main", "(module (func (export \"main\") (result i32) (i32.const 42)))"] }
+  ) |>.toBaseIO
 
 def withWasmSandboxRun (a2t : String → IO TestSeq) (testCases : List $ List String) : IO UInt32 :=
   lspecEachIO testCases.join a2t
@@ -42,4 +45,4 @@ def withWasmSandboxFail : IO UInt32 :=
     Please run:
     wget https://github.com/cognivore/wasm-sandbox/releases/download/v1/wasm-sandbox && chmod +x ./wasm-sandbox
     Or build it from source:
-    git clone https://github.com/cognivore/wasm-sandbox.git && cd wasm-sandbox && cargo build && cp target/debug/wasm-sandbox ../ && cd .. && rm -rf wasm-sandbox")
+    git clone https://github.com/cognivore/wasm-sandbox.git wsrepo && cd wsrepo && cargo build --release && cp target/release/wasm-sandbox ../ && cd .. && rm -rf wsrepo")
