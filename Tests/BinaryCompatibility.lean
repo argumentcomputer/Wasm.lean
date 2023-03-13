@@ -9,6 +9,7 @@ open LSpec
 open Megaparsec.Parsec
 open Wasm.Wast.Parser
 open Wasm.Bytes
+open IO.FS
 
 open Wasm.Tests
 
@@ -17,6 +18,7 @@ partial def testGeneric : String → ByteArray → ByteArray → TestSeq
   | mod, rs, os =>
     let str := s!"Binary representation is compatible with {dumpFname mod}
     {mod}"
+    test str $ rs = os
 
 /- Here's how Main used to test a particular module:
 
@@ -40,7 +42,6 @@ Instead of this, here, we're going to:
  4. Write our bytes into a file called s!"{dumpFname}.lean".
  5. Byte by byte, compare the two variables, reporting errors.
 -/
-open IO.FS in
 partial def moduleTestSeq (x : String) : IO TestSeq := do
   -- Run w2b against x
   match ←w2b x with
