@@ -139,9 +139,11 @@ mutual
 -- TODO: generalise Consts the same way Get is generalised so that `i32.const`
 -- can't be populated with `ConstFloat`!
   inductive Operation where
+  | unreachable
   | nop
   --------------------- PARAMETRIC ----------------------
   | drop
+  | select : Option Type' → Get' → Get' → Get' → Operation
   ----------------------  NUMERIC -----------------------
   | const : Type' → NumUniT → Operation
   | eqz : Type' → Get' → Operation
@@ -193,6 +195,7 @@ mutual
             → List Operation → List Operation → Operation
   | br : BlockLabelId → Operation
   | br_if : BlockLabelId → Operation
+  | br_table : List BlockLabelId → BlockLabelId → Operation
 end
 
 mutual
@@ -201,8 +204,10 @@ mutual
     | .from_operation o => s!"(Get'.from_operation {operationToString o})"
 
   private partial def operationToString : Operation → String
+    | .unreachable => "(Operation.unreachable)"
     | .nop => "(Operation.nop)"
     | .drop => "(Operation.drop)"
+    | .select t g1 g2 g3 => s!"(Operation.select {t} {getToString g1} {getToString g2} {getToString g3})"
     | .const t n => s!"(Operation.const {t} {n})"
     | .eqz t g => s!"(Operation.eqz {t} {getToString g})"
     | .eq  t g1 g2 => s!"(Operation.eq {t} {getToString g1} {getToString g2})"
@@ -269,6 +274,7 @@ mutual
       s!"(Operation.if {id} {pts} {rts} {getToString g} {thens.map operationToString} {elses.map operationToString})"
     | .br sl => s!"(Operation.br {sl})"
     | .br_if sl => s!"(Operation.br_if {sl})"
+    | .br_table sls sdef => s!"(Operation.br_table {sls} {sdef})"
 
 end
 

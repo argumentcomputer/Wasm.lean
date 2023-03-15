@@ -5,7 +5,6 @@ import Megaparsec.Parsec
 
 import Wasm.Wast.AST
 import Wasm.Wast.BitSize
-import Wasm.Wast.Name
 import Wasm.Wast.Num
 import Wasm.Wast.Parser
 import Wasm.Wast.Parser.Common
@@ -17,7 +16,6 @@ open Megaparsec.Parsec
 open MonadParsec
 
 open Wasm.Wast.AST
-open Wasm.Wast.Name
 open Wasm.Wast.Parser
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int

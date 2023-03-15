@@ -81,6 +81,19 @@ def uWasmMods := [
             (i32.add (i32.const -1) (i32.const 1))
         )
     )",
+    "(module $test
+        (func)
+        (func $f (export \"(module \\\" (func))\")
+          (param $y f32) (param $y1 f32) (result f32)
+            (local $dummy i32)
+            (i32.const 42)
+            (local.set 2)
+            (local.get $y1)
+            (f32.add (local.get $y1))
+            (local.get $y)
+            (f32.add)
+        )
+    )",
     "(module
         (func (param $x_one i32) (param $three i32) (param $y_one i32)
           (result i32) (i32.add (i32.const 40) (i32.const 2)))
@@ -215,6 +228,24 @@ def modsControl :=
           )
         )
      )"
+  , "(module (func (param i32) (result i32 i32 i32)
+        (select
+          (local.get 0)
+          (block (result i32 i32 i32) (i32.const 1) (i32.const 2) (i32.const 3))
+          (i32.const 0)
+        )
+     ))"
+  , "(module (func (export \"singleton\") (param i32) (result i32)
+        (block
+          (block
+            (local.get 0)
+            (br_table 1 0)
+            (i32.const 21)
+          )
+          (i32.const 20)
+        )
+        (i32.const 22)
+     ))"
   ]
 
 def modsLocal :=

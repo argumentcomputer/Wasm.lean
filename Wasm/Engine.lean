@@ -18,6 +18,7 @@ open Cached
 namespace Wasm.Engine
 
 inductive EngineErrors where
+| unreachable
 | not_enough_stuff_on_stack
 | stack_incompatible_with_results
 | param_type_incompatible
@@ -33,6 +34,7 @@ inductive EngineErrors where
 
 instance : ToString EngineErrors where
   toString x := match x with
+  | .unreachable => "unreachable"
   | .not_enough_stuff_on_stack => "not enough stuff on stack"
   | .stack_incompatible_with_results => "stack incompatible with result types"
   | .param_type_incompatible => "param type incompatible"
@@ -327,6 +329,26 @@ partial def populateParams (ps : List Local)
   let restOfLabels := stackLabels ⟨←get⟩
   pure $ innerStack ++ restOfLabels
 
+
+def enf2Nums1Type : StackEntry → StackEntry → EngineM Type'
+  | .num (.i ⟨32, _⟩), .num (.i ⟨32, _⟩) => pure $ .i 32
+  | .num (.i ⟨64, _⟩), .num (.i ⟨64, _⟩) => pure $ .i 64
+  | .num (.f ⟨32, _⟩), .num (.f ⟨32, _⟩) => pure $ .f 32
+  | .num (.f ⟨64, _⟩), .num (.f ⟨64, _⟩) => pure $ .f 64
+  | _, _ => throwEE .param_type_incompatible
+
+/-- Check that two stack entries are of the same numerical type,
+check correctness of this type if given. Throws `.typecheck_failed` otherwise.
+-/
+def typecheck2Nums (t? : Option Type') (o1 o2: StackEntry) : EngineM PUnit := do
+  let ot ← enf2Nums1Type o1 o2
+  if let .some t := t? then
+    if t ≠ ot then throwEE .typecheck_failed
+
+def getInt : StackEntry → EngineM Int
+  | .num (.i n) => pure n.val
+  | _ => throwEE .typecheck_failed
+
 def unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
   match t with
   | .i bs => f (Int.unsign x bs) (Int.unsign y bs)
@@ -396,9 +418,15 @@ mutual
       | _ => throwEE .typecheck_failed
 
     match op with
+    | .unreachable => throwEE .unreachable
     | .nop => pure ⟨⟩
     | .drop => discard bite
     | .const _t n => push $ .num n
+    | .select t? g0 g1 g2 => checkGet_i32 g0 fun i0 => do
+      let operand1 ← getSO g1
+      let operand2 ← getSO g2
+      typecheck2Nums t? operand1 operand2
+      if i0 = 0 then push operand1 else push operand2
     | .eqz _t g => runIUnop g $ (if · = 0 then 1 else 0)
     | .eq (.i _) g0 g1 => runIBinop g0 g1 (if · = · then 1 else 0)
     | .eq (.f _) g0 g1 => runFBinop g0 g1 (if · == · then 1 else 0) -- lmao even this isn't right because of +0 == -0
@@ -500,6 +528,10 @@ mutual
         else throwEE .not_enough_stuff_on_stack
     | .br_if l => checkGet_i32 .from_stack fun n =>
         do if n ≠ 0 then runOp (.br l)
+    | .br_table ls ld => checkGet_i32 .from_stack fun n =>
+        if let .some l := ls.get? (n.unsign 32).natAbs
+          then runOp (.br l)
+          else runOp (.br ld)
 end
 
 def runDo (s : Store m)

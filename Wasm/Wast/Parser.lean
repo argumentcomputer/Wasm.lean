@@ -5,7 +5,7 @@ import Megaparsec.Parsec
 
 import Wasm.Wast.AST
 import Wasm.Wast.BitSize
-import Wasm.Wast.Name
+import Wasm.Wast.Identifier
 import Wasm.Wast.Num
 import Wasm.Wast.Parser.Common
 
@@ -16,6 +16,7 @@ open Megaparsec.Parsec
 open MonadParsec
 
 open Wasm.Wast.AST
+open Wasm.Wast.Identifier
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Nat
@@ -77,28 +78,24 @@ def typeP : Parsec Char String Unit Type' :=
 
 def localLabelP : Parsec Char String Unit LocalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
-  .by_name <$> nameP
+  .by_name <$> idP
 
 def globalLabelP : Parsec Char String Unit GlobalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
-  .by_name <$> nameP
+  .by_name <$> idP
 
 def structLabelP : Parsec Char String Unit BlockLabelId :=
   .by_index <$> (hexP <|> decimalP) <|>
-  .by_name <$> nameP
+  .by_name <$> idP
 
 def exportP : Parsec Char String Unit String := bracketed $
-  string "export" *> ignoreP *>
-  -- TODO: are escaped quotation marks legal export names?
-  let export_label := Char.between '\"' '\"' $ many' $ noneOf "\"".data
-  String.mk <$> export_label
+  string "export" *> ignoreP *> nameP
 
-private def anonLocalsP : Parsec Char String Unit (List Local) := do
-  let ts ← sepEndBy' typeP owP
-  pure $ ts.map (Local.mk .none)
+private def anonLocalsP : Parsec Char String Unit (List Local) :=
+  List.map (Local.mk .none) <$> vecP typeP
 
 private def identifiedLocalP : Parsec Char String Unit (List Local) := do
-  let id ← nameP <* ignoreP
+  let id ← idP <* ignoreP
   let t ← typeP
   pure [Local.mk (.some id) t]
 
@@ -108,7 +105,7 @@ def brLocsP (x : String) : Parsec Char String Unit (List Local) :=
 
 def genLocalP (x : String) : Parsec Char String Unit Local :=
   string x *> ignoreP *>
-  Local.mk <$> option' (nameP <* ignoreP) <*> typeP
+  Local.mk <$> option' (idP <* ignoreP) <*> typeP
 
 def paramP : Parsec Char String Unit Local :=
   genLocalP "param"
@@ -126,13 +123,16 @@ def singleResultP : Parsec Char String Unit Type' := bracketed $
   string "result" *> ignoreP *> typeP
 
 def resultP : Parsec Char String Unit (List Type') :=
-  string "result" *> ignoreP *> sepEndBy' typeP owP
+  string "result" *> ignoreP *> vecP typeP
 
 def brResultsP : Parsec Char String Unit (List Type') :=
   List.join <$> manyLispP resultP
 
 private def nopP : Parsec Char String Unit Operation :=
   string "nop" *> pure .nop
+
+private def unreachableP : Parsec Char String Unit Operation :=
+  string "unreachable" *> pure .nop
 
 private def dropP : Parsec Char String Unit Operation :=
   string "drop" *> pure .drop
@@ -154,6 +154,14 @@ private def globalOpP : Parsec Char String Unit Operation := do
        <|> (string "global.set" *> pure .global_set)
   ignoreP *> op <$> globalLabelP
 
+private def brTableP : Parsec Char String Unit Operation := do
+  string "br_table" *> ignoreP
+  let moreToCome?P p := lookAhead (ignoreP *> p)
+  let notTheLastP p := attempt (p <* moreToCome?P p)
+  let allButOneP ← vecP (notTheLastP structLabelP)
+  let theDefault ← structLabelP
+  pure $ Operation.br_table allButOneP theDefault
+
 private def brOpP : Parsec Char String Unit Operation := do
   let op ← (string "br_if" *> pure Operation.br_if)
        <|> (string "br" *> pure .br)
@@ -165,7 +173,7 @@ private def brOpP : Parsec Char String Unit Operation := do
     (.from_operation <$> attempt opP) <|> pure .from_stack
 
   partial def opP : Parsec Char String Unit Operation := bracketed $
-    nopP <|> dropP <|> constP <|>
+    unreachableP <|> nopP <|> dropP <|> constP <|> selectP <|>
     iUnopP "eqz" .eqz <|>
     binopP "eq" .eq <|> binopP "ne" .ne <|>
     iBinopP "lt_u" .lt_u <|> iBinopP "lt_s" .lt_s <|>
@@ -184,15 +192,23 @@ private def brOpP : Parsec Char String Unit Operation := do
     iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
     iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
     localOpP <|> globalOpP <|>
-    blockOpP <|> ifP <|> brOpP
+    blockOpP <|> ifP <|> brTableP <|> brOpP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
 
+  partial def selectP : Parsec Char String Unit Operation := do
+    discard $ string "select"
+    let t? ← option' (attempt (ignoreP *> singleResultP)) <* owP
+    let g₁ ← getP <* owP
+    let g₂ ← getP <* owP
+    let g₃ ← getP <* owP
+    pure $ .select t? g₁ g₂ g₃
+
   partial def blockOpP : Parsec Char String Unit Operation := do
   let op ← (string "block" *> pure Operation.block)
        <|> (string "loop" *> pure .loop)
-    let id ← option' (attempt (ignoreP *> nameP))
+    let id ← option' (attempt (ignoreP *> idP))
     let pts ← owP *> nilParamsP
     let rts ← owP *> brResultsP
     let ops ← opsP
@@ -200,7 +216,7 @@ private def brOpP : Parsec Char String Unit Operation := do
 
   partial def ifP : Parsec Char String Unit Operation := do
     discard $ string "if"
-    let id ← option' (attempt (ignoreP *> nameP))
+    let id ← option' (attempt (ignoreP *> idP))
     let pts ← owP *> nilParamsP
     let rts ← owP *> brResultsP
     let g ← getP
@@ -262,7 +278,7 @@ see https://webassembly.github.io/spec/core/valid/instructions.html#constant-exp
 -/
 def globalP : Parsec Char String Unit Global := do
   string "global" *> ignoreP
-  let oname ← option' (nameP <* ignoreP)
+  let oname ← option' (idP <* ignoreP)
   let gt ← globalTypeP <* ignoreP
   let init ← bracketed constP
   pure ⟨oname, gt, init⟩
@@ -270,7 +286,7 @@ def globalP : Parsec Char String Unit Global := do
 def funcP : Parsec Char String Unit Func := do
   -- either we have a trivial case `(func)` or we must parse whitespace
   discard $ string "func"
-  let oname ← option' (attempt (ignoreP *> nameP))
+  let oname ← option' (attempt (ignoreP *> idP))
   let oexp ← owP *> option' (attempt exportP <* owP)
   let ops ← option' nilParamsP
   let ps := optional ops []
@@ -286,10 +302,26 @@ def funcP : Parsec Char String Unit Func := do
 -- module, including the text preceding them.
 def moduleP : Parsec Char String Unit Module := bracketedWs do
   discard $ string "module"
-  let oname ← option' (attempt (ignoreP *> nameP))
+  let oname ← option' (attempt (ignoreP *> idP))
   let (globals, funs) ← owP *> mixOfTwoLispP globalP funcP
 
   pure $ Module.mk oname globals funs
 
+def t :=
+  "(module $test
+      (func)
+      (func $f (export \"(module \\\" (func))\")
+        (param $y f32) (param $y1 f32) (result f32)
+          (local $dummy i32)
+          (i32.const 42)
+          (local.set 2)
+          (local.get $y1)
+          (f32.add (local.get $y1))
+          (local.get $y)
+          (f32.add)
+      )
+  )"
+
+#eval parse moduleP t
 
 end textparser

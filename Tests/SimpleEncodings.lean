@@ -1,14 +1,18 @@
 import LSpec
 import Wasm.Tests
 
+import Megaparsec.Common
 import Megaparsec.Parsec
 import Wasm.Wast.Parser
+import Wasm.Wast.Parser.Common
 
 open LSpec
 open Wasm.Tests
 
+open Megaparsec.Common
 open Megaparsec.Parsec
 open Wasm.Wast.Parser
+open Wasm.Wast.Parser.Common
 
 
 def testParse (parser: Parsec Char String Unit α)
@@ -19,6 +23,17 @@ def testParse (parser: Parsec Char String Unit α)
     if x == y
     then test src true
     else test "doesn't match" (ExpectationFailure s!"{y}" s!"{x}")
+
+/-- Tests the whole whitespace: ' ', \t, \n, \r, or comments. -/
+def testWhitespace : TestSeq :=
+  let test' src := testParse (String.join <$> many' spaceP) src src
+  test' "" ++
+  test' "     " ++
+  test' "   ;; arbitrary symbols" ++
+  test' "   (;block comments;)  " ++
+  test' "\r\n\t\t\n\r\t" ++
+  test' "\r\n \t\t\n  \r\t" ++
+  test' "\r\n \t(;ignore me;)\t\n  \r\t"
 
 def testFisF : TestSeq :=
   testParse typeP "f32" (.f 32)
@@ -116,8 +131,24 @@ def testFlawedFuncDoesntParse : TestSeq :=
   test "NO PARSE: (func func (param $x i32) (param i32) (result i32) (result i64) (result i64))" $
     not (parses? (bracketed funcP) "(func func (param $x i32) (param i32) (result i32) (result i64) (result i64))")
 
+def testCommentsIgnored : TestSeq :=
+  let test' := testParse (bracketed funcP)
+  let sLine := "(func ;;(result i32)
+    (nop) ;;(i32.const 23)
+  )
+  "
+  let sBlock := "(func (;(result i32);)
+    (nop) (;i32.const 23;)
+  )
+  "
+  test "NO PARSE: (func ;; a line comment until eof)"
+    (not (parses? (bracketed funcP) "(func ;; a line comment until eof)")) $
+  test' sLine (Func.mk .none .none [] [] [] [.nop]) ++
+  test' sBlock (Func.mk .none .none [] [] [] [.nop])
+
 def main : IO UInt32 :=
   lspecIO $
+    testWhitespace ++
     testFisF ++
     testMinusOneisI32MinusOne ++
     testAdd42IsOpAddConstStack ++
@@ -128,4 +159,5 @@ def main : IO UInt32 :=
     testBlockParses ++
     testIfParses ++
     testFuncs ++
-    testFlawedFuncDoesntParse
+    testFlawedFuncDoesntParse ++
+    testCommentsIgnored

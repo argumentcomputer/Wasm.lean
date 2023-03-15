@@ -126,6 +126,7 @@ private partial def traverseGet' : Get' → List FunctionType
   | .from_operation o => traverseOp o
 
 private partial def traverseOp : Operation → List FunctionType
+  | .select _ g1 g2 g3 => traverseGet' g1 ++ traverseGet' g2 ++ traverseGet' g3
   | .eqz    _ g => traverseGet' g
   | .eq _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
   | .ne _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
@@ -467,12 +468,18 @@ mutual
 
   partial def extractOp (op : Operation) : ExtractM ByteArray := do
     match op with
+    | .unreachable => pure $ b 0x00
     | .nop => pure $ b 0x01
     | .drop => pure $ b 0x1a
     -- TODO: signed consts exist??? We should check the spec carefully.
     | .const (.i 32) (.i ci) => pure $ b 0x41 ++ sLeb128 ci.val
     | .const (.i 64) (.i ci) => pure $ b 0x42 ++ sLeb128 ci.val
     | .const _ _ => sorry -- TODO: float binary encoding
+    | .select .none g1 g2 g3 =>
+      extractGet' g1 ++ extractGet' g2 ++ extractGet' g3 ++ b 0x1b
+    | .select (.some t) g1 g2 g3 =>
+      extractGet' g1 ++ extractGet' g2 ++ extractGet' g3 ++ b 0x1c
+      ++ mkVec [t] (b ∘ ttoi)
     | .eqz    t g => extractGet' g ++ extractEqz t
     | .eq t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractEq t
     | .ne t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractNe t
@@ -534,6 +541,8 @@ mutual
       bg ++ b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
     | .br bl => b 0x0c ++ extractBlockLabelId bl
     | .br_if bl => b 0x0d ++ extractBlockLabelId bl
+    | .br_table bls bld =>
+      b 0x0e ++ mkVecM bls extractBlockLabelId ++ extractBlockLabelId bld
 
 
 end
