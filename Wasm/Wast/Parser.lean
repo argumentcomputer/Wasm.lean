@@ -5,7 +5,7 @@ import Megaparsec.Parsec
 
 import Wasm.Wast.AST
 import Wasm.Wast.BitSize
-import Wasm.Wast.Name
+import Wasm.Wast.Identifier
 import Wasm.Wast.Num
 import Wasm.Wast.Parser.Common
 
@@ -16,6 +16,7 @@ open Megaparsec.Parsec
 open MonadParsec
 
 open Wasm.Wast.AST
+open Wasm.Wast.Identifier
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Nat
@@ -77,27 +78,24 @@ def typeP : Parsec Char String Unit Type' :=
 
 def localLabelP : Parsec Char String Unit LocalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
-  .by_name <$> nameP
+  .by_name <$> idP
 
 def globalLabelP : Parsec Char String Unit GlobalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
-  .by_name <$> nameP
+  .by_name <$> idP
 
 def structLabelP : Parsec Char String Unit BlockLabelId :=
   .by_index <$> (hexP <|> decimalP) <|>
-  .by_name <$> nameP
+  .by_name <$> idP
 
 def exportP : Parsec Char String Unit String := bracketed $
-  string "export" *> ignoreP *>
-  -- TODO: are escaped quotation marks legal export names?
-  let export_label := Char.between '\"' '\"' $ many' $ noneOf "\"".data
-  String.mk <$> export_label
+  string "export" *> ignoreP *> nameP
 
 private def anonLocalsP : Parsec Char String Unit (List Local) :=
   List.map (Local.mk .none) <$> vecP typeP
 
 private def identifiedLocalP : Parsec Char String Unit (List Local) := do
-  let id ← nameP <* ignoreP
+  let id ← idP <* ignoreP
   let t ← typeP
   pure [Local.mk (.some id) t]
 
@@ -107,7 +105,7 @@ def brLocsP (x : String) : Parsec Char String Unit (List Local) :=
 
 def genLocalP (x : String) : Parsec Char String Unit Local :=
   string x *> ignoreP *>
-  Local.mk <$> option' (nameP <* ignoreP) <*> typeP
+  Local.mk <$> option' (idP <* ignoreP) <*> typeP
 
 def paramP : Parsec Char String Unit Local :=
   genLocalP "param"
@@ -210,7 +208,7 @@ private def brOpP : Parsec Char String Unit Operation := do
   partial def blockOpP : Parsec Char String Unit Operation := do
   let op ← (string "block" *> pure Operation.block)
        <|> (string "loop" *> pure .loop)
-    let id ← option' (attempt (ignoreP *> nameP))
+    let id ← option' (attempt (ignoreP *> idP))
     let pts ← owP *> nilParamsP
     let rts ← owP *> brResultsP
     let ops ← opsP
@@ -218,7 +216,7 @@ private def brOpP : Parsec Char String Unit Operation := do
 
   partial def ifP : Parsec Char String Unit Operation := do
     discard $ string "if"
-    let id ← option' (attempt (ignoreP *> nameP))
+    let id ← option' (attempt (ignoreP *> idP))
     let pts ← owP *> nilParamsP
     let rts ← owP *> brResultsP
     let g ← getP
@@ -280,7 +278,7 @@ see https://webassembly.github.io/spec/core/valid/instructions.html#constant-exp
 -/
 def globalP : Parsec Char String Unit Global := do
   string "global" *> ignoreP
-  let oname ← option' (nameP <* ignoreP)
+  let oname ← option' (idP <* ignoreP)
   let gt ← globalTypeP <* ignoreP
   let init ← bracketed constP
   pure ⟨oname, gt, init⟩
@@ -288,7 +286,7 @@ def globalP : Parsec Char String Unit Global := do
 def funcP : Parsec Char String Unit Func := do
   -- either we have a trivial case `(func)` or we must parse whitespace
   discard $ string "func"
-  let oname ← option' (attempt (ignoreP *> nameP))
+  let oname ← option' (attempt (ignoreP *> idP))
   let oexp ← owP *> option' (attempt exportP <* owP)
   let ops ← option' nilParamsP
   let ps := optional ops []
@@ -304,10 +302,26 @@ def funcP : Parsec Char String Unit Func := do
 -- module, including the text preceding them.
 def moduleP : Parsec Char String Unit Module := bracketedWs do
   discard $ string "module"
-  let oname ← option' (attempt (ignoreP *> nameP))
+  let oname ← option' (attempt (ignoreP *> idP))
   let (globals, funs) ← owP *> mixOfTwoLispP globalP funcP
 
   pure $ Module.mk oname globals funs
 
+def t :=
+  "(module $test
+      (func)
+      (func $f (export \"(module \\\" (func))\")
+        (param $y f32) (param $y1 f32) (result f32)
+          (local $dummy i32)
+          (i32.const 42)
+          (local.set 2)
+          (local.get $y1)
+          (f32.add (local.get $y1))
+          (local.get $y)
+          (f32.add)
+      )
+  )"
+
+#eval parse moduleP t
 
 end textparser

@@ -2,7 +2,7 @@ import LSpec
 
 -- Now we import all the dependently typed stuff from Wasm project.
 import Wasm.Wast.Num
-import Wasm.Wast.Name
+import Wasm.Wast.Identifier
 
 -- Open LSpec namespace.
 open LSpec
@@ -253,7 +253,9 @@ def testOxxFloatsDontParse : TestSeq :=
   test "more wrong floats don't parse" $
     floats.foldl (fun acc x => acc && (mkFloat' s!"0xx{x}").isNone) true
 
-def names := [
+open Wasm.Wast.Identifier
+
+def ids := [
   "lol",
   "keque",
   "foo",
@@ -266,14 +268,14 @@ def names := [
   "_.+-*/\\^~=<>!?@#$%&|:'`4555sdgf"
 ]
 
-def testNames : TestSeq :=
-  test "correct names parse" $
-    names.foldl (fun acc x => acc && (Wasm.Wast.Name.mkName x).isSome) true
+def testIdentifiers : TestSeq :=
+  test "correct identifiers parse" $
+    ids.foldl (fun acc x => acc && (mkIdentifier x).isSome) true
 
-def testNamesDontParse : TestSeq :=
-  test "some wrong names don't parse" $
-    names.foldl
-      (fun acc x => acc && (Wasm.Wast.Name.mkName s!"{x}[]").isNone) true
+def testIdentifiersDontParse : TestSeq :=
+  test "some wrong identifiers don't parse" $
+    ids.foldl
+      (fun acc x => acc && (mkIdentifier s!"{x}[]").isNone) true
 
 def digitsWithHexDigits := [
   '0',
@@ -377,7 +379,7 @@ def main : IO UInt32 := do
     (test "-22_2_2.0 is -2222.0, not anything else" $ floatParsesTo (-2222.0) "-22_2_2.0") ++
     -- -0x3000.0e-3 is the same as -12288.0e-3 and -12288.0e-3 is the same as -12.288
     (test "-0x3000.0e-3 is -12.288, not anything else" $ floatParsesTo (-12.288) "-0x3000.0e-3") ++
-    testNames ++
-    testNamesDontParse ++
+    testIdentifiers ++
+    testIdentifiersDontParse ++
     testDigitsWithHexDigits ++
     testBadDigitsDontParse

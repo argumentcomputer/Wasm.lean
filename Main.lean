@@ -1,8 +1,7 @@
 import Wasm
 import Wasm.Engine
 import Wasm.Wast.AST
-import Wasm.Wast.Expr
-import Wasm.Wast.Name
+import Wasm.Wast.Identifier
 import Wasm.Wast.Num
 import Wasm.Wast.Parser
 import Wasm.Bytes
@@ -15,8 +14,7 @@ open Wasm.Engine
 open Wasm.Wast.AST.Func
 open Wasm.Wast.AST.Module
 open Wasm.Wast.AST.Operation
-open Wasm.Wast.Expr
-open Wasm.Wast.Name
+open Wasm.Wast.Identifier
 open Wasm.Wast.Num
 open Wasm.Wast.Parser
 open Wasm.Leb128
@@ -29,9 +27,10 @@ open Wasm.Wast.Num.Uni
 
 open Megaparsec.Parsec
 
-def sameName (_n₁ : Option $ Name x) (_n₂ : Option $ Name x) : Option (Name "kek") := mkName "kek"
-#eval sameName (mkName "lol") (mkName "lol")
--- #eval sameName (mkName "lol") (mkName "kek")
+def sameIdentifier (_n₁ : Option $ Identifier x) (_n₂ : Option $ Identifier x)
+                   : Option (Identifier "kek") := mkIdentifier "kek"
+#eval sameIdentifier (mkIdentifier "lol") (mkIdentifier "lol")
+-- #eval sameIdentifier (mkIdentifier "lol") (mkIdentifier "kek")
 
 def main : IO Unit := do
 

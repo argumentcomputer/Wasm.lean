@@ -81,6 +81,19 @@ def uWasmMods := [
             (i32.add (i32.const -1) (i32.const 1))
         )
     )",
+    "(module $test
+        (func)
+        (func $f (export \"(module \\\" (func))\")
+          (param $y f32) (param $y1 f32) (result f32)
+            (local $dummy i32)
+            (i32.const 42)
+            (local.set 2)
+            (local.get $y1)
+            (f32.add (local.get $y1))
+            (local.get $y)
+            (f32.add)
+        )
+    )",
     "(module
         (func (param $x_one i32) (param $three i32) (param $y_one i32)
           (result i32) (i32.add (i32.const 40) (i32.const 2)))
