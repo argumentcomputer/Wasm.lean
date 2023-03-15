@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+
+# With this bash script we're going to get the assets that are needed for testing and demoing Wasm.lean
+# Supported assets are the following:
+# - `sandbox.x86`
+sandbox_x86_url="https://github.com/cognivore/wasm-sandbox/releases/download/v1/wasm-sandbox"
+# - `sandbox.compile`
+# - `sandbox` (same as `sandbox.compile`)
+# - `testsuite`
+
+# Dependencies are the following:
+# - `git`
+# - `wget`
+# - `rustup`
+
+# Enjoy!
+
+##############################################################################################################
+
+# Let's start by printing help if needed and exiting
+
+verb="$1"
+shift
+
+# Check if the user asks for help
+
+if [ "$verb" = "-h" ] || [ "$verb" = "--help" ] || [ "$verb" = "help" ]; then
+    echo "Usage: $0 [sandbox.x86|sandbox.compile|sandbox|testsuite|all]"
+    exit 0
+fi
+
+# Check for Dependencies
+
+deps="git wget rustup"
+for dep in $deps; do
+    if ! command -v "$dep" &> /dev/null; then
+        echo "Error: $dep is not installed. You need the following dependencies: [ ${deps} ]"
+        exit 1
+    fi
+done
+
+# Helper variables that contain call site and script site.
+
+call_site="$(pwd)"
+# script_site="$(dirname "$(realpath "$0")")"
+
+# Helper function which traverses up until it hits the project root.
+# Project root is where the `lakefile.lean` is.
+
+function go_up() {
+    # Go up until we hit the project root
+    while [ ! -f "lakefile.lean" ]; do
+        # Check if we're already in some tricky directory like /home or /
+        # If so, exit.
+        case "$(pwd)" in
+            /) ;&
+            /home) ;&
+            /home/*) echo "Error: Could not find project root. Exiting."; exit 1 ;;
+        esac
+        cd ..
+    done
+}
+
+# I don't think there's any reason to not go_up on every invocation, so let's do it.
+
+go_up
+
+# Now let's define a "download scenario" function per asset
+
+function download_sandbox_x86() {
+    # Force-download the sandbox.x86 binary
+    wget "$sandbox_x86_url" -O wasm-sandbox.new && rm -f wasm-sandbox 2>/dev/null
+    mv wasm-sandbox{.new,}
+}
+
+function download_sandbox_compile() {
+    git clone https://github.com/cognivore/wasm-sandbox.git wasm-sandbox-repo
+    cd wasm-sandbox-repo || return
+    cargo build --release
+    cp target/release/wasm-sandbox ../
+    cd ..
+    rm -rf wasm-sandbox-repo
+}
+
+function download_testsuite() {
+    # Check if we have testuite cloned already.
+    if [ -d "Tests/Data/testsuite" ]; then
+        cd "Tests/Data/testsuite" || return
+        git pull
+    else
+        git clone https://github.com/WebAssembly/testsuite Tests/Data/testsuite
+    fi
+}
+
+function download_based_on_arch() {
+    # Check if we're on x86_64, then download precompiled binary.
+    if [ "$(uname -m)" != "x86_64" ]; then
+        download_sandbox_x86
+    else
+        download_sandbox_compile
+    fi
+}
+
+function download_all() {
+    download_based_on_arch
+    download_testsuite
+}
+
+function download_all_soft() {
+    # We don't need to compile stuff over a long time
+    if [ ! -f "wasm-sandbox" ]; then
+        download_based_on_arch
+    fi
+    download_testsuite
+}
+
+# Now we finally dispatch the verb, which isn't 'help':
+
+case "$verb" in
+    sandbox.x86) download_sandbox_x86 ;;
+    sandbox.compile) download_sandbox_compile ;;
+    sandbox) download_sandbox_compile ;;
+    testsuite) download_testsuite ;;
+    all) download_all ;;
+    *) download_all_soft ;;
+esac
+
+cd "$call_site" || exit 4

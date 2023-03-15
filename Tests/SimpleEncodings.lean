@@ -1,16 +1,15 @@
 import LSpec
+import Wasm.Tests
 
 import Megaparsec.Parsec
 import Wasm.Wast.Parser
 
 open LSpec
+open Wasm.Tests
 
 open Megaparsec.Parsec
 open Wasm.Wast.Parser
 
-open Megaparsec.Errors.Bundle in
-inductive ParseFailure (src : String) (e : ParseErrorBundle Char String Unit) : Prop
-instance : Testable (ParseFailure src e) := .isFailure s!"Parsing:\n{src}\n{e}"
 
 def testParse (parser: Parsec Char String Unit α)
               (src : String) (y : α) [BEq α] [ToString α] : TestSeq :=
