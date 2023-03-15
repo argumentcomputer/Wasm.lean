@@ -528,6 +528,10 @@ mutual
         else throwEE .not_enough_stuff_on_stack
     | .br_if l => checkGet_i32 .from_stack fun n =>
         do if n ≠ 0 then runOp (.br l)
+    | .br_table ls ld => checkGet_i32 .from_stack fun n =>
+        if let .some l := ls.get? (n.unsign 32).natAbs
+          then runOp (.br l)
+          else runOp (.br ld)
 end
 
 def runDo (s : Store m)

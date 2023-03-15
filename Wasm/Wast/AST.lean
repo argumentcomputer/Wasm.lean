@@ -195,6 +195,7 @@ mutual
             → List Operation → List Operation → Operation
   | br : BlockLabelId → Operation
   | br_if : BlockLabelId → Operation
+  | br_table : List BlockLabelId → BlockLabelId → Operation
 end
 
 mutual
@@ -273,6 +274,7 @@ mutual
       s!"(Operation.if {id} {pts} {rts} {getToString g} {thens.map operationToString} {elses.map operationToString})"
     | .br sl => s!"(Operation.br {sl})"
     | .br_if sl => s!"(Operation.br_if {sl})"
+    | .br_table sls sdef => s!"(Operation.br_table {sls} {sdef})"
 
 end
 

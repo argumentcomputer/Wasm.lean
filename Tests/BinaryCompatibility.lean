@@ -222,6 +222,17 @@ def modsControl :=
           (i32.const 0)
         )
      ))"
+  , "(module (func (export \"singleton\") (param i32) (result i32)
+        (block
+          (block
+            (local.get 0)
+            (br_table 1 0)
+            (i32.const 21)
+          )
+          (i32.const 20)
+        )
+        (i32.const 22)
+     ))"
   ]
 
 def modsLocal :=

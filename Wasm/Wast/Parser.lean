@@ -93,9 +93,8 @@ def exportP : Parsec Char String Unit String := bracketed $
   let export_label := Char.between '\"' '\"' $ many' $ noneOf "\"".data
   String.mk <$> export_label
 
-private def anonLocalsP : Parsec Char String Unit (List Local) := do
-  let ts ← sepEndBy' typeP owP
-  pure $ ts.map (Local.mk .none)
+private def anonLocalsP : Parsec Char String Unit (List Local) :=
+  List.map (Local.mk .none) <$> vecP typeP
 
 private def identifiedLocalP : Parsec Char String Unit (List Local) := do
   let id ← nameP <* ignoreP
@@ -126,7 +125,7 @@ def singleResultP : Parsec Char String Unit Type' := bracketed $
   string "result" *> ignoreP *> typeP
 
 def resultP : Parsec Char String Unit (List Type') :=
-  string "result" *> ignoreP *> sepEndBy' typeP owP
+  string "result" *> ignoreP *> vecP typeP
 
 def brResultsP : Parsec Char String Unit (List Type') :=
   List.join <$> manyLispP resultP
@@ -156,6 +155,14 @@ private def globalOpP : Parsec Char String Unit Operation := do
   let op ← (string "global.get" *> pure Operation.global_get)
        <|> (string "global.set" *> pure .global_set)
   ignoreP *> op <$> globalLabelP
+
+private def brTableP : Parsec Char String Unit Operation := do
+  string "br_table" *> ignoreP
+  let moreToCome?P p := lookAhead (ignoreP *> p)
+  let notTheLastP p := attempt (p <* moreToCome?P p)
+  let allButOneP ← vecP (notTheLastP structLabelP)
+  let theDefault ← structLabelP
+  pure $ Operation.br_table allButOneP theDefault
 
 private def brOpP : Parsec Char String Unit Operation := do
   let op ← (string "br_if" *> pure Operation.br_if)
@@ -187,7 +194,7 @@ private def brOpP : Parsec Char String Unit Operation := do
     iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
     iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
     localOpP <|> globalOpP <|>
-    blockOpP <|> ifP <|> brOpP
+    blockOpP <|> ifP <|> brTableP <|> brOpP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP

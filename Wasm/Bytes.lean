@@ -541,6 +541,8 @@ mutual
       bg ++ b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
     | .br bl => b 0x0c ++ extractBlockLabelId bl
     | .br_if bl => b 0x0d ++ extractBlockLabelId bl
+    | .br_table bls bld =>
+      b 0x0e ++ mkVecM bls extractBlockLabelId ++ extractBlockLabelId bld
 
 
 end

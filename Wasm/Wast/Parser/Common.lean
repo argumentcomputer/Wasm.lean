@@ -46,6 +46,8 @@ def ignoreP : Parsec Char String Unit Unit :=
 def owP : Parsec Char String Unit Unit :=
   discard $ many' spaceP
 
+def vecP (p : Parsec Char String Unit α) : Parsec Char String Unit (List α) := sepEndBy' p ignoreP
+
 def specials : List Char := " ()".data
 
 def notSpecialP : Parsec Char String Unit Char :=
