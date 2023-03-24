@@ -2,13 +2,13 @@
  "packagesDir": "./lake-packages",
  "packages":
  [{"git":
-   {"url": "https://github.com/yatima-inc/Megaparsec.lean",
+   {"url": "https://github.com/lurk-lab/Megaparsec.lean",
     "subDir?": null,
     "rev": "8859f129d199d5be82962140e9b886c0fd49e89c",
     "name": "Megaparsec",
     "inputRev?": "8859f129d199d5be82962140e9b886c0fd49e89c"}},
   {"git":
-   {"url": "https://github.com/yatima-inc/YatimaStdLib.lean",
+   {"url": "https://github.com/lurk-lab/YatimaStdLib.lean",
     "subDir?": null,
     "rev": "9a49b49fc35a960ee333b47c4960390543defabd",
     "name": "YatimaStdLib",
@@ -20,7 +20,7 @@
     "name": "Straume",
     "inputRev?": "568d412316c412433029046f899033d5839f7304"}},
   {"git":
-   {"url": "https://github.com/yatima-inc/LSpec",
+   {"url": "https://github.com/lurk-lab/LSpec",
     "subDir?": null,
     "rev": "88f7d23e56a061d32c7173cea5befa4b2c248b41",
     "name": "LSpec",
