@@ -71,6 +71,7 @@ function download_sandbox_x86() {
     # Force-download the sandbox.x86 binary
     wget "$sandbox_x86_url" -O wasm-sandbox.new && rm -f wasm-sandbox 2>/dev/null
     mv wasm-sandbox{.new,}
+    chmod +x wasm-sandbox
 }
 
 function download_sandbox_compile() {
