@@ -1,6 +1,6 @@
 # Wasm tools for lean
 
-Webassembly tools to be implemented in Lean.
+Webassembly tools to be implemented in Lean. Now hosted in Lurk-lab repos!
 
 To get the reference test suite, please run:
 
