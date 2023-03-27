@@ -3,6 +3,8 @@ import Wasm.Wast.Radix
 import Wasm.Wast.Sign
 import Wasm.Wast.Parser.Common
 
+import Printiest.Doc
+
 import Megaparsec.Common
 import Megaparsec.Errors
 import Megaparsec.Errors.Bundle
@@ -11,6 +13,8 @@ import Megaparsec.MonadParsec
 import YatimaStdLib.NonEmpty
 
 open Wasm.Wast.Parser.Common
+
+open Doc
 
 open Megaparsec
 open Megaparsec.Common
@@ -266,6 +270,10 @@ structure ConstInt where
   bs : BitSize
   val : Int
   deriving BEq
+
+def ConstInt.pretty (x : ConstInt) : Doc :=
+    let inner := Doc.group #[ "ConstInt.mk", x.bs.pretty, s!"{x.val}" ] " "
+    "(" <> inner <> ")"
 
 instance : ToString ConstInt where
   toString x := "(ConstInt.mk " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
