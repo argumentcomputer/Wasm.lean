@@ -20,6 +20,9 @@ require Megaparsec from git
 require Yatima from git
   "https://github.com/yatima-inc/yatima-lang" @ "e604a1178942b68ef0c1c9b11ea9b74ddf1943e0"
 
+require Printiest from git
+  "https://github.com/yatima-inc/printiest" @ "15ad9af7cd9b57b6ab948942a14f7900f473ff41"
+
 @[default_target]
 lean_exe wasm {
   supportInterpreter := true

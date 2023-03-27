@@ -3,6 +3,8 @@ import Megaparsec.Common
 import Megaparsec.Errors.Bundle
 import Megaparsec.Parsec
 
+import Printiest.Doc
+
 import Wasm.Wast.BitSize
 import Wasm.Wast.Name
 import Wasm.Wast.Num
@@ -16,9 +18,16 @@ open Megaparsec.Errors.Bundle
 open Megaparsec.Parsec
 open MonadParsec
 
+open Doc
+
 open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int
+
+def o2s (x : Option String) : String :=
+  match x with
+  | .none => "none"
+  | .some s => s!"(some \"{s}\")"
 
 namespace Wasm.Wast.Code
 
@@ -28,6 +37,11 @@ inductive Type' where
 | i : BitSize → Type'
 -- | v : BitSizeSIMD → Type'
   deriving BEq
+
+partial def Type'.pretty (t : Type') : Doc :=
+  let inner := match t with
+  | .i b => "Type'.i" <> " " <> b.pretty
+  Doc.group #[ "(", inner, ")" ] ""
 
 instance : ToString Type' where
   toString x := match x with
@@ -58,8 +72,15 @@ structure Local where
   type : Type' -- TODO: We need to pack lists with different related types'. For that we need something cooler than List, but since we're just coding now, we'll do it later.
   deriving BEq
 
+partial def Local.pretty (l : Local) : Doc :=
+  let named := match l.name with
+  | .none => "none"
+  | .some s => s!"(some \"{s}\")"
+  let inner := Doc.group #[ "Local.mk", s!"{l.index}", named, l.type.pretty ] " "
+  Doc.group #[ "(", inner, ")" ] ""
+
 instance : ToString Local where
-  toString x := s!"(Local.mk {x.index} {x.type})"
+  toString x := s!"(Local.mk {x.index} {o2s x.name} {x.type})"
 
 end Local
 
@@ -130,6 +151,15 @@ mutual
 end
 
 mutual
+  partial def Get'.pretty (x : Get') : Doc :=
+    let inner := match x with
+    | .from_stack => "Get'.from_stack"
+    | .from_operation o => Doc.group #[ "Get'.from_operation", " ", o.pretty ] " "
+    | .by_name n => Doc.group #[ "Get'.by_name", n.pretty ] " "
+    | .by_index i => Doc.group #[ "Get'.by_index", i.pretty ] " "
+    | .i_const i => Doc.group #[ "Get'.i_const", i.pretty ] " "
+    Doc.group #[ "(", inner, ")" ] ""
+
   partial def getToString (x : Get') : String :=
     "(Get'" ++ (
       match x with
@@ -140,8 +170,18 @@ mutual
       | .i_const i => s!".i_const {i}"
     ) ++ ")"
 
+  partial def Operation.pretty (x : Operation) : Doc :=
+    let inner := match x with
+    | .add a => Doc.group #[ "Operation.add", a.pretty ] " "
+    Doc.group #[ "(", inner, ")" ] ""
+
   partial def operationToString : Operation → String
     | ⟨y⟩ => s!"(Operation.add {addToString y})"
+
+  partial def Add'.pretty (x : Add') : Doc :=
+    let inner := match x with
+    | .add t g1 g2 => Doc.group #[ "Add'.add", t.pretty, g1.pretty, g2.pretty ] " " -- "Add'.add" <> " " <> t.pretty <> " " <> g1.pretty <> " " <> g2.pretty
+    Doc.group #[ "(", inner, ")" ] ""
 
   partial def addToString : Add' → String
     | ⟨t, g1, g2⟩ => s!"(Add'.add {t} {getToString g1} {getToString g2})"
@@ -211,8 +251,31 @@ structure Func where
   locals : List Local
   ops : List Operation
 
+partial def Func.pretty (x : Func) : Doc :=
+  let named := match x.name with
+  | .none => "none"
+  | .some n => Doc.Text s!"(some \"{n}\")"
+  let exported := match x.export_ with
+  | .none => "none"
+  | .some n => Doc.Text s!"(some \"{n}\")"
+  let paramsd := Doc.group (x.params.toArray.map Local.pretty) ", "
+  let resultd := Doc.group (x.result.toArray.map Type'.pretty) ", "
+  let localsd := Doc.group (x.locals.toArray.map Local.pretty) ", "
+  let opsd := Doc.group (x.ops.toArray.map Operation.pretty) ", "
+  let inner := Doc.group #[
+    Doc.Text "Func.mk",
+    named,
+    Doc.group #[ "[", exported, "]" ] " " GroupKind.horizontalCode,
+    Doc.group #[ "[", paramsd, "]" ] " " GroupKind.horizontalCode,
+    Doc.group #[ "[", resultd, "]" ] " " GroupKind.horizontalCode,
+    Doc.group #[ "[", localsd, "]" ] " " GroupKind.horizontalCode,
+    Doc.group #[ "[", opsd, "]" ] " " GroupKind.horizontalCode
+  ] " "
+  Doc.group #[ "(", inner, ")" ] ""
+
 instance : ToString Func where
-  toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.result} {x.locals} {x.ops})"
+  toString x :=
+    s!"(Func.mk {o2s x.name} {o2s x.export_} {x.params} {x.result} {x.locals} {x.ops})"
 
 def exportP : Parsec Char String Unit String := do
   Char.between '(' ')' do
@@ -320,8 +383,18 @@ structure Module where
   name : Option String
   func : List Func
 
+partial def Module.pretty (m : Module) : Doc :=
+  let named := match m.name with
+  | .none => Doc.Text "none"
+  | .some n => Doc.Text s!"(some \"{n}\")"
+  let funcd := Doc.group (m.func.toArray.map Func.pretty) ", "
+  let inner := Doc.group #["Module.mk", named, "[", funcd, "]"] " "
+  Doc.group #[ "(", inner, ")" ] ""
+
+
 instance : ToString Module where
   toString x := s!"(Module.mk {x.name} {x.func})"
+  -- toString x := x.pretty.renderString 120
 
 def moduleP : Parsec Char String Unit Module := do
   Char.between '(' ')' do

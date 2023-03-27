@@ -3,10 +3,14 @@ import Megaparsec.Char
 import Megaparsec.Common
 import Megaparsec.Parsec
 
+import Printiest.Doc
+
 open Megaparsec
 open Megaparsec.Char
 open Megaparsec.Common
 open Megaparsec.Parsec
+
+open Doc
 
 
 /- Webassembly works on 32 and 64 bit ints and floats.
@@ -68,6 +72,15 @@ instance : Ord BitSize where
 /- We rely on numeric ordering rather than on derived ordering based on the order of constructors. -/
 instance : Ord BitSizeSIMD where
   compare x y := Ord.compare (x : Nat) (y : Nat)
+
+def BitSize.pretty (bs : BitSize) : Doc :=
+  -- let inner := match bs with
+  -- | .thirtyTwo => Doc.group #[Doc.Text "32",  ":", "BitSize"] " "
+  -- | .sixtyFour => Doc.group #[Doc.Text "64",  ":", "BitSize"] " "
+  let inner := match bs with
+  | .thirtyTwo => "32 : BitSize"
+  | .sixtyFour => "64 : BitSize"
+  "(" <> inner <> ")"
 
 instance : ToString BitSize where
   toString x := "(" ++ toString (x : Nat) ++ " : BitSize)"
