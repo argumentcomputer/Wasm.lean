@@ -123,7 +123,7 @@ TODO: change `NumUniT` to a full value type when we add vectors.
 -/
 structure GlobalInstance where
   name  : Option String
-  val   : Option NumUniT
+  val   : NumUniT
   type  : GlobalType
 deriving BEq
 
@@ -136,7 +136,7 @@ def instantiateGlobals (gs : List Global) : Globals :=
   gs.map fun g =>
     let val := match g.init with
     | .const _t cv => cv
-    | _ => unreachable! -- TODO: global.get case
+    | _ => sorry -- TODO: global.get case
     ⟨g.name, val, g.type⟩
 
 def findGlobalByName? (gs : Globals) (x : String) : Option GlobalInstance :=
@@ -212,7 +212,7 @@ TODO: change `NumUniT` to a full value type when we add vectors.
 -/
 structure LocalEntry where
   name : Option String
-  val  : Option NumUniT
+  val  : NumUniT
   type : Type'
 deriving BEq
 
@@ -221,10 +221,16 @@ open LocalEntry
 
 abbrev Locals := List LocalEntry
 
+/--
+`local` variables are initialised with their default values,
+i.e. `0` for number types.
+ -/
+def initLocal (l : Local) : LocalEntry := ⟨l.name, defNum l.type, l.type⟩
+
 def findLocalByName? (ls : Locals) (x : String) : Option LocalEntry :=
   ls.find? (.some x == ·.name)
 
-/-
+/--
 The `List Operation` in the `Continuation` type represents an optional 'final'
 sequence of instructions – which should replace the rest of the instructions
 in the currently executed sequence, which in turn emulates the continuation
@@ -238,7 +244,7 @@ Semantics:
 -------------/
 abbrev Continuation := List Operation
 
-/-
+/--
 This is a readability helper monad stack abbreviation for use in handling
 flow correctly when executing branch instructions like `br` and `br_if`,
 as well as just for easy handling of the stack and possible errors.
@@ -282,7 +288,7 @@ def checkreplaceLocals (replace : Locals → LocalEntry → LocalEntry → Local
                        : StackEntry → Option LocalEntry → EngineM PUnit
   | se@(.num n), .some l =>
     if stackEntryTypecheck l.type se
-    then modifyLocals (replace · l {l with val := .some n})
+    then modifyLocals (replace · l {l with val := n})
     else throwEE .param_type_incompatible
   | .num _, _ => throwEE err
   | _, _ => throwEE .typecheck_failed
@@ -299,7 +305,7 @@ def checkreplaceGlobals
     if !g.type.mut? then throwEE .cant_mutate_const_global
     else
       if stackEntryTypecheck g.type.type se
-      then modifyGlobals (replace · g {g with val := .some n})
+      then modifyGlobals (replace · g {g with val := n})
       else throwEE .param_type_incompatible
   | .num _, _ => throwEE err
   | _, _ => throwEE .typecheck_failed
@@ -483,11 +489,11 @@ mutual
       | .negSucc _ => x >>> ((bs : Int) + k)
     | .rotr _ _ _ => throwEE .typecheck_failed
     | .local_get (.by_index idx) => do match (←getLocals).get? idx with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_id_missing idx
     | .local_get (.by_name name) => do
       match findLocalByName? (←getLocals) name with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_name_missing name
     | .local_set (.by_index idx) => do
           -- we can't use locals.replace because that one replaces
@@ -501,11 +507,11 @@ mutual
       | val@(.num _) => push val; push val; runOp $ .local_set l
       | _ => throwEE .typecheck_failed
     | .global_get (.by_index idx) => do match (←getGlobals).get? idx with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .global_with_given_id_missing idx
     | .global_get (.by_name name) => do
       match findGlobalByName? (←getGlobals) name with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .global_with_given_name_missing name
     | .global_set (.by_index idx) => do
         checkreplaceGlobals (fun globals _ => replaceNth globals idx)
@@ -548,7 +554,7 @@ def runDo (s : Store m)
     | _ :: _ => .error .param_type_incompatible
   let pσ ← f.params.foldl bite $ .ok (σ.es, [])
   let locals := (f.params ++ f.locals).enum.map
-    fun l => ⟨l.2.name, pσ.2.get? l.1, l.2.type⟩
+    fun l => ⟨l.2.name, pσ.2.getD l.1 (defNum l.2.type), l.2.type⟩
   let ses ← (f.ops.forM runOp).run pσ.1 locals s.globals
   pure (ses.2, Stack.mk ses.1.1.2)
 
