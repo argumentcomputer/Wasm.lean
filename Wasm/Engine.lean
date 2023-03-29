@@ -319,7 +319,7 @@ def checkLabel (l : BlockLabelId) (f : BlockLabel → Nat → EngineM PUnit) := 
 from the stack. This passes all block label type stack entries to the inner
 stack, while preserving those labels "above" the last needed value in the
 outer stack. -/
-partial def populateParams (ps : List Local)
+partial def populateBlockParams (ps : List Local)
             : EngineM (List StackEntry) := do
   let rec go is
     | []    => pure is.toList
@@ -335,6 +335,22 @@ partial def populateParams (ps : List Local)
   let restOfLabels := stackLabels ⟨←get⟩
   pure $ innerStack ++ restOfLabels
 
+/-- Taking a list of "in" types from the params list, get enough _values_
+from the stack. Per spec, this means if we hit a label, there's not
+enough values on the stack to populate the params. -/
+partial def populateFuncParams (ps : List Local)
+            : EngineM Locals := do
+  let rec go is
+    | []    => pure is.toList
+    | p::ps => do
+      match ←bite with
+      | .label _ => throwEE .not_enough_stuff_on_stack
+      | n@(.num i) =>
+        if stackEntryTypecheck p.type n
+          then go (is.push ⟨p.name, i, p.type⟩) ps
+          else throwEE .param_type_incompatible
+
+  go #[] ps
 
 def enf2Nums1Type : StackEntry → StackEntry → EngineM Type'
   | .num (.i ⟨32, _⟩), .num (.i ⟨32, _⟩) => pure $ .i 32
@@ -412,7 +428,7 @@ mutual
          This means it might be interspersed with labels.
       2. The rest of the labels currently reachable. -/
       let innerStack :=
-        .label contLabel :: shadowLabel (←populateParams ps) contLabel.name
+        .label contLabel :: shadowLabel (←populateBlockParams ps) contLabel.name
 
       -- Block params aren't reachable by variable instructions, so we don't
       -- change the `Locals` part of `EngineM`.
@@ -538,38 +554,21 @@ mutual
         if let .some l := ls.get? (n.unsign 32).natAbs
           then runOp (.br l)
           else runOp (.br ld)
+
+  partial def runFunc (f : FunctionInstance m) : EngineM PUnit := do
+    let σ := [] -- frame on stack?
+    let locals := (←populateFuncParams f.params) ++ f.locals.map initLocal
+    let (res, _) ← f.ops.forM runOp σ locals
+    if resultsTypecheck f.results res.2
+      then pile res.2
+      else throwEE .stack_incompatible_with_results
+
 end
 
-def runDo (s : Store m)
-          (f : FunctionInstance m)
-          (σ : Stack)
-          : Except EngineErrors (Globals × Stack) := do
-  let bite acc x := do
-    match (←acc).1 with
-    | [] => .error .not_enough_stuff_on_stack
-    | .num y :: rest =>
-      if stackEntryTypecheck x.type $ .num y
-      then .ok (rest, y :: (←acc).2)
-      else .error .param_type_incompatible
-    | _ :: _ => .error .param_type_incompatible
-  let pσ ← f.params.foldl bite $ .ok (σ.es, [])
-  let locals := (f.params ++ f.locals).enum.map
-    fun l => ⟨l.2.name, pσ.2.getD l.1 (defNum l.2.type), l.2.type⟩
-  let ses ← (f.ops.forM runOp).run pσ.1 locals s.globals
-  pure (ses.2, Stack.mk ses.1.1.2)
-
--- This is sort of a debug function, returning the full resulting stack instead
--- of just the values specified in the result fields.
-def runFullStack (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors (Globals × Stack) :=
-  match s.func.get? fid with
-  | .none => .error .function_not_found
-  | .some f => runDo s f σ
-
-def run (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors (Globals × Stack) :=
+def run (s : Store m) (fid : Nat) (σ : Stack)
+        : Except EngineErrors (Globals × Stack) :=
   match s.func.get? fid with
   | .none => .error .function_not_found
   | .some f => do
-    let res ← runDo s f σ
-    if resultsTypecheck f.results res.2.es
-      then pure res
-      else throw .stack_incompatible_with_results
+    let ses ← runFunc f σ.es [] s.globals
+    pure (ses.2, Stack.mk ses.1.1.2)
