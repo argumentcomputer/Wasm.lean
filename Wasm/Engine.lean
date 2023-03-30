@@ -230,6 +230,16 @@ def initLocal (l : Local) : LocalEntry := ⟨l.name, defNum l.type, l.type⟩
 def findLocalByName? (ls : Locals) (x : String) : Option LocalEntry :=
   ls.find? (.some x == ·.name)
 
+namespace ActivationFrame
+
+structure Frame where
+  arity  : Nat
+  locals : Locals
+deriving BEq, Inhabited
+
+end ActivationFrame
+open ActivationFrame
+
 /--
 The `List Operation` in the `Continuation` type represents an optional 'final'
 sequence of instructions – which should replace the rest of the instructions
@@ -265,7 +275,7 @@ The monads in the stack:
 -/
 abbrev EngineM m :=
   ExceptT Continuation $ StateT (List StackEntry) $
-    StateT Locals $ StateT (Store m) $ Except EngineErrors
+    StateT Frame $ StateT (Store m) $ Except EngineErrors
 
 instance : Inhabited (EngineM m α) where
   default := throw default
@@ -281,8 +291,15 @@ def pile : List StackEntry → EngineM m PUnit := fun xs => do set $ xs ++ (←g
 def σmap : (List StackEntry → List StackEntry) → EngineM m PUnit :=
   fun f => do set $ f (←get)
 
-def getLocals : EngineM m Locals := getThe Locals
-def modifyLocals (f : Locals → Locals) : EngineM m PUnit := modifyThe Locals f
+def getFrame : EngineM m Frame := getThe Frame
+def modifyFrame (f : Frame → Frame) : EngineM m PUnit := modifyThe Frame f
+def setFrame (ls : Frame) : EngineM m PUnit := modifyFrame fun _ => ls
+
+def getArity : EngineM m Nat := Frame.arity <$> getFrame
+
+def getLocals : EngineM m Locals := Frame.locals <$> getFrame
+def modifyLocals (f : Locals → Locals) : EngineM m PUnit :=
+  modifyFrame fun a => {a with locals := f a.locals}
 def setLocals (ls : Locals) : EngineM m PUnit := modifyLocals fun _ => ls
 
 def checkreplaceLocals (replace : Locals → LocalEntry → LocalEntry → Locals)
@@ -564,9 +581,9 @@ mutual
           else runOp (.br ld)
 
   partial def runFunc (f : FunctionInstance m) : EngineM m PUnit := do
-    let σ := [] -- frame on stack?
+    let σ := []
     let locals := (←populateFuncParams f.params) ++ f.locals.map initLocal
-    let (res, _) ← f.ops.forM runOp σ locals
+    let (res, _) ← f.ops.forM runOp σ ⟨f.results.length, locals⟩
     if resultsTypecheck f.results res.2
       then pile res.2
       else throwEE .stack_incompatible_with_results
@@ -578,5 +595,5 @@ def run (s : Store m) (fid : Nat) (σ : Stack)
   match s.func.get? fid with
   | .none => .error .function_not_found
   | .some f => do
-    let ses ← runFunc f σ.es [] s
+    let ses ← runFunc f σ.es default s
     pure (ses.2, Stack.mk ses.1.1.2)
