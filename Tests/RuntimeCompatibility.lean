@@ -46,7 +46,15 @@ def basics :=
      )"
   ]
 
+def modsControl :=
+  [
+    "(module
+        (func $const-i32 (result i32) (i32.const 0x132))
+        (func (export \"main\") (result i32) (call $const-i32))
+     )"
+  ]
+
 def main : IO UInt32 := do
   match (← doesWasmSandboxRun?) with
-  | .ok _ => withWasmSandboxRun runWasmTestSeq [ basics ]
+  | .ok _ => withWasmSandboxRun runWasmTestSeq [ basics, modsControl ]
   | _ => withWasmSandboxFail

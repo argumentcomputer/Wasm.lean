@@ -7,6 +7,7 @@ import YatimaStdLib.Int
 open Wasm.Wast.AST
 open Wasm.Wast.AST.Func
 open Wasm.Wast.AST.Global
+open Wasm.Wast.AST.FuncLabel
 open Wasm.Wast.AST.BlockLabel
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Module
@@ -29,7 +30,7 @@ inductive EngineErrors where
 | global_with_given_id_missing : Nat → EngineErrors
 | cant_mutate_const_global
 | label_not_found
-| function_not_found
+| function_not_found : FuncId → EngineErrors
 | other -- JACKAL
 
 instance : ToString EngineErrors where
@@ -44,7 +45,7 @@ instance : ToString EngineErrors where
   | .global_with_given_id_missing i => s!"global #{i} not found"
   | .global_with_given_name_missing n => s!"global ``{n}'' not found"
   | .cant_mutate_const_global => "cannot change value of a const global"
-  | .function_not_found => s!"function not found"
+  | .function_not_found fid => s!"function not found: {fid}"
   | .label_not_found => s!"label not found"
   | .other => "non-specified"
 
@@ -174,13 +175,19 @@ structure Store (m : Module) where
 def mkStore (m : Module) : Store m :=
   ⟨instantiateGlobals m.globals, instantiateFs m⟩
 
-def funcByName (s : Store m) (x : String) : Option $ FunctionInstance m :=
-  match s.func.filter (fun f => f.export_ == .some x) with
-  | y :: [] => .some y
-  | _ => .none
+def exportedFuncByName (s : Store m) (x : String)
+                       : Option $ FunctionInstance m :=
+  s.func.find? (·.export_ = .some x)
 
-def fidByName (s : Store m) (x : String) : Option Nat :=
-  funcByName s x >>= pure ∘ FunctionInstance.index
+def exportedFidByName (s : Store m) (x : String) : Option Nat :=
+  FunctionInstance.index <$> exportedFuncByName s x
+
+/-- Find a `FunctionInstance` by a function id/address "getter".
+Note that in case of by name lookup this searches function
+_symbolic identifiers_ instead of _export_ names. -/
+def fetchFAddress (s : Store m) : FuncId → Option (FunctionInstance m)
+  | .by_index i => s.func.get? i
+  | .by_name name => s.func.find? (·.name = .some name)
 
 def stackEntryTypecheck (x : Type') (y : StackEntry) :=
   match y with
@@ -195,8 +202,8 @@ def stackEntryTypecheck (x : Type') (y : StackEntry) :=
       | _ => false
   | .label _ => false
 
--- Checks that the given numerical values correspond to the given
--- types both in the type of each respective value and in length.
+/-- Checks that the given numerical values correspond to the given
+types both in the type of each respective value and in length. -/
 def resultsTypecheck : List Type' → List StackEntry → Bool
   | [], [] => true
   | t :: ts, e :: es =>
@@ -579,6 +586,9 @@ mutual
         if let .some l := ls.get? (n.unsign 32).natAbs
           then runOp (.br l)
           else runOp (.br ld)
+    | .call fi => do match fetchFAddress (←getStore) fi with
+      | .none => throwEE $ .function_not_found fi
+      | .some f => runFunc f
 
   partial def runFunc (f : FunctionInstance m) : EngineM m PUnit := do
     let σ := []
@@ -593,7 +603,7 @@ end
 def run (s : Store m) (fid : Nat) (σ : Stack)
         : Except EngineErrors (Store m × Stack) :=
   match s.func.get? fid with
-  | .none => .error .function_not_found
+  | .none => .error $ .function_not_found (.by_index fid)
   | .some f => do
     let ses ← runFunc f σ.es default s
     pure (ses.2, Stack.mk ses.1.1.2)

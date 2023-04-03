@@ -70,7 +70,7 @@ def main : IO Unit := do
     IO.println s!"!!!!!!!!!!!! DEMO OF WASM LEAN RUNTIME WOW !!!!!!!!!!!!!"
     IO.println s!"RUNNING FUNCTION `main` FROM A MODULE WITH REPRESENTATION:\n{m}"
     let store := mkStore m
-    let ofid := fidByName store "main"
+    let ofid := exportedFidByName store "main"
     let uni_num_zero := NumUniT.i $ ConstInt.mk 32 0
     let se_zero := StackEntry.StackEntry.num uni_num_zero
     IO.println $ match ofid with

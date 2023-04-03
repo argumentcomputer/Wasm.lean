@@ -35,6 +35,7 @@ section textparser
 open Type'
 open Local
 open Global
+open FuncLabel
 open BlockLabel
 open Operation
 open Func
@@ -81,6 +82,10 @@ def localLabelP : Parsec Char String Unit LocalLabel :=
   .by_name <$> idP
 
 def globalLabelP : Parsec Char String Unit GlobalLabel :=
+  .by_index <$> (hexP <|> decimalP) <|>
+  .by_name <$> idP
+
+def funcIdP : Parsec Char String Unit FuncId :=
   .by_index <$> (hexP <|> decimalP) <|>
   .by_name <$> idP
 
@@ -167,6 +172,10 @@ private def brOpP : Parsec Char String Unit Operation := do
        <|> (string "br" *> pure .br)
   ignoreP *> op <$> structLabelP
 
+private def callP : Parsec Char String Unit Operation := do
+  let op ← string "call" *> pure .call
+  ignoreP *> op <$> funcIdP
+
  mutual
 
   partial def getP : Parsec Char String Unit Get' :=
@@ -192,7 +201,7 @@ private def brOpP : Parsec Char String Unit Operation := do
     iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
     iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
     localOpP <|> globalOpP <|>
-    blockOpP <|> ifP <|> brTableP <|> brOpP
+    blockOpP <|> ifP <|> brTableP <|> brOpP <|> callP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP
