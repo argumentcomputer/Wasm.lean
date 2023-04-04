@@ -553,6 +553,7 @@ mutual
     | .br_table bls bld =>
       b 0x0e ++ mkVecM bls extractBlockLabelId ++ extractBlockLabelId bld
     | .call fi => b 0x10 ++ extractFuncId fi
+    | .return => pure $ b 0x0f
 
 
 end

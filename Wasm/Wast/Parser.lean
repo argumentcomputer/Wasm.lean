@@ -176,6 +176,9 @@ private def callP : Parsec Char String Unit Operation := do
   let op ← string "call" *> pure .call
   ignoreP *> op <$> funcIdP
 
+private def returnP : Parsec Char String Unit Operation :=
+  string "return" *> pure .return
+
  mutual
 
   partial def getP : Parsec Char String Unit Get' :=
@@ -201,7 +204,7 @@ private def callP : Parsec Char String Unit Operation := do
     iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
     iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
     localOpP <|> globalOpP <|>
-    blockOpP <|> ifP <|> brTableP <|> brOpP <|> callP
+    blockOpP <|> ifP <|> brTableP <|> brOpP <|> callP <|> returnP
 
   partial def opsP : Parsec Char String Unit (List Operation) := do
     sepEndBy' opP owP

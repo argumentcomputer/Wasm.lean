@@ -247,6 +247,10 @@ deriving BEq, Inhabited
 end ActivationFrame
 open ActivationFrame
 
+/-- A "tag" inductive to simulate a `return` instruction. -/
+inductive Return where | return
+  deriving Inhabited, BEq
+
 /--
 The `List Operation` in the `Continuation` type represents an optional 'final'
 sequence of instructions – which should replace the rest of the instructions
@@ -272,23 +276,31 @@ The monads in the stack:
 - `Except EngineErrors` throws _real_ execution errors. It's on the very bottom
   of the stack because we don't care about anything else, like recovery, if
   there's an engine error.
-- `StateT (List StackEntry)` carries the stack around for ease of handling.
+- `StateT` monads carry mutable values around for ease of handling:
+    - `StateT Frame` carries the current function arity and its locals.
+    - `StateT (Store m)` carries the function instances we might need for `call`
+  and the module `GlobalInstance`s.
+    - `StateT (List StackEntry)` carries the stack: numerical values and block
+    labels. Note that we don't put activation frames on stack like in the spec.
 - `ExceptT Continuation` doesn't handle real exceptions, instead it serves as
-  a way to throw continuations through the execution cycle like described above.
-  It's the outermost transformer because when a continuation throw does occur,
+  a way to throw structured control instruction continuations through the
+  execution cycle like described above.
+  It's the outer transformer because when a continuation throw does occur,
   we want both the `Continuation` and the `List StackEntry` that comes with it
   from the `StateT` layer.
+- `ExceptT Return` is the same as above, but for function invocations.
 
 -/
 abbrev EngineM m :=
-  ExceptT Continuation $ StateT (List StackEntry) $
+  ExceptT Return $ ExceptT Continuation $ StateT (List StackEntry) $
     StateT Frame $ StateT (Store m) $ Except EngineErrors
 
-instance : Inhabited (EngineM m α) where
-  default := throw default
+def throwEE : EngineErrors → EngineM m α := ExceptT.lift ∘ ExceptT.lift ∘ throw
+def raiseCont : List Operation → EngineM m α := ExceptT.lift ∘ throw
+def raiseReturn : EngineM m α := throw default
 
-def throwEE : EngineErrors → EngineM m α := ExceptT.lift ∘ throw
-def raiseCont : List Operation → EngineM m α := throw
+instance : Inhabited (EngineM m α) where
+  default := throwEE .other
 
 def bite : EngineM m StackEntry := do match (←get) with
   | [] => throwEE .not_enough_stuff_on_stack
@@ -421,7 +433,8 @@ mutual
     | [] => pure ()
     | op :: ops => do match ←(runOp op).run (←get) with
       | (.error cont, stack') => set stack'; go cont
-      | (.ok _, stack') => set stack'; go ops
+      | (.ok (.error .return), stack') => set stack'; raiseReturn -- rethrow
+      | (.ok (.ok ()), stack') => set stack'; go ops
 
     go ops'
     let es' := stackValues ⟨←get⟩
@@ -589,11 +602,28 @@ mutual
     | .call fi => do match fetchFAddress (←getStore) fi with
       | .none => throwEE $ .function_not_found fi
       | .some f => runFunc f
+    | .return => do
+        let arity ← getArity
+        let topn := (←get).take arity
+        if topn.length = arity && topn.all isValue
+          then set topn
+          else throwEE .not_enough_stuff_on_stack
+        raiseReturn
 
   partial def runFunc (f : FunctionInstance m) : EngineM m PUnit := do
+    let rec go : List Operation → EngineM m PUnit
+      | [] => pure ()
+      | op :: ops => do match ←(runOp op).run (←get) with
+        | (.error _, _) =>
+          -- `br` without a structured control operation – shouldn't be
+          -- reachable at all, so throw an `EngineError`.
+          throwEE .other
+        | (.ok (.error .return), stack') => set stack'
+        | (.ok (.ok ()), stack') => set stack'; go ops
+
     let σ := []
     let locals := (←populateFuncParams f.params) ++ f.locals.map initLocal
-    let (res, _) ← f.ops.forM runOp σ ⟨f.results.length, locals⟩
+    let (res, _) ← (go f.ops).run σ ⟨f.results.length, locals⟩
     if resultsTypecheck f.results res.2
       then pile res.2
       else throwEE .stack_incompatible_with_results

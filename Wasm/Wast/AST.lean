@@ -201,6 +201,7 @@ mutual
   | br_if : BlockLabelId → Operation
   | br_table : List BlockLabelId → BlockLabelId → Operation
   | call : FuncId → Operation
+  | return : Operation
 end
 
 mutual
@@ -281,6 +282,7 @@ mutual
     | .br_if sl => s!"(Operation.br_if {sl})"
     | .br_table sls sdef => s!"(Operation.br_table {sls} {sdef})"
     | .call fi => s!"(Operation.call {fi})"
+    | .return => s!"(Operation.return)"
 
 end
 

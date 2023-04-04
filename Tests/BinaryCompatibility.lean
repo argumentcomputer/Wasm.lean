@@ -254,6 +254,11 @@ def modsControl :=
         (func (result i32) (i32.const 0x132))
         (func (export \"type-i32\") (result i32) (call 0))
      )"
+  , "(module
+        (func (result i32)
+          (block (result i32) (i32.const 1) (return))
+        )
+     )"
   ]
 
 def modsLocal :=
