@@ -148,6 +148,31 @@ private def constP : Parsec Char String Unit Operation := do
   let x ← numUniTP
   pure $ Operation.const (numUniType x) x
 
+private def iUnopP (opS : String) (unopMk : Type' → Operation)
+            : Parsec Char String Unit Operation :=
+  let type :=
+    string s!"i32.{opS}" *> (pure $ .i 32) <|>
+    string s!"i64.{opS}" *> (pure $ .i 64)
+  unopMk <$> type
+
+private def aBinopP (tChar : Char) (con : BitSize → Type') (opS : String)
+                    (binopMk : Type' → Operation)
+            : Parsec Char String Unit Operation :=
+  let type :=
+    string s!"{tChar}32.{opS}" *> (pure $ con 32) <|>
+    string s!"{tChar}64.{opS}" *> (pure $ con 64)
+  binopMk <$> type
+
+private def iBinopP : String → (Type' → Operation)
+            → Parsec Char String Unit Operation := aBinopP 'i' .i
+
+private def fBinopP : String → (Type' → Operation)
+            → Parsec Char String Unit Operation := aBinopP 'f' .f
+
+private def binopP (opS : String) (binopMk : Type' → Operation)
+            : Parsec Char String Unit Operation :=
+  iBinopP opS binopMk <|> fBinopP opS binopMk
+
 private def localOpP : Parsec Char String Unit Operation := do
   let op ← (string "local.get" *> pure Operation.local_get)
        <|> (string "local.set" *> pure .local_set)
@@ -172,6 +197,10 @@ private def brOpP : Parsec Char String Unit Operation := do
        <|> (string "br" *> pure .br)
   ignoreP *> op <$> structLabelP
 
+private def selectP : Parsec Char String Unit Operation :=
+  string "select" *>
+  .select <$> option' (attempt (ignoreP *> singleResultP)) <* owP
+
 private def callP : Parsec Char String Unit Operation := do
   let op ← string "call" *> pure .call
   ignoreP *> op <$> funcIdP
@@ -181,10 +210,7 @@ private def returnP : Parsec Char String Unit Operation :=
 
  mutual
 
-  partial def getP : Parsec Char String Unit Get' :=
-    (.from_operation <$> attempt opP) <|> pure .from_stack
-
-  partial def opP : Parsec Char String Unit Operation := bracketed $
+  partial def opP : Parsec Char String Unit Operation :=
     unreachableP <|> nopP <|> dropP <|> constP <|> selectP <|>
     iUnopP "eqz" .eqz <|>
     binopP "eq" .eq <|> binopP "ne" .ne <|>
@@ -204,18 +230,15 @@ private def returnP : Parsec Char String Unit Operation :=
     iBinopP "shr_u" .shr_u <|> iBinopP "shr_s" .shr_s <|>
     iBinopP "rotl" .rotl <|> iBinopP "rotr" .rotr <|>
     localOpP <|> globalOpP <|>
-    blockOpP <|> ifP <|> brTableP <|> brOpP <|> callP <|> returnP
+    blockOpP <|> brTableP <|> brOpP <|> callP <|> returnP
 
-  partial def opsP : Parsec Char String Unit (List Operation) := do
-    sepEndBy' opP owP
-
-  partial def selectP : Parsec Char String Unit Operation := do
-    discard $ string "select"
-    let t? ← option' (attempt (ignoreP *> singleResultP)) <* owP
-    let g₁ ← getP <* owP
-    let g₂ ← getP <* owP
-    let g₃ ← getP <* owP
-    pure $ .select t? g₁ g₂ g₃
+  partial def opsP : Parsec Char String Unit (List Operation) :=
+    let unfoldOpP := attempt $ bracketed do
+      let mainOp ← ifP <|> ([·]) <$> opP
+      owP
+      let ops ← opsP
+      pure $ ops ++ mainOp
+    List.join <$> sepEndBy' unfoldOpP owP
 
   partial def blockOpP : Parsec Char String Unit Operation := do
   let op ← (string "block" *> pure Operation.block)
@@ -226,50 +249,18 @@ private def returnP : Parsec Char String Unit Operation :=
     let ops ← opsP
     pure $ op id pts rts ops
 
-  partial def ifP : Parsec Char String Unit Operation := do
+  /-- `if` is a bit of a special case because the "folded" instructions
+  appear before the `then` part, so naively unfolding as with the other
+  instructions won't work. -/
+  partial def ifP : Parsec Char String Unit (List Operation) := do
     discard $ string "if"
     let id ← option' (attempt (ignoreP *> idP))
     let pts ← owP *> nilParamsP
     let rts ← owP *> brResultsP
-    let g ← getP
+    let foldeds ← opsP
     let thens ← bracketedWs $ string "then" *> owP *> opsP
     let elses ← bracketedWs $ string "else" *> owP *> opsP
-    pure $ .if id pts rts g thens elses
-
-  partial def iUnopP (opS : String) (unopMk : Type' → Get' → Operation)
-              : Parsec Char String Unit Operation := do
-    let type : Type' ←
-      string s!"i32.{opS}" *> (pure $ .i 32) <|>
-      string s!"i64.{opS}" *> (pure $ .i 64)
-    owP
-    let arg ← getP
-    owP
-    pure $ unopMk type arg
-
-  partial def aBinopP (tChar : Char) (con : BitSize → Type') (opS : String)
-                      (binopMk : Type' → Get' → Get' → Operation)
-              : Parsec Char String Unit Operation := do
-    -- TODO: we'll use ps when we'll add more types into `Type'`.
-    -- let _ps ← getParserState
-    let type ←
-      string s!"{tChar}32.{opS}" *> (pure $ con 32) <|>
-      string s!"{tChar}64.{opS}" *> (pure $ con 64)
-    owP
-    let arg_1 ← getP
-    owP
-    let arg_2 ← getP
-    owP
-    pure $ binopMk type arg_1 arg_2
-
-  partial def iBinopP : String → (Type' → Get' → Get' → Operation)
-              → Parsec Char String Unit Operation := aBinopP 'i' .i
-
-  partial def fBinopP : String → (Type' → Get' → Get' → Operation)
-              → Parsec Char String Unit Operation := aBinopP 'f' .f
-
-  partial def binopP (opS : String) (binopMk : Type' → Get' → Get' → Operation)
-              : Parsec Char String Unit Operation :=
-    iBinopP opS binopMk <|> fBinopP opS binopMk
+    pure $ foldeds ++ [.if id pts rts thens elses]
 
 end
 
@@ -318,22 +309,5 @@ def moduleP : Parsec Char String Unit Module := bracketedWs do
   let (globals, funs) ← owP *> mixOfTwoLispP globalP funcP
 
   pure $ Module.mk oname globals funs
-
-def t :=
-  "(module $test
-      (func)
-      (func $f (export \"(module \\\" (func))\")
-        (param $y f32) (param $y1 f32) (result f32)
-          (local $dummy i32)
-          (i32.const 42)
-          (local.set 2)
-          (local.get $y1)
-          (f32.add (local.get $y1))
-          (local.get $y)
-          (f32.add)
-      )
-  )"
-
-#eval parse moduleP t
 
 end textparser

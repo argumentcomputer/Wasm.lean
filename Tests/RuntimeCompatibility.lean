@@ -44,6 +44,18 @@ def basics :=
           (i32.const 3555)
         )
      )"
+  , "(module
+        (func (export \"main\") (result i32)
+          (i32.sub (i32.const 40) (i32.const 2))
+        )
+    )"
+  , "(module
+        (func (export \"main\") (result i32)
+          (i32.const 40)
+          (i32.const 2)
+          (i32.sub)
+        )
+    )"
   ]
 
 def modsControl :=
@@ -64,6 +76,62 @@ def modsControl :=
         )
         (func (export \"main\") (result i32) (call $midvalues))
      )"
+  , "(module
+        (func (export \"main\") (result i32)
+          (block (result i32)
+            (br_if 0
+              (block (result i32) (i32.const 1))
+              (i32.const 2)
+            )
+          )
+        )
+      )"
+  , "(module
+        (func (export \"main\") (result i32)
+          (block (result i32)
+            (br_if 0
+              (i32.const 2)
+              (block (result i32) (i32.const 1))
+            )
+          )
+        )
+      )"
+  , "(module
+        (func $as-select-first (result i32)
+          (select
+            (block (result i32) (i32.const 1))
+            (i32.const 2)
+            (i32.const 3)
+          )
+        )
+        (func (export \"main\") (result i32)
+          (call $as-select-first)
+        )
+      )"
+  , "(module
+        (func $as-select-mid (result i32)
+          (select
+            (i32.const 2)
+            (block (result i32) (i32.const 1))
+            (i32.const 3)
+          )
+        )
+        (func (export \"main\") (result i32)
+          (call $as-select-mid)
+        )
+      )"
+  , "(module
+        (func $as-select-last (result i32)
+          (select
+            (i32.const 2)
+            (i32.const 3)
+            (block (result i32) (i32.const 1))
+          )
+        )
+        (func (export \"main\") (result i32)
+          (call $as-select-last)
+        )
+      )"
   ]
 
 def main : IO UInt32 := do
