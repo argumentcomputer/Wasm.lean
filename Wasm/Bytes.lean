@@ -122,50 +122,7 @@ def indexIdentifiedGlobals (gs : List Global) : Globals :=
 -- This makes me cry in pain, but I don't see any way to cut out this pre-pass
 -- in this architecture.
 -- TODO: lens lib? 🥺
-mutual
-
-private partial def traverseGet' : Get' → List FunctionType
-  | .from_stack => []
-  | .from_operation o => traverseOp o
-
 private partial def traverseOp : Operation → List FunctionType
-  | .select _ g1 g2 g3 => traverseGet' g1 ++ traverseGet' g2 ++ traverseGet' g3
-  | .eqz    _ g => traverseGet' g
-  | .eq _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .ne _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .lt_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .lt_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .gt_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .gt_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .le_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .le_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .ge_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .ge_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .lt _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .gt _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .le _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .ge _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .clz    _ g => traverseGet' g
-  | .ctz    _ g => traverseGet' g
-  | .popcnt _ g => traverseGet' g
-  | .add _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .sub _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .mul _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .div _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .min _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .max _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .div_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .div_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .rem_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .rem_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .and _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .or  _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .xor _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .shl _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .shr_u _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .shr_s _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .rotl _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
-  | .rotr _ g1 g2 => traverseGet' g1 ++ traverseGet' g2
   | .block _ ps ts ops =>
     let fts := (ops.map traverseOp).join
     if !ps.isEmpty || !ts.length ≤ 1
@@ -176,17 +133,14 @@ private partial def traverseOp : Operation → List FunctionType
     if !ps.isEmpty || !ts.length ≤ 1
       then mkFunctionType ps ts :: fts
       else fts
-  | .if _ ps ts g thens elses =>
-    let bg := traverseGet' g
+  | .if _ ps ts thens elses =>
     let bts := if !ps.isEmpty || !ts.length ≤ 1
       then [mkFunctionType ps ts]
       else []
     let bth := thens.map traverseOp
     let belse := elses.map traverseOp
-    bg ++ bts ++ bth.join ++ belse.join
+    bts ++ bth.join ++ belse.join
   | _ => []
-
-end
 
 /-- Extract a 'function type' construct. -/
 def extractFunctionType (ft : FunctionType) : ByteArray :=
@@ -468,95 +422,82 @@ def extractBlockType : FunctionType → ExtractM ByteArray
       let tidx := ftypes.indexOf (extractFunctionType ft)
       pure $ sLeb128 tidx
 
-mutual
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
-  partial def extractGet' (x : Get') : ExtractM ByteArray :=
-    match x with
-    | .from_stack => pure b0
-    | .from_operation o => extractOp o
 
-  partial def extractOp (op : Operation) : ExtractM ByteArray := do
-    match op with
-    | .unreachable => pure $ b 0x00
-    | .nop => pure $ b 0x01
-    | .drop => pure $ b 0x1a
-    -- TODO: signed consts exist??? We should check the spec carefully.
-    | .const (.i 32) (.i ci) => pure $ b 0x41 ++ sLeb128 ci.val
-    | .const (.i 64) (.i ci) => pure $ b 0x42 ++ sLeb128 ci.val
-    | .const _ _ => sorry -- TODO: float binary encoding
-    | .select .none g1 g2 g3 =>
-      extractGet' g1 ++ extractGet' g2 ++ extractGet' g3 ++ b 0x1b
-    | .select (.some t) g1 g2 g3 =>
-      extractGet' g1 ++ extractGet' g2 ++ extractGet' g3 ++ b 0x1c
-      ++ mkVec [t] (b ∘ ttoi)
-    | .eqz    t g => extractGet' g ++ extractEqz t
-    | .eq t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractEq t
-    | .ne t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractNe t
-    | .lt_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLtu t
-    | .lt_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLts t
-    | .gt_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGtu t
-    | .gt_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGts t
-    | .le_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLeu t
-    | .le_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLes t
-    | .ge_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGeu t
-    | .ge_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGes t
-    | .lt t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLt t
-    | .gt t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGt t
-    | .le t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractLe t
-    | .ge t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractGe t
-    | .clz    t g => extractGet' g ++ extractClz t
-    | .ctz    t g => extractGet' g ++ extractCtz t
-    | .popcnt t g => extractGet' g ++ extractPopcnt t
-    | .add t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAdd t
-    | .sub t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractSub t
-    | .mul t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMul t
-    | .div t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDiv t
-    | .min t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMin t
-    | .max t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractMax t
-    | .div_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivS t
-    | .div_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractDivU t
-    | .rem_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRemS t
-    | .rem_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRemU t
-    | .and t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractAnd t
-    | .or  t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractOr  t
-    | .xor t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractXor t
-    | .shl t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShl t
-    | .shr_u t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShrU t
-    | .shr_s t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractShrS t
-    | .rotl t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRotl t
-    | .rotr t g1 g2 => extractGet' g1 ++ extractGet' g2 ++ extractRotr t
-    | .local_get ll => b 0x20 ++ extractLocalLabel ll
-    | .local_set ll => b 0x21 ++ extractLocalLabel ll
-    | .local_tee ll => b 0x22 ++ extractLocalLabel ll
-    | .global_get gl => b 0x23 ++ extractGlobalLabel gl
-    | .global_set gl => b 0x24 ++ extractGlobalLabel gl
-    | .block id ps ts ops =>
-      push id
-      let bts := extractBlockType $ mkFunctionType ps ts
-      let obs := bts ++ flatten <$> ops.mapM extractOp
-      b 0x02 ++ obs ++ b 0x0b
-    | .loop id ps ts ops =>
-      push id
-      let bts := extractBlockType $ mkFunctionType ps ts
-      let obs := bts ++ flatten <$> ops.mapM extractOp
-      b 0x03 ++ obs ++ b 0x0b
-    | .if id ps ts g thens elses =>
-      push id
-      let bg ← extractGet' g
-      let bts := extractBlockType $ mkFunctionType ps ts
-      let bth ← flatten <$> thens.mapM extractOp
-      let belse ← if elses.isEmpty then pure b0 else
-        b 0x05 ++ flatten <$> elses.mapM extractOp
-      bg ++ b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
-    | .br bl => b 0x0c ++ extractBlockLabelId bl
-    | .br_if bl => b 0x0d ++ extractBlockLabelId bl
-    | .br_table bls bld =>
-      b 0x0e ++ mkVecM bls extractBlockLabelId ++ extractBlockLabelId bld
-    | .call fi => b 0x10 ++ extractFuncId fi
-    | .return => pure $ b 0x0f
-
-
-end
+partial def extractOp (op : Operation) : ExtractM ByteArray := do
+  match op with
+  | .unreachable => pure $ b 0x00
+  | .nop => pure $ b 0x01
+  | .drop => pure $ b 0x1a
+  | .const (.i 32) (.i ci) => pure $ b 0x41 ++ sLeb128 ci.val
+  | .const (.i 64) (.i ci) => pure $ b 0x42 ++ sLeb128 ci.val
+  | .const _ _ => sorry -- TODO: float binary encoding
+  | .select .none => pure $ b 0x1b
+  | .select (.some t) => pure $ b 0x1c ++ mkVec [t] (b ∘ ttoi)
+  | .eqz t => pure $ extractEqz t
+  | .eq t => pure $ extractEq t
+  | .ne t => pure $ extractNe t
+  | .lt_u t => pure $ extractLtu t
+  | .lt_s t => pure $ extractLts t
+  | .gt_u t => pure $ extractGtu t
+  | .gt_s t => pure $ extractGts t
+  | .le_u t => pure $ extractLeu t
+  | .le_s t => pure $ extractLes t
+  | .ge_u t => pure $ extractGeu t
+  | .ge_s t => pure $ extractGes t
+  | .lt t => pure $ extractLt t
+  | .gt t => pure $ extractGt t
+  | .le t => pure $ extractLe t
+  | .ge t => pure $ extractGe t
+  | .clz    t => pure $ extractClz t
+  | .ctz    t => pure $ extractCtz t
+  | .popcnt t => pure $ extractPopcnt t
+  | .add t => pure $ extractAdd t
+  | .sub t => pure $ extractSub t
+  | .mul t => pure $ extractMul t
+  | .div t => pure $ extractDiv t
+  | .min t => pure $ extractMin t
+  | .max t => pure $ extractMax t
+  | .div_s t => pure $ extractDivS t
+  | .div_u t => pure $ extractDivU t
+  | .rem_s t => pure $ extractRemS t
+  | .rem_u t => pure $ extractRemU t
+  | .and t => pure $ extractAnd t
+  | .or  t => pure $ extractOr  t
+  | .xor t => pure $ extractXor t
+  | .shl t => pure $ extractShl t
+  | .shr_u t => pure $ extractShrU t
+  | .shr_s t => pure $ extractShrS t
+  | .rotl t => pure $ extractRotl t
+  | .rotr t => pure $ extractRotr t
+  | .local_get ll => b 0x20 ++ extractLocalLabel ll
+  | .local_set ll => b 0x21 ++ extractLocalLabel ll
+  | .local_tee ll => b 0x22 ++ extractLocalLabel ll
+  | .global_get gl => b 0x23 ++ extractGlobalLabel gl
+  | .global_set gl => b 0x24 ++ extractGlobalLabel gl
+  | .block id ps ts ops =>
+    push id
+    let bts := extractBlockType $ mkFunctionType ps ts
+    let obs := bts ++ flatten <$> ops.mapM extractOp
+    b 0x02 ++ obs ++ b 0x0b
+  | .loop id ps ts ops =>
+    push id
+    let bts := extractBlockType $ mkFunctionType ps ts
+    let obs := bts ++ flatten <$> ops.mapM extractOp
+    b 0x03 ++ obs ++ b 0x0b
+  | .if id ps ts thens elses =>
+    push id
+    let bts := extractBlockType $ mkFunctionType ps ts
+    let bth ← flatten <$> thens.mapM extractOp
+    let belse ← if elses.isEmpty then pure b0 else
+      b 0x05 ++ flatten <$> elses.mapM extractOp
+    b 0x04 ++ bts ++ bth ++ belse ++ b 0x0b
+  | .br bl => b 0x0c ++ extractBlockLabelId bl
+  | .br_if bl => b 0x0d ++ extractBlockLabelId bl
+  | .br_table bls bld =>
+    b 0x0e ++ mkVecM bls extractBlockLabelId ++ extractBlockLabelId bld
+  | .call fi => b 0x10 ++ extractFuncId fi
+  | .return => pure $ b 0x0f
 
 def extractOps (ops : List Operation) : ExtractM ByteArray :=
   flatten <$> ops.mapM extractOp

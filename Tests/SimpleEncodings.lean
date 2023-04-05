@@ -52,10 +52,8 @@ instance : BEq Operation where
   beq := (toString · == toString ·)
 
 def testAdd42IsOpAddConstStack : TestSeq :=
-  testParse (binopP "add" .add) "i32.add (i32.const 42)" $
-    Operation.add (.i 32)
-                  (.from_operation (.const (.i 32) (.i ⟨ 32, 42 ⟩ )))
-                  (.from_stack)
+  testParse opsP "(i32.add (i32.const 42))"
+    [.const (.i 32) (.i ⟨ 32, 42 ⟩ ), .add (.i 32)]
 
 open Wasm.Wast.AST.Func
 open Wasm.Wast.AST.Local
@@ -83,21 +81,23 @@ def testResultParses : TestSeq :=
 
 def testBlockParses : TestSeq :=
   group "check that block instructions parse" $
-  testParse opP "(block (result i32) (i32.const 1))"
+  testParse opP "block (result i32) (i32.const 1)"
     (.block .none [] [.i 32] [.const (.i 32) (.i (ConstInt.mk 32 1))]) ++
-  testParse opP "(block (param i32) (drop))"
+  testParse opP "block (param i32) (drop)"
     (.block .none [⟨.none, .i 32⟩] [] [.drop])
 
 def testIfParses : TestSeq :=
   group "check that if instructions parse" $
     testParse ifP "if (result i32) (then (i32.const 42)) (else (i32.const 9))"
-      (.if .none [] [(Type'.i 32)]
-        (.from_stack) [(.const (Type'.i 32) (.i (ConstInt.mk 32 42)))]
-          [(.const (Type'.i 32) (.i (ConstInt.mk 32 9)))]) ++
+      [.if .none [] [(Type'.i 32)]
+        [(.const (Type'.i 32) (.i (ConstInt.mk 32 42)))]
+        [(.const (Type'.i 32) (.i (ConstInt.mk 32 9)))]
+      ]
+    ++
     testParse ifP "if $x (i32.const 1) (then (br $x)) (else (br 0))"
-      (.if (.some "x") [] [] (.from_operation (.const (.i 32) (.i ⟨32, 1⟩)))
-        [.br (.by_name "x")] [.br (.by_index 0)]
-      )
+      [ .const (.i 32) (.i ⟨32, 1⟩)
+      , .if (.some "x") [] [] [.br (.by_name "x")] [.br (.by_index 0)]
+      ]
 
 def testFuncs : TestSeq :=
   let test' := testParse (bracketed funcP)
@@ -122,9 +122,10 @@ def testFuncs : TestSeq :=
     (Func.mk .none .none
       [(Local.mk (.some "x") (.i 32)), (Local.mk .none (.i 32))]
       [(.i 32)] []
-      [(.add (.i 32) (.from_operation (.const (.i 32) (.i (ConstInt.mk 32 40))))
-        (.from_operation (.const (.i 32) (.i (ConstInt.mk 32 2))))
-        )]
+      [ .const (.i 32) (.i (ConstInt.mk 32 40))
+      , .const (.i 32) (.i (ConstInt.mk 32 2))
+      , .add (.i 32)
+      ]
     )
 
 def testFlawedFuncDoesntParse : TestSeq :=

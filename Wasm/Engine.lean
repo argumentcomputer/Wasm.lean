@@ -422,10 +422,6 @@ def unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
 
 mutual
 
-  partial def getSO : Get' → EngineM m StackEntry
-    | .from_stack => bite
-    | .from_operation o => do runOp o; bite
-
   partial def computeContinuation
                     (blocktypes : List Type') (ops' : List Operation)
                     : EngineM m PUnit := do
@@ -444,23 +440,25 @@ mutual
 
   -- TODO: check that typechecking is done everywhere!
   partial def runOp : Operation → EngineM m PUnit := fun op =>
-    let runIUnop g unop := do
-      match (←getSO g) with
+    let runIUnop unop := do
+      match ←bite with
         -- TODO: check bitsize and overflow!
       | .num (.i ⟨b, i⟩) =>
           push $ .num $ .i ⟨b, unop i⟩
       | _ => throwEE .param_type_incompatible
-    let runIBinop g0 g1 binop := do
-      let operand0 ← getSO g0
-      let operand1 ← getSO g1
+    let runIBinop binop := do
+      -- Unfortunately, because of WebAssembly's infinite wisdom, we take
+      -- the two operands in the inverse order from how they are on stack.
+      let operand1 ← bite
+      let operand0 ← bite
       match operand0, operand1 with
         -- TODO: check bitsize and overflow!
       | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) =>
           push $ .num $ .i ⟨b0, binop i0 i1⟩
       | _, _ => throwEE .param_type_incompatible
-    let runFBinop g0 g1 binop := do -- sad we can't generalise over constructors
-      let operand0 ← getSO g0
-      let operand1 ← getSO g1
+    let runFBinop binop := do -- sad we can't generalise over constructors
+      let operand1 ← bite
+      let operand0 ← bite
       match operand0, operand1 with
         -- TODO: check bitsize and overflow!
       | .num (.f ⟨b0, f0⟩), .num (.f ⟨_b1, f1⟩) =>
@@ -479,8 +477,8 @@ mutual
       -- change the `Locals` part of `EngineM m`.
       let es' ← (computeContinuation ts ops).run innerStack
       pile es'.2
-    let checkGet_i32 (g : Get') (f : Int → EngineM m PUnit) := do
-      match (←getSO g) with
+    let checkGet_i32 (f : Int → EngineM m PUnit) := do
+      match ←bite with
       | .num (.i ⟨32, n⟩) => f n
       | _ => throwEE .typecheck_failed
 
@@ -489,66 +487,66 @@ mutual
     | .nop => pure ⟨⟩
     | .drop => discard bite
     | .const _t n => push $ .num n
-    | .select t? g0 g1 g2 => checkGet_i32 g0 fun i0 => do
-      let operand1 ← getSO g1
-      let operand2 ← getSO g2
+    | .select t? => checkGet_i32 fun i0 => do
+      let operand1 ← bite
+      let operand2 ← bite
       typecheck2Nums t? operand1 operand2
       if i0 = 0 then push operand1 else push operand2
-    | .eqz _t g => runIUnop g $ (if · = 0 then 1 else 0)
-    | .eq (.i _) g0 g1 => runIBinop g0 g1 (if · = · then 1 else 0)
-    | .eq (.f _) g0 g1 => runFBinop g0 g1 (if · == · then 1 else 0) -- lmao even this isn't right because of +0 == -0
-    | .ne (.i _) g0 g1 => runIBinop g0 g1 (if · ≠ · then 1 else 0)
-    | .ne (.f _) g0 g1 => runFBinop g0 g1 (if · != · then 1 else 0)
-    | .lt_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · < · then 1 else 0) t
-    | .lt_s _t g0 g1 => runIBinop g0 g1 (if · < · then 1 else 0)
-    | .gt_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · > · then 1 else 0) t
-    | .gt_s _t g0 g1 => runIBinop g0 g1 (if · > · then 1 else 0)
-    | .le_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · ≤ · then 1 else 0) t
-    | .le_s _t g0 g1 => runIBinop g0 g1 (if · ≤ · then 1 else 0)
-    | .ge_u t  g0 g1 => runIBinop g0 g1 $ unsigned (if · ≥ · then 1 else 0) t
-    | .ge_s _t g0 g1 => runIBinop g0 g1 (if · ≥ · then 1 else 0)
-    | .lt _t g0 g1 => runFBinop g0 g1 (if · < · then 1 else 0)
-    | .gt _t g0 g1 => runFBinop g0 g1 (if · > · then 1 else 0)
-    | .le _t g0 g1 => runFBinop g0 g1 (if · ≤ · then 1 else 0)
-    | .ge _t g0 g1 => runFBinop g0 g1 (if · ≥ · then 1 else 0)
-    | .clz t g => runIUnop g fun i =>
+    | .eqz _t => runIUnop (if · = 0 then 1 else 0)
+    | .eq (.i _) => runIBinop (if · = · then 1 else 0)
+    | .eq (.f _) => runFBinop (if · == · then 1 else 0) -- lmao even this isn't right because of +0 == -0
+    | .ne (.i _) => runIBinop (if · ≠ · then 1 else 0)
+    | .ne (.f _) => runFBinop (if · != · then 1 else 0)
+    | .lt_u t  => runIBinop $ unsigned (if · < · then 1 else 0) t
+    | .lt_s _t => runIBinop (if · < · then 1 else 0)
+    | .gt_u t  => runIBinop $ unsigned (if · > · then 1 else 0) t
+    | .gt_s _t => runIBinop (if · > · then 1 else 0)
+    | .le_u t  => runIBinop $ unsigned (if · ≤ · then 1 else 0) t
+    | .le_s _t => runIBinop (if · ≤ · then 1 else 0)
+    | .ge_u t  => runIBinop $ unsigned (if · ≥ · then 1 else 0) t
+    | .ge_s _t => runIBinop (if · ≥ · then 1 else 0)
+    | .lt _t => runFBinop (if · < · then 1 else 0)
+    | .gt _t => runFBinop (if · > · then 1 else 0)
+    | .le _t => runFBinop (if · ≤ · then 1 else 0)
+    | .ge _t => runFBinop (if · ≥ · then 1 else 0)
+    | .clz t => runIUnop fun i =>
       ((toNBits i t.bitsize).takeWhile (· = .zero)).length
-    | .ctz t g => runIUnop g fun i =>
+    | .ctz t => runIUnop fun i =>
       ((toNBits i t.bitsize).reverse.takeWhile (· = .zero)).length
-    | .popcnt t g => runIUnop g fun i =>
+    | .popcnt t => runIUnop fun i =>
       ((toNBits i t.bitsize).filter (· = .one)).length
-    | .add (.i _) g0 g1 => runIBinop g0 g1 (· + ·)
-    | .add (.f _) g0 g1 => runFBinop g0 g1 (· + ·)
-    | .sub (.i _) g0 g1 => runIBinop g0 g1 (· - ·)
-    | .sub (.f _) g0 g1 => runFBinop g0 g1 (· - ·)
-    | .mul (.i _) g0 g1 => runIBinop g0 g1 (· * ·)
-    | .mul (.f _) g0 g1 => runFBinop g0 g1 (· * ·)
-    | .div _t g0 g1 => runFBinop g0 g1 (· / ·)
-    | .max _t g0 g1 => runFBinop g0 g1 max
-    | .min _t g0 g1 => runFBinop g0 g1 min
-    | .div_s _t g0 g1 => runIBinop g0 g1 (· / ·)
-    | .div_u  t g0 g1 => runIBinop g0 g1 $ unsigned (· / ·) t
-    | .rem_s _t g0 g1 => runIBinop g0 g1 (· % ·)
-    | .rem_u  t g0 g1 => runIBinop g0 g1 $ unsigned (· % ·) t
-    | .and _t g0 g1 => runIBinop g0 g1 (· &&& ·)
-    | .or _t g0 g1  => runIBinop g0 g1 (· ||| ·)
-    | .xor _t g0 g1 => runIBinop g0 g1 (· ^^^ ·)
-    | .shl _t g0 g1 => runIBinop g0 g1 (· <<< ·)
-    | .shr_u t g0 g1 => runIBinop g0 g1 $ unsigned (· >>> ·) t
-    | .shr_s (.i bs) g0 g1 => runIBinop g0 g1 fun x k =>
+    | .add (.i _) => runIBinop (· + ·)
+    | .add (.f _) => runFBinop (· + ·)
+    | .sub (.i _) => runIBinop (· - ·)
+    | .sub (.f _) => runFBinop (· - ·)
+    | .mul (.i _) => runIBinop (· * ·)
+    | .mul (.f _) => runFBinop (· * ·)
+    | .div _t => runFBinop (· / ·)
+    | .max _t => runFBinop max
+    | .min _t => runFBinop min
+    | .div_s _t => runIBinop (· / ·)
+    | .div_u  t => runIBinop $ unsigned (· / ·) t
+    | .rem_s _t => runIBinop (· % ·)
+    | .rem_u  t => runIBinop $ unsigned (· % ·) t
+    | .and _t => runIBinop (· &&& ·)
+    | .or _t  => runIBinop (· ||| ·)
+    | .xor _t => runIBinop (· ^^^ ·)
+    | .shl _t => runIBinop (· <<< ·)
+    | .shr_u t => runIBinop $ unsigned (· >>> ·) t
+    | .shr_s (.i bs) => runIBinop fun x k =>
       let N := (2 : Int)^(bs : Nat)
       (x >>> k) ||| (x &&& (N/2))
-    | .shr_s _ _ _ => throwEE .typecheck_failed
-    | .rotl (.i bs) g0 g1 => runIBinop g0 g1 fun x k =>
+    | .shr_s _ => throwEE .typecheck_failed
+    | .rotl (.i bs) => runIBinop fun x k =>
       (x <<< k) ||| match k with
       | .ofNat   _ => (x >>> ((bs : Int) - k))
       | .negSucc _ => (x <<< ((bs : Int) + k))
-    | .rotl _ _ _ => throwEE .typecheck_failed
-    | .rotr (.i bs) g0 g1 => runIBinop g0 g1 fun x k =>
+    | .rotl _ => throwEE .typecheck_failed
+    | .rotr (.i bs) => runIBinop fun x k =>
       (x >>> k) ||| match k with
       | .ofNat   _ => x <<< ((bs : Int) - k)
       | .negSucc _ => x >>> ((bs : Int) + k)
-    | .rotr _ _ _ => throwEE .typecheck_failed
+    | .rotr _ => throwEE .typecheck_failed
     | .local_get (.by_index idx) => do match (←getLocals).get? idx with
       | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_id_missing idx
@@ -582,7 +580,7 @@ mutual
           (←bite) (findGlobalByName? (←getGlobals) name)
     | .block id ps ts ops => blockOp ps ts ops ⟨id, ts.length, []⟩
     | .loop id ps ts ops => blockOp ps ts ops ⟨id, ts.length, [.loop id ps ts ops]⟩
-    | .if id ps ts g thens elses => checkGet_i32 g fun n =>
+    | .if id ps ts thens elses => checkGet_i32 fun n =>
       runOp $ .block id ps ts (if n ≠ 0 then thens else elses)
     | .br l => checkLabel l fun ⟨_, arity, cont⟩ depth => do
       let (topn, rest) := (←get).splitAt arity
@@ -593,9 +591,9 @@ mutual
             raiseCont $ if depth = 0 then cont else [.br $ .by_index (depth-1)]
           | _ => throwEE .typecheck_failed
         else throwEE .not_enough_stuff_on_stack
-    | .br_if l => checkGet_i32 .from_stack fun n =>
+    | .br_if l => checkGet_i32 fun n =>
         do if n ≠ 0 then runOp (.br l)
-    | .br_table ls ld => checkGet_i32 .from_stack fun n =>
+    | .br_table ls ld => checkGet_i32 fun n =>
         if let .some l := ls.get? (n.unsign 32).natAbs
           then runOp (.br l)
           else runOp (.br ld)
