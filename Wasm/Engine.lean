@@ -7,6 +7,7 @@ import YatimaStdLib.Int
 open Wasm.Wast.AST
 open Wasm.Wast.AST.Func
 open Wasm.Wast.AST.Global
+open Wasm.Wast.AST.FuncLabel
 open Wasm.Wast.AST.BlockLabel
 open Wasm.Wast.AST.Local
 open Wasm.Wast.AST.Module
@@ -29,7 +30,7 @@ inductive EngineErrors where
 | global_with_given_id_missing : Nat → EngineErrors
 | cant_mutate_const_global
 | label_not_found
-| function_not_found
+| function_not_found : FuncId → EngineErrors
 | other -- JACKAL
 
 instance : ToString EngineErrors where
@@ -44,7 +45,7 @@ instance : ToString EngineErrors where
   | .global_with_given_id_missing i => s!"global #{i} not found"
   | .global_with_given_name_missing n => s!"global ``{n}'' not found"
   | .cant_mutate_const_global => "cannot change value of a const global"
-  | .function_not_found => s!"function not found"
+  | .function_not_found fid => s!"function not found: {fid}"
   | .label_not_found => s!"label not found"
   | .other => "non-specified"
 
@@ -123,7 +124,7 @@ TODO: change `NumUniT` to a full value type when we add vectors.
 -/
 structure GlobalInstance where
   name  : Option String
-  val   : Option NumUniT
+  val   : NumUniT
   type  : GlobalType
 deriving BEq
 
@@ -136,7 +137,7 @@ def instantiateGlobals (gs : List Global) : Globals :=
   gs.map fun g =>
     let val := match g.init with
     | .const _t cv => cv
-    | _ => unreachable! -- TODO: global.get case
+    | _ => sorry -- TODO: global.get case
     ⟨g.name, val, g.type⟩
 
 def findGlobalByName? (gs : Globals) (x : String) : Option GlobalInstance :=
@@ -174,13 +175,19 @@ structure Store (m : Module) where
 def mkStore (m : Module) : Store m :=
   ⟨instantiateGlobals m.globals, instantiateFs m⟩
 
-def funcByName (s : Store m) (x : String) : Option $ FunctionInstance m :=
-  match s.func.filter (fun f => f.export_ == .some x) with
-  | y :: [] => .some y
-  | _ => .none
+def exportedFuncByName (s : Store m) (x : String)
+                       : Option $ FunctionInstance m :=
+  s.func.find? (·.export_ = .some x)
 
-def fidByName (s : Store m) (x : String) : Option Nat :=
-  funcByName s x >>= pure ∘ FunctionInstance.index
+def exportedFidByName (s : Store m) (x : String) : Option Nat :=
+  FunctionInstance.index <$> exportedFuncByName s x
+
+/-- Find a `FunctionInstance` by a function id/address "getter".
+Note that in case of by name lookup this searches function
+_symbolic identifiers_ instead of _export_ names. -/
+def fetchFAddress (s : Store m) : FuncId → Option (FunctionInstance m)
+  | .by_index i => s.func.get? i
+  | .by_name name => s.func.find? (·.name = .some name)
 
 def stackEntryTypecheck (x : Type') (y : StackEntry) :=
   match y with
@@ -195,8 +202,8 @@ def stackEntryTypecheck (x : Type') (y : StackEntry) :=
       | _ => false
   | .label _ => false
 
--- Checks that the given numerical values correspond to the given
--- types both in the type of each respective value and in length.
+/-- Checks that the given numerical values correspond to the given
+types both in the type of each respective value and in length. -/
 def resultsTypecheck : List Type' → List StackEntry → Bool
   | [], [] => true
   | t :: ts, e :: es =>
@@ -212,7 +219,7 @@ TODO: change `NumUniT` to a full value type when we add vectors.
 -/
 structure LocalEntry where
   name : Option String
-  val  : Option NumUniT
+  val  : NumUniT
   type : Type'
 deriving BEq
 
@@ -221,10 +228,30 @@ open LocalEntry
 
 abbrev Locals := List LocalEntry
 
+/--
+`local` variables are initialised with their default values,
+i.e. `0` for number types.
+ -/
+def initLocal (l : Local) : LocalEntry := ⟨l.name, defNum l.type, l.type⟩
+
 def findLocalByName? (ls : Locals) (x : String) : Option LocalEntry :=
   ls.find? (.some x == ·.name)
 
-/-
+namespace ActivationFrame
+
+structure Frame where
+  arity  : Nat
+  locals : Locals
+deriving BEq, Inhabited
+
+end ActivationFrame
+open ActivationFrame
+
+/-- A "tag" inductive to simulate a `return` instruction. -/
+inductive Return where | return
+  deriving Inhabited, BEq
+
+/--
 The `List Operation` in the `Continuation` type represents an optional 'final'
 sequence of instructions – which should replace the rest of the instructions
 in the currently executed sequence, which in turn emulates the continuation
@@ -238,7 +265,9 @@ Semantics:
 -------------/
 abbrev Continuation := List Operation
 
-/-
+variable {m : Module}
+
+/--
 This is a readability helper monad stack abbreviation for use in handling
 flow correctly when executing branch instructions like `br` and `br_if`,
 as well as just for easy handling of the stack and possible errors.
@@ -247,64 +276,85 @@ The monads in the stack:
 - `Except EngineErrors` throws _real_ execution errors. It's on the very bottom
   of the stack because we don't care about anything else, like recovery, if
   there's an engine error.
-- `StateT (List StackEntry)` carries the stack around for ease of handling.
+- `StateT` monads carry mutable values around for ease of handling:
+    - `StateT Frame` carries the current function arity and its locals.
+    - `StateT (Store m)` carries the function instances we might need for `call`
+  and the module `GlobalInstance`s.
+    - `StateT (List StackEntry)` carries the stack: numerical values and block
+    labels. Note that we don't put activation frames on stack like in the spec.
 - `ExceptT Continuation` doesn't handle real exceptions, instead it serves as
-  a way to throw continuations through the execution cycle like described above.
-  It's the outermost transformer because when a continuation throw does occur,
+  a way to throw structured control instruction continuations through the
+  execution cycle like described above.
+  It's the outer transformer because when a continuation throw does occur,
   we want both the `Continuation` and the `List StackEntry` that comes with it
   from the `StateT` layer.
+- `ExceptT Return` is the same as above, but for function invocations.
 
 -/
-abbrev EngineM :=
-  ExceptT Continuation $ StateT (List StackEntry) $
-    StateT Locals $ StateT Globals $ Except EngineErrors
+abbrev EngineM m :=
+  ExceptT Return $ ExceptT Continuation $ StateT (List StackEntry) $
+    StateT Frame $ StateT (Store m) $ Except EngineErrors
 
-instance : Inhabited (EngineM α) where
-  default := throw default
+def throwEE : EngineErrors → EngineM m α := ExceptT.lift ∘ ExceptT.lift ∘ throw
+def raiseCont : List Operation → EngineM m α := ExceptT.lift ∘ throw
+def raiseReturn : EngineM m α := throw default
 
-def throwEE : EngineErrors → EngineM α := ExceptT.lift ∘ throw
-def raiseCont : List Operation → EngineM α := throw
+instance : Inhabited (EngineM m α) where
+  default := throwEE .other
 
-def bite : EngineM StackEntry := do match (←get) with
+def bite : EngineM m StackEntry := do match (←get) with
   | [] => throwEE .not_enough_stuff_on_stack
   | s :: rest => set rest; pure s
-def push : StackEntry → EngineM PUnit := fun x => do set $ x :: (←get)
-def pile : List StackEntry → EngineM PUnit := fun xs => do set $ xs ++ (←get)
-def σmap : (List StackEntry → List StackEntry) → EngineM PUnit :=
+def push : StackEntry → EngineM m PUnit := fun x => do set $ x :: (←get)
+def pile : List StackEntry → EngineM m PUnit := fun xs => do set $ xs ++ (←get)
+def σmap : (List StackEntry → List StackEntry) → EngineM m PUnit :=
   fun f => do set $ f (←get)
 
-def getLocals : EngineM Locals := getThe Locals
-def modifyLocals (f : Locals → Locals) : EngineM PUnit := modifyThe Locals f
-def setLocals (ls : Locals) : EngineM PUnit := modifyLocals fun _ => ls
+def getFrame : EngineM m Frame := getThe Frame
+def modifyFrame (f : Frame → Frame) : EngineM m PUnit := modifyThe Frame f
+def setFrame (ls : Frame) : EngineM m PUnit := modifyFrame fun _ => ls
+
+def getArity : EngineM m Nat := Frame.arity <$> getFrame
+
+def getLocals : EngineM m Locals := Frame.locals <$> getFrame
+def modifyLocals (f : Locals → Locals) : EngineM m PUnit :=
+  modifyFrame fun a => {a with locals := f a.locals}
+def setLocals (ls : Locals) : EngineM m PUnit := modifyLocals fun _ => ls
 
 def checkreplaceLocals (replace : Locals → LocalEntry → LocalEntry → Locals)
                        (err : EngineErrors)
-                       : StackEntry → Option LocalEntry → EngineM PUnit
+                       : StackEntry → Option LocalEntry → EngineM m PUnit
   | se@(.num n), .some l =>
     if stackEntryTypecheck l.type se
-    then modifyLocals (replace · l {l with val := .some n})
+    then modifyLocals (replace · l {l with val := n})
     else throwEE .param_type_incompatible
   | .num _, _ => throwEE err
   | _, _ => throwEE .typecheck_failed
 
-def getGlobals : EngineM Globals := getThe Globals
-def modifyGlobals (f : Globals → Globals) : EngineM PUnit := modifyThe Globals f
-def setGlobals (ls : Globals) : EngineM PUnit := modifyGlobals fun _ => ls
+def getStore : EngineM m (Store m) := getThe (Store m)
+def modifyStore (f : Store m → Store m) : EngineM m PUnit :=
+  modifyThe (Store m) f
+def setStore (s : Store m) : EngineM m PUnit := modifyStore fun _ => s
+
+def getGlobals : EngineM m Globals := do pure (←getStore).globals
+def modifyGlobals (f : Globals → Globals) : EngineM m PUnit :=
+  modifyStore fun s => {s with globals := f s.globals}
+def setGlobals (gs : Globals) : EngineM m PUnit := modifyGlobals fun _ => gs
 
 def checkreplaceGlobals
         (replace : Globals → GlobalInstance → GlobalInstance → Globals)
         (err : EngineErrors)
-        : StackEntry → Option GlobalInstance → EngineM PUnit
+        : StackEntry → Option GlobalInstance → EngineM m PUnit
   | se@(.num n), .some g =>
     if !g.type.mut? then throwEE .cant_mutate_const_global
     else
       if stackEntryTypecheck g.type.type se
-      then modifyGlobals (replace · g {g with val := .some n})
+      then modifyGlobals (replace · g {g with val := n})
       else throwEE .param_type_incompatible
   | .num _, _ => throwEE err
   | _, _ => throwEE .typecheck_failed
 
-def checkLabel (l : BlockLabelId) (f : BlockLabel → Nat → EngineM PUnit) := do
+def checkLabel (l : BlockLabelId) (f : BlockLabel → Nat → EngineM m PUnit) := do
   match fetchLabel ⟨←get⟩ l with
   | .none => throwEE .label_not_found
   | .some (label, depth) => f label depth
@@ -313,8 +363,8 @@ def checkLabel (l : BlockLabelId) (f : BlockLabel → Nat → EngineM PUnit) := 
 from the stack. This passes all block label type stack entries to the inner
 stack, while preserving those labels "above" the last needed value in the
 outer stack. -/
-partial def populateParams (ps : List Local)
-            : EngineM (List StackEntry) := do
+partial def populateBlockParams (ps : List Local)
+            : EngineM m (List StackEntry) := do
   let rec go is
     | []    => pure is.toList
     | p::ps => do
@@ -329,8 +379,24 @@ partial def populateParams (ps : List Local)
   let restOfLabels := stackLabels ⟨←get⟩
   pure $ innerStack ++ restOfLabels
 
+/-- Taking a list of "in" types from the params list, get enough _values_
+from the stack. Per spec, this means if we hit a label, there's not
+enough values on the stack to populate the params. -/
+partial def populateFuncParams (ps : List Local)
+            : EngineM m Locals := do
+  let rec go is
+    | []    => pure is.toList
+    | p::ps => do
+      match ←bite with
+      | .label _ => throwEE .not_enough_stuff_on_stack
+      | n@(.num i) =>
+        if stackEntryTypecheck p.type n
+          then go (is.push ⟨p.name, i, p.type⟩) ps
+          else throwEE .param_type_incompatible
 
-def enf2Nums1Type : StackEntry → StackEntry → EngineM Type'
+  go #[] ps
+
+def enf2Nums1Type : StackEntry → StackEntry → EngineM m Type'
   | .num (.i ⟨32, _⟩), .num (.i ⟨32, _⟩) => pure $ .i 32
   | .num (.i ⟨64, _⟩), .num (.i ⟨64, _⟩) => pure $ .i 64
   | .num (.f ⟨32, _⟩), .num (.f ⟨32, _⟩) => pure $ .f 32
@@ -340,12 +406,12 @@ def enf2Nums1Type : StackEntry → StackEntry → EngineM Type'
 /-- Check that two stack entries are of the same numerical type,
 check correctness of this type if given. Throws `.typecheck_failed` otherwise.
 -/
-def typecheck2Nums (t? : Option Type') (o1 o2: StackEntry) : EngineM PUnit := do
+def typecheck2Nums (t? : Option Type') (o1 o2: StackEntry) : EngineM m PUnit := do
   let ot ← enf2Nums1Type o1 o2
   if let .some t := t? then
     if t ≠ ot then throwEE .typecheck_failed
 
-def getInt : StackEntry → EngineM Int
+def getInt : StackEntry → EngineM m Int
   | .num (.i n) => pure n.val
   | _ => throwEE .typecheck_failed
 
@@ -356,18 +422,19 @@ def unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
 
 mutual
 
-  partial def getSO : Get' → EngineM StackEntry
+  partial def getSO : Get' → EngineM m StackEntry
     | .from_stack => bite
     | .from_operation o => do runOp o; bite
 
   partial def computeContinuation
                     (blocktypes : List Type') (ops' : List Operation)
-                    : EngineM PUnit := do
+                    : EngineM m PUnit := do
     let rec go
     | [] => pure ()
     | op :: ops => do match ←(runOp op).run (←get) with
       | (.error cont, stack') => set stack'; go cont
-      | (.ok _, stack') => set stack'; go ops
+      | (.ok (.error .return), stack') => set stack'; raiseReturn -- rethrow
+      | (.ok (.ok ()), stack') => set stack'; go ops
 
     go ops'
     let es' := stackValues ⟨←get⟩
@@ -376,7 +443,7 @@ mutual
       else throwEE .stack_incompatible_with_results
 
   -- TODO: check that typechecking is done everywhere!
-  partial def runOp : Operation → EngineM PUnit := fun op =>
+  partial def runOp : Operation → EngineM m PUnit := fun op =>
     let runIUnop g unop := do
       match (←getSO g) with
         -- TODO: check bitsize and overflow!
@@ -406,13 +473,13 @@ mutual
          This means it might be interspersed with labels.
       2. The rest of the labels currently reachable. -/
       let innerStack :=
-        .label contLabel :: shadowLabel (←populateParams ps) contLabel.name
+        .label contLabel :: shadowLabel (←populateBlockParams ps) contLabel.name
 
       -- Block params aren't reachable by variable instructions, so we don't
-      -- change the `Locals` part of `EngineM`.
+      -- change the `Locals` part of `EngineM m`.
       let es' ← (computeContinuation ts ops).run innerStack
       pile es'.2
-    let checkGet_i32 (g : Get') (f : Int → EngineM PUnit) := do
+    let checkGet_i32 (g : Get') (f : Int → EngineM m PUnit) := do
       match (←getSO g) with
       | .num (.i ⟨32, n⟩) => f n
       | _ => throwEE .typecheck_failed
@@ -483,11 +550,11 @@ mutual
       | .negSucc _ => x >>> ((bs : Int) + k)
     | .rotr _ _ _ => throwEE .typecheck_failed
     | .local_get (.by_index idx) => do match (←getLocals).get? idx with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_id_missing idx
     | .local_get (.by_name name) => do
       match findLocalByName? (←getLocals) name with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_name_missing name
     | .local_set (.by_index idx) => do
           -- we can't use locals.replace because that one replaces
@@ -501,11 +568,11 @@ mutual
       | val@(.num _) => push val; push val; runOp $ .local_set l
       | _ => throwEE .typecheck_failed
     | .global_get (.by_index idx) => do match (←getGlobals).get? idx with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .global_with_given_id_missing idx
     | .global_get (.by_name name) => do
       match findGlobalByName? (←getGlobals) name with
-      | .some ⟨_, .some n, _⟩ => push $ .num n
+      | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .global_with_given_name_missing name
     | .global_set (.by_index idx) => do
         checkreplaceGlobals (fun globals _ => replaceNth globals idx)
@@ -532,38 +599,41 @@ mutual
         if let .some l := ls.get? (n.unsign 32).natAbs
           then runOp (.br l)
           else runOp (.br ld)
+    | .call fi => do match fetchFAddress (←getStore) fi with
+      | .none => throwEE $ .function_not_found fi
+      | .some f => runFunc f
+    | .return => do
+        let arity ← getArity
+        let topn := (←get).take arity
+        if topn.length = arity && topn.all isValue
+          then set topn
+          else throwEE .not_enough_stuff_on_stack
+        raiseReturn
+
+  partial def runFunc (f : FunctionInstance m) : EngineM m PUnit := do
+    let rec go : List Operation → EngineM m PUnit
+      | [] => pure ()
+      | op :: ops => do match ←(runOp op).run (←get) with
+        | (.error _, _) =>
+          -- `br` without a structured control operation – shouldn't be
+          -- reachable at all, so throw an `EngineError`.
+          throwEE .other
+        | (.ok (.error .return), stack') => set stack'
+        | (.ok (.ok ()), stack') => set stack'; go ops
+
+    let σ := []
+    let locals := (←populateFuncParams f.params) ++ f.locals.map initLocal
+    let (res, _) ← (go f.ops).run σ ⟨f.results.length, locals⟩
+    if resultsTypecheck f.results res.2
+      then pile res.2
+      else throwEE .stack_incompatible_with_results
+
 end
 
-def runDo (s : Store m)
-          (f : FunctionInstance m)
-          (σ : Stack)
-          : Except EngineErrors (Globals × Stack) := do
-  let bite acc x := do
-    match (←acc).1 with
-    | [] => .error .not_enough_stuff_on_stack
-    | .num y :: rest =>
-      if stackEntryTypecheck x.type $ .num y
-      then .ok (rest, y :: (←acc).2)
-      else .error .param_type_incompatible
-    | _ :: _ => .error .param_type_incompatible
-  let pσ ← f.params.foldl bite $ .ok (σ.es, [])
-  let locals := (f.params ++ f.locals).enum.map
-    fun l => ⟨l.2.name, pσ.2.get? l.1, l.2.type⟩
-  let ses ← (f.ops.forM runOp).run pσ.1 locals s.globals
-  pure (ses.2, Stack.mk ses.1.1.2)
-
--- This is sort of a debug function, returning the full resulting stack instead
--- of just the values specified in the result fields.
-def runFullStack (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors (Globals × Stack) :=
+def run (s : Store m) (fid : Nat) (σ : Stack)
+        : Except EngineErrors (Store m × Stack) :=
   match s.func.get? fid with
-  | .none => .error .function_not_found
-  | .some f => runDo s f σ
-
-def run (s : Store m) (fid : Nat) (σ : Stack) : Except EngineErrors (Globals × Stack) :=
-  match s.func.get? fid with
-  | .none => .error .function_not_found
+  | .none => .error $ .function_not_found (.by_index fid)
   | .some f => do
-    let res ← runDo s f σ
-    if resultsTypecheck f.results res.2.es
-      then pure res
-      else throw .stack_incompatible_with_results
+    let ses ← runFunc f σ.es default s
+    pure (ses.2, Stack.mk ses.1.1.2)

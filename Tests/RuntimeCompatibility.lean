@@ -46,7 +46,27 @@ def basics :=
      )"
   ]
 
+def modsControl :=
+  [
+    "(module
+        (func $const-i32 (result i32) (i32.const 0x132))
+        (func (export \"main\") (result i32) (call $const-i32))
+     )"
+  , "(module
+        (func $as-block-value (result i32)
+          (block (result i32) (nop) (i32.const 2) (return) (i32.const 9))
+        )
+        (func (export \"main\") (result i32) (call $as-block-value))
+     )"
+  , "(module
+         (func $midvalues (result i32)
+          (i32.const 20) (nop) (i32.const 2) (return) (i32.const 9)
+        )
+        (func (export \"main\") (result i32) (call $midvalues))
+     )"
+  ]
+
 def main : IO UInt32 := do
   match (← doesWasmSandboxRun?) with
-  | .ok _ => withWasmSandboxRun runWasmTestSeq [ basics ]
+  | .ok _ => withWasmSandboxRun runWasmTestSeq [ basics, modsControl ]
   | _ => withWasmSandboxFail

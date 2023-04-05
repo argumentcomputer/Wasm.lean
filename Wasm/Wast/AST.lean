@@ -86,21 +86,25 @@ instance : ToString BlockLabelId where
   toString | .by_index n => s!"(BlockLabelId.by_index {n})"
            | .by_name ln => s!"(BlockLabelId.by_name {ln})"
 
--- structure LabelIndex where
---   li : Nat
---   deriving Repr, DecidableEq
-
--- instance : Coe Nat LabelIndex where
---   coe n := ⟨n⟩
-
--- instance : Coe LabelIndex Nat where
---   coe | ⟨n⟩ => n
-
--- instance : ToString LabelIndex where
---   toString | ⟨n⟩ => s!"(LabelIndex {n})"
-
 end BlockLabel
 open BlockLabel
+
+namespace FuncLabel
+
+inductive FuncId where
+  | by_index : Nat → FuncId
+  | by_name : String → FuncId
+  deriving Repr, DecidableEq
+
+instance : Coe Nat FuncId where
+  coe n := .by_index n
+
+instance : ToString FuncId where
+  toString | .by_index n => s!"(FuncId.by_index {n})"
+           | .by_name ln => s!"(FuncId.by_name {ln})"
+
+end FuncLabel
+open FuncLabel
 
 structure FunctionType where
   ins  : List Type'
@@ -196,6 +200,8 @@ mutual
   | br : BlockLabelId → Operation
   | br_if : BlockLabelId → Operation
   | br_table : List BlockLabelId → BlockLabelId → Operation
+  | call : FuncId → Operation
+  | return : Operation
 end
 
 mutual
@@ -275,6 +281,8 @@ mutual
     | .br sl => s!"(Operation.br {sl})"
     | .br_if sl => s!"(Operation.br_if {sl})"
     | .br_table sls sdef => s!"(Operation.br_table {sls} {sdef})"
+    | .call fi => s!"(Operation.call {fi})"
+    | .return => s!"(Operation.return)"
 
 end
 

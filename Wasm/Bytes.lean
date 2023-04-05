@@ -6,6 +6,7 @@ open Wasm.Leb128
 open Wasm.Wast.Code
 open Wasm.Wast.AST
 open Wasm.Wast.AST.BlockLabel
+open Wasm.Wast.AST.FuncLabel
 open Wasm.Wast.AST.FunctionType
 open Wasm.Wast.AST.Global
 open Wasm.Wast.AST.Local
@@ -70,12 +71,13 @@ def enf (g : ByteArray → ByteArray) (f : α → ByteArray) (x : α) : ByteArra
 def mkStr (x : String) : ByteArray :=
   uLeb128 x.length ++ x.toUTF8
 
+abbrev FuncIds := List (Nat × String)
 abbrev FTypes := List ByteArray
 abbrev Locals := List (Nat × Local)
 abbrev Globals := List (Nat × Global)
 abbrev BlockLabels := List (Option String)
 
-abbrev ExtractM := ReaderT FTypes $ ReaderT Globals $ ReaderT Locals
+abbrev ExtractM := ReaderT FuncIds $ ReaderT FTypes $ ReaderT Globals $ ReaderT Locals
                  $ StateM BlockLabels
 
 def push : Option String → ExtractM PUnit := fun x => do set $ x :: (←get)
@@ -89,6 +91,7 @@ instance : HAppend ByteArray (ExtractM ByteArray) (ExtractM ByteArray) := ⟨eap
 instance : HAppend (ExtractM ByteArray) ByteArray (ExtractM ByteArray) where
   hAppend eb b := eb ++ pure b
 
+def readFIds  : ExtractM FuncIds   := readThe FuncIds
 def readFTypes  : ExtractM FTypes  := readThe FTypes
 def readLocals  : ExtractM Locals  := readThe Locals
 def readGlobals : ExtractM Globals := readThe Globals
@@ -451,6 +454,12 @@ def extractBlockLabelId : BlockLabelId → ExtractM ByteArray
     | .some idx => pure $ sLeb128 idx
     | .none => sorry
 
+def extractFuncId : FuncId → ExtractM ByteArray
+  | .by_index idx => pure $ uLeb128 idx
+  | .by_name name => do match (←readFIds).find? (·.2 = name) with
+    | .some (idx, _) => pure $ sLeb128 idx
+    | .none => sorry
+
 def extractBlockType : FunctionType → ExtractM ByteArray
   | ⟨[],[]⟩ => pure $ b 0x40
   | ⟨[],[t]⟩ => pure $ b (ttoi t)
@@ -543,6 +552,8 @@ mutual
     | .br_if bl => b 0x0d ++ extractBlockLabelId bl
     | .br_table bls bld =>
       b 0x0e ++ mkVecM bls extractBlockLabelId ++ extractBlockLabelId bld
+    | .call fi => b 0x10 ++ extractFuncId fi
+    | .return => pure $ b 0x0f
 
 
 end
@@ -574,7 +585,8 @@ def extractFuncIds (m : Module) (types : FTypes) : ByteArray :=
     let funcIds := mkVec m.func (uLeb128 ∘ getIndex)
     b 0x03 ++ lindex funcIds
 
-def extractFuncBody (functypes : FTypes) (gls : Globals) (f : Func)
+def extractFuncBody (fids : FuncIds) (functypes : FTypes) (gls : Globals)
+                    (f : Func)
                     : (ByteArray × BlockLabels) :=
   -- Locals are encoded with counts of subgroups of the same type.
   let localGroups := f.locals.groupBy (fun l1 l2 => l1.type = l2.type)
@@ -585,7 +597,7 @@ def extractFuncBody (functypes : FTypes) (gls : Globals) (f : Func)
 
   -- We also return all the previously collected block labels, as we'll
   -- need them in the names section.
-  let (obs, bls) := (extractOps f.ops).run functypes gls (indexIdentifiedLocals f) []
+  let (obs, bls) := (extractOps f.ops).run fids functypes gls (indexIdentifiedLocals f) []
 
   -- for each function's code section, we'll add its size after we do
   -- all the other computations.
@@ -597,7 +609,10 @@ def extractFuncBodies (m : Module) (functypes : FTypes)
                       : (ByteArray × List BlockLabels) :=
   if m.func.isEmpty then (b0, []) else
     let header := b 0x0a
-    let extractFBwGlobals := extractFuncBody functypes $ indexIdentifiedGlobals m.globals
+    let funcIds := m.func.enum.filterMap fun (idx, f) =>
+      if let .some id := f.name then .some (idx, id) else .none
+    let extractFBwGlobals := extractFuncBody funcIds functypes $
+      indexIdentifiedGlobals m.globals
     let (fbs, bls) := List.unzip $ m.func.map extractFBwGlobals
     (header ++ lindex (vectorise fbs), bls)
 

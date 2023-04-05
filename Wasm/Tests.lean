@@ -39,8 +39,8 @@ def run_main (x : String) :=
 def runModule (m : Module) : Except EngineErrors Int := do
   let store := mkStore m
   let s₀ := Stack.mk []
-  match fidByName store "main" with
-  | .none => Except.error EngineErrors.function_not_found
+  match exportedFidByName store "main" with
+  | .none => .error $ .function_not_found (.by_name "main")
   | .some fid =>
     run store fid s₀ >>= fun (_, s₁) =>
       match s₁ with
