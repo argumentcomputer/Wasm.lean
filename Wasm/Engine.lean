@@ -6,6 +6,7 @@ import YatimaStdLib.Int
 
 open Wasm.Wast.AST
 open Wasm.Wast.AST.Func
+open Wasm.Wast.AST.FunctionType
 open Wasm.Wast.AST.Global
 open Wasm.Wast.AST.FuncLabel
 open Wasm.Wast.AST.BlockLabel
@@ -30,6 +31,7 @@ inductive EngineErrors where
 | global_with_given_id_missing : Nat → EngineErrors
 | cant_mutate_const_global
 | label_not_found
+| type_not_found : FTypeId → EngineErrors
 | function_not_found : FuncId → EngineErrors
 | other -- JACKAL
 
@@ -45,6 +47,7 @@ instance : ToString EngineErrors where
   | .global_with_given_id_missing i => s!"global #{i} not found"
   | .global_with_given_name_missing n => s!"global ``{n}'' not found"
   | .cant_mutate_const_global => "cannot change value of a const global"
+  | .type_not_found tid => s!"type not found: {tid}"
   | .function_not_found fid => s!"function not found: {fid}"
   | .label_not_found => s!"label not found"
   | .other => "non-specified"
@@ -153,27 +156,33 @@ structure FunctionInstance (x : Module) where
   index : Nat
   ops : List Operation
 
-/- TODO: Unify this with Bytes.indexFuncs -/
-def instantiateFs (m : Module) : List (FunctionInstance m) :=
-  let go acc f :=
-    let fi := FunctionInstance.mk f.name
-                                  f.export_
-                                  f.params
-                                  f.results
-                                  f.locals
-                                  0
-                                  f.ops
-    match acc with
-    | [] => [fi]
-    | x :: _ => {fi with index := x.index + 1} :: acc
-  (m.func.foldl go []).reverse
+/-- Instantiate functions of a given module. It's possible for this
+to fail if functions are defined with a reference to an explicitly
+defined function type (e.g. `(func (type 2))` that doesn't exist. -/
+def instantiateFs (m : Module)
+                  : Except EngineErrors (List (FunctionInstance m)) :=
+  m.func.enum.mapM fun (idx, f) => do
+    let (params, results) ← match f.ftype with
+      | .inr (ps, res) => pure (ps, res)
+      | .inl tid => match fetchFType m.types tid with
+        | .none => throw $ .type_not_found tid
+        | .some ft =>
+          pure (ft.ins.map fun p => {p with name := .none}, ft.outs)
+
+    pure $ FunctionInstance.mk f.name
+                               f.export_
+                               params
+                               results
+                               f.locals
+                               idx
+                               f.ops
 
 structure Store (m : Module) where
   globals : Globals
   func : List (FunctionInstance m)
 
-def mkStore (m : Module) : Store m :=
-  ⟨instantiateGlobals m.globals, instantiateFs m⟩
+def mkStore (m : Module) : Except EngineErrors (Store m) :=
+  Store.mk (instantiateGlobals m.globals) <$> instantiateFs m
 
 def exportedFuncByName (s : Store m) (x : String)
                        : Option $ FunctionInstance m :=

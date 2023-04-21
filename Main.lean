@@ -69,21 +69,23 @@ def main : IO Unit := do
   | .ok m => do
     IO.println s!"!!!!!!!!!!!! DEMO OF WASM LEAN RUNTIME WOW !!!!!!!!!!!!!"
     IO.println s!"RUNNING FUNCTION `main` FROM A MODULE WITH REPRESENTATION:\n{m}"
-    let store := mkStore m
-    let ofid := exportedFidByName store "main"
-    let uni_num_zero := NumUniT.i $ ConstInt.mk 32 0
-    let se_zero := StackEntry.StackEntry.num uni_num_zero
-    IO.println $ match ofid with
-    | .none => s!"THERE IS NO FUNCTION CALLED `main`"
-    | .some fid =>
-    ------------- RUNNING HERE --------------
-      let eres := run store fid $ Stack.mk [se_zero, se_zero]
-      match eres with
-      | .ok (_, stack2) => match stack2.es with
-        | [] => "UNEXPECTED RESULT"
-        ---------------- FINALLY GET STACK ENTRIES HERE ----------------
-        | xs => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{xs}"
-      | .error ee => s!"FAILED TO RUN `main` CORRECTLY: {ee}"
+    match mkStore m with
+    | .error ee => IO.println s!"FAILED TO CONSTRUCT A STORE: {ee}"
+    | .ok store =>
+      let ofid := exportedFidByName store "main"
+      let uni_num_zero := NumUniT.i $ ConstInt.mk 32 0
+      let se_zero := StackEntry.StackEntry.num uni_num_zero
+      IO.println $ match ofid with
+      | .none => s!"THERE IS NO FUNCTION CALLED `main`"
+      | .some fid =>
+      ------------- RUNNING HERE --------------
+        let eres := run store fid $ Stack.mk [se_zero, se_zero]
+        match eres with
+        | .ok (_, stack2) => match stack2.es with
+          | [] => "UNEXPECTED RESULT"
+          ---------------- FINALLY GET STACK ENTRIES HERE ----------------
+          | xs => s!"!!!!!!!!!!!!!! SUCCESS !!!!!!!!!!!!!!!!\n{xs}"
+        | .error ee => s!"FAILED TO RUN `main` CORRECTLY: {ee}"
 
   let mut x := 0
   x := 1

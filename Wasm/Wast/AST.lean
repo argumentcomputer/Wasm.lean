@@ -107,7 +107,8 @@ end FuncLabel
 open FuncLabel
 
 structure FunctionType where
-  ins  : List Type'
+  tid : Option String
+  ins  : List Local
   outs : List Type'
   deriving DecidableEq, Inhabited
 
@@ -117,7 +118,20 @@ instance : ToString FunctionType where
   toString x := s!"(FunctionType {x.ins} {x.outs})"
 
 def mkFunctionType (param : List Local) (results : List Type') : FunctionType :=
-  ⟨param.map (·.type), results⟩
+  ⟨.none, param, results⟩
+
+inductive FTypeId where
+  | by_index : Nat → FTypeId
+  | by_name : String → FTypeId
+  deriving Repr, DecidableEq
+
+instance : Coe Nat FTypeId where
+  coe n := .by_index n
+
+instance : ToString FTypeId where
+  toString | .by_index n => s!"(FTypeId.by_index {n})"
+           | .by_name ln => s!"(FTypeId.by_name {ln})"
+
 
 end FunctionType
 open FunctionType
@@ -303,19 +317,17 @@ end BlockLabel
 structure Func where
   name : Option String
   export_ : Option String
-  -- TODO: Heterogenous lists so that we can promote Type'?
-  params : List Local
-  results : List Type'
+  ftype : Sum FTypeId (List Local × List Type')
   locals : List Local
   ops : List Operation
 
 namespace Func
 
 instance : ToString Func where
-  toString x := s!"(Func.mk {x.name} {x.export_} {x.params} {x.results} {x.locals} {x.ops})"
-
-def toFunctionType (f : Func) : FunctionType :=
-  mkFunctionType f.params f.results
+  toString x :=
+    match x.ftype with
+    | .inl tid => s!"(Func.mk {x.name} {x.export_} {tid} {x.locals} {x.ops})"
+    | .inr (params, results) => s!"(Func.mk {x.name} {x.export_} {params} {results} {x.locals} {x.ops})"
 
 end Func
 open Func
@@ -325,11 +337,12 @@ namespace Module
 
 structure Module where
   name : Option String
+  types : List FunctionType
   globals : List Global
   func : List Func
 
 instance : ToString Module where
-  toString x := s!"(Module.mk {x.name} {x.globals} {x.func})"
+  toString x := s!"(Module.mk {x.name} {x.types} {x.globals} {x.func})"
 
 end Module
 

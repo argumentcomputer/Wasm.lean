@@ -102,26 +102,35 @@ def testIfParses : TestSeq :=
 def testFuncs : TestSeq :=
   let test' := testParse (bracketed funcP)
   group "check that functions parse" $
-    test' "(func)" (Func.mk .none .none [] [] [] []) ++
+    test' "(func)" (Func.mk .none .none (.inr ([],[])) [] []) ++
     test' "(func (param $x i32) (param i32) (result i32))"
       (Func.mk .none .none
-        [(Local.mk (.some "x") (.i 32)), (Local.mk .none (.i 32))]
-        [(.i 32)] [] []
+        (.inr
+          ([(Local.mk (.some "x") (.i 32)), (Local.mk .none (.i 32))]
+          ,[(.i 32)])
+        ) [] []
       ) ++
     test' "(func (param $x i32) (param i32) (result i32) (result i64))"
       (Func.mk .none .none
-        [(Local.mk (.some "x") (.i 32)), (Local.mk .none (.i 32))]
-        [(.i 32), (.i 64)] [] []
+        (.inr
+          ([(Local.mk (.some "x") (.i 32)), (Local.mk .none (.i 32))]
+          ,[(.i 32), (.i 64)])
+        ) [] []
       ) ++
     test' "(func (param $x i32) (param $y i32) (result i32))"
       (Func.mk .none .none
-        [ (Local.mk (.some "x") (.i 32)), (Local.mk (.some "y") (.i 32))]
-        [(.i 32)] [] []
+        (.inr
+          ([ (Local.mk (.some "x") (.i 32)), (Local.mk (.some "y") (.i 32))]
+          ,[(.i 32)])
+        ) [] []
       ) ++
     test' "(func (param $x i32) (param i32) (result i32) (i32.add (i32.const 40) (i32.const 2)))"
     (Func.mk .none .none
-      [(Local.mk (.some "x") (.i 32)), (Local.mk .none (.i 32))]
-      [(.i 32)] []
+      (.inr
+        ([(Local.mk (.some "x") (.i 32)), (Local.mk .none (.i 32))]
+        ,[(.i 32)])
+      )
+      []
       [ .const (.i 32) (.i (ConstInt.mk 32 40))
       , .const (.i 32) (.i (ConstInt.mk 32 2))
       , .add (.i 32)
@@ -144,8 +153,8 @@ def testCommentsIgnored : TestSeq :=
   "
   test "NO PARSE: (func ;; a line comment until eof)"
     (not (parses? (bracketed funcP) "(func ;; a line comment until eof)")) $
-  test' sLine (Func.mk .none .none [] [] [] [.nop]) ++
-  test' sBlock (Func.mk .none .none [] [] [] [.nop])
+  test' sLine (Func.mk .none .none (.inr ([],[])) [] [.nop]) ++
+  test' sBlock (Func.mk .none .none (.inr ([],[])) [] [.nop])
 
 def main : IO UInt32 :=
   lspecIO $

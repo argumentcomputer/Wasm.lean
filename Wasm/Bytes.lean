@@ -72,7 +72,7 @@ def mkStr (x : String) : ByteArray :=
   uLeb128 x.length ++ x.toUTF8
 
 abbrev FuncIds := List (Nat × String)
-abbrev FTypes := List ByteArray
+abbrev FTypes := List FunctionType
 abbrev Locals := List (Nat × Local)
 abbrev Globals := List (Nat × Global)
 abbrev BlockLabels := List (Option String)
@@ -96,14 +96,24 @@ def readFTypes  : ExtractM FTypes  := readThe FTypes
 def readLocals  : ExtractM Locals  := readThe Locals
 def readGlobals : ExtractM Globals := readThe Globals
 
-def indexLocals (f : Func) : Locals :=
-  let idxParams := f.params.enum
-  let idxLocals := f.locals.enumFrom f.params.length
+/-- Index locals of a function. If a function uses a type reference,
+we have to consider the amount of parameters in that type, but
+their identifiers aren't encoded in the name section nor propagated
+to the operations part, so we strip the ids. -/
+def indexLocals (f : Func) (ftypes : FTypes) : Locals :=
+  let idxParams := match f.ftype with
+  | .inr (params, _) => params.enum
+  | .inl tid => match fetchFType ftypes tid with
+    | .some ft =>
+      let stripped := ft.ins.map fun p => {p with name := .none}
+      stripped.enum
+    | .none => sorry
+  let idxLocals := f.locals.enumFrom idxParams.length
   idxParams ++ idxLocals
 
-def indexIdentifiedLocals (f : Func) : Locals :=
+def indexIdentifiedLocals (f : Func) (ftypes : FTypes) : Locals :=
   let onlyIDed := List.filter (·.2.name.isSome)
-  onlyIDed $ indexLocals f
+  onlyIDed $ indexLocals f ftypes
 
 def indexFuncs (fs : List Func) : List (Nat × Func) := fs.enum
 
@@ -111,9 +121,9 @@ def indexIdentifiedFuncs (fs : List Func) : List (Nat × Func) :=
   let onlyIDed := List.filter (·.2.name.isSome)
   onlyIDed fs.enum
 
-def indexFuncsWithIdentifiedLocals (fs : List Func)
+def indexFuncsWithIdentifiedLocals (fs : List Func) (ftypes : FTypes)
   : List (Nat × Locals) :=
-  (fs.map indexIdentifiedLocals).enum.filter (!·.2.isEmpty)
+  (fs.map fun f => indexIdentifiedLocals f ftypes).enum.filter (!·.2.isEmpty)
 
 def indexIdentifiedGlobals (gs : List Global) : Globals :=
   let onlyIDed := List.filter (·.2.name.isSome)
@@ -145,21 +155,19 @@ private partial def traverseOp : Operation → List FunctionType
 /-- Extract a 'function type' construct. -/
 def extractFunctionType (ft : FunctionType) : ByteArray :=
   let header := b 0x60
-  let params := mkVec ft.ins (b ∘ ttoi)
+  let params := mkVec ft.ins (b ∘ ttoi ∘ Local.type)
   let result := mkVec ft.outs (b ∘ ttoi)
   header ++ params ++ result
 
-/-- Extract the head function type of a `Func`. -/
-def extractFuncHeadType (f : Func) : ByteArray :=
-  extractFunctionType ⟨f.params.map (·.type), f.results⟩
+/-- Collect `FunctionType`s of structured control instructions of a `Func`. -/
+def collectFuncBlockTypes (f : Func) : FTypes :=
+  f.ops.map traverseOp |>.join
 
-/-- Extract function types of structured control instructions of a `Func`. -/
-def extractFuncBlockTypes (f : Func) : FTypes :=
-  f.ops.map traverseOp |>.join |>.map extractFunctionType
-
-/-- Extract all function types from a `Func`, including blocktypes. -/
-def extractFuncAllTypes (f : Func) : FTypes :=
-  extractFuncHeadType f :: extractFuncBlockTypes f
+/-- Collect all `FunctionType`s from a `Func`, including blocktypes.-/
+def collectFuncAllTypes (f : Func) : FTypes :=
+  match f.ftype with
+  | .inl _ => collectFuncBlockTypes f
+  | .inr (params, res) => ⟨.none, params, res⟩ :: collectFuncBlockTypes f
 
 -- TODO: maybe calculate the opcodes instead of having lots of lookup subtables?
 -- def extractIBinOp (α : Type') (offset : UInt8)
@@ -415,11 +423,11 @@ def extractFuncId : FuncId → ExtractM ByteArray
     | .none => sorry
 
 def extractBlockType : FunctionType → ExtractM ByteArray
-  | ⟨[],[]⟩ => pure $ b 0x40
-  | ⟨[],[t]⟩ => pure $ b (ttoi t)
+  | ⟨_,[],[]⟩ => pure $ b 0x40
+  | ⟨_,[],[t]⟩ => pure $ b (ttoi t)
   | ft => do
       let ftypes ← readFTypes
-      let tidx := ftypes.indexOf (extractFunctionType ft)
+      let tidx := ftypes.indexOf ft
       pure $ sLeb128 tidx
 
   -- https://coolbutuseless.github.io/2022/07/29/toy-wasm-interpreter-in-base-r/
@@ -515,14 +523,19 @@ private def poorMansDeduplicate (xs : List α) [BEq α] : List α :=
 def typeHeader := b 0x01
 
 def extractTypes (m : Module) : FTypes :=
-  if m.func.isEmpty then [] else
-    poorMansDeduplicate ∘ List.join $ m.func.map extractFuncAllTypes
+  poorMansDeduplicate $
+    m.types ++ (m.func.map collectFuncAllTypes |> .join)
 
 /- Function section -/
 
 def extractFuncIds (m : Module) (types : FTypes) : ByteArray :=
   if m.func.isEmpty then b0 else
-    let getIndex f := types.indexOf (extractFuncHeadType f)
+    let getIndex f := match f.ftype with
+      | .inl (.by_index idx) => idx
+      | .inl (.by_name n) => match types.findIdx? (·.tid = .some n) with
+        | .some idx => idx
+        | .none => sorry
+      | .inr (params, results) => types.indexOf ⟨.none, params, results⟩
     let funcIds := mkVec m.func (uLeb128 ∘ getIndex)
     b 0x03 ++ lindex funcIds
 
@@ -538,7 +551,7 @@ def extractFuncBody (fids : FuncIds) (functypes : FTypes) (gls : Globals)
 
   -- We also return all the previously collected block labels, as we'll
   -- need them in the names section.
-  let (obs, bls) := (extractOps f.ops).run fids functypes gls (indexIdentifiedLocals f) []
+  let (obs, bls) := (extractOps f.ops).run fids functypes gls (indexIdentifiedLocals f functypes) []
 
   -- for each function's code section, we'll add its size after we do
   -- all the other computations.
@@ -560,16 +573,19 @@ def extractFuncBodies (m : Module) (functypes : FTypes)
 def modHeader : ByteArray := b 0x00
 
 def extractModIdentifier : Module → ByteArray
-| ⟨.none, _, _⟩ => b0
-| ⟨.some n, _, _⟩ => modHeader ++ (lindex $ lindex n.toUTF8)
+| ⟨.none, _, _, _⟩ => b0
+| ⟨.some n, _, _, _⟩ => modHeader ++ (lindex $ lindex n.toUTF8)
 
 def funcHeader : ByteArray := b 0x01
 
-def extractFuncIdentifier : Func → ByteArray
-| ⟨ .none, _, _, _, _, _ ⟩ => b0
-| ⟨ .some x, _, _, _, _, _ ⟩ => lindex x.toUTF8
+def extractFuncIdentifier (f : Func) : ByteArray :=
+  if let .some x := f.name then mkStr x else b0
 
 def extractGlobalIdentifier : Global → ByteArray
+| ⟨ .none, _, _ ⟩ => b0
+| ⟨ .some x, _, _ ⟩ => lindex x.toUTF8
+
+def extractFTypeIdentifier : FunctionType → ByteArray
 | ⟨ .none, _, _ ⟩ => b0
 | ⟨ .some x, _, _ ⟩ => lindex x.toUTF8
 
@@ -648,9 +664,10 @@ def encodeLocal (l : Nat × Local) : ByteArray :=
 def encodeFunc (f : (Nat × Locals)) : ByteArray :=
   uLeb128 f.1 ++ mkVec f.2 encodeLocal
 
-def extractLocalIdentifiers (fs : List Func) : ByteArray :=
+def extractLocalIdentifiers (fs : List Func) (ftypes : FTypes)
+                            : ByteArray :=
   let subsection_header := b 0x02
-  let ifs := indexFuncsWithIdentifiedLocals fs
+  let ifs := indexFuncsWithIdentifiedLocals fs ftypes
   if !ifs.isEmpty then
     subsection_header ++ lindex (mkVec ifs encodeFunc)
   else
@@ -672,23 +689,25 @@ def extractBlockIdentifiers (blockLabels : List BlockLabels) : ByteArray :=
   else
     b0
 
+def extractFTypeIdentifiers (ftypes : List FunctionType) : ByteArray :=
+  let subsection_header := b 0x04
+  let labelousFTypes := ftypes.enum.filter (·.2.tid.isSome)
+  if labelousFTypes.isEmpty then b0 else
+    let fts := mkIndexedVec labelousFTypes extractFTypeIdentifier
+    subsection_header ++ lindex fts
+
 def extractIdentifiers (m : Module) (blockLabels : List BlockLabels) : ByteArray :=
   let header := b 0x00
   let nameSectionStarts := lindex "name".toUTF8
   let modIdentifier := extractModIdentifier m
   let funcIdentifiers := extractFuncIdentifiers m.func
-  let locIdentifiers := extractLocalIdentifiers m.func
+  let locIdentifiers := extractLocalIdentifiers m.func m.types
   let blockIdentifiers := extractBlockIdentifiers blockLabels
+  let ftypeIdentifiers := extractFTypeIdentifiers m.types
   let globalIdentifiers := extractGlobalIdentifiers m.globals
-  if (modIdentifier.size > 0 || funcIdentifiers.size > 0 ||
-      locIdentifiers.size > 0 || blockIdentifiers.size > 0 ||
-      globalIdentifiers.size > 0)
-  then
-    let ids := nameSectionStarts ++ modIdentifier ++ funcIdentifiers ++
-               locIdentifiers ++ blockIdentifiers ++ globalIdentifiers
-    header ++ lindex ids
-  else
-    b0
+  let ids := modIdentifier ++ funcIdentifiers ++ locIdentifiers
+    ++ blockIdentifiers ++ ftypeIdentifiers ++ globalIdentifiers
+  if ids.size > 0 then header ++ lindex (nameSectionStarts ++ ids) else b0
 
 def extractExports (m : Module) : ByteArray :=
   let exports := m.func.enum.filter (·.2.export_.isSome)
@@ -705,8 +724,8 @@ def mtob (m : Module) : ByteArray :=
   -- we extract deduplicated types here since we need it to
   -- look up correct function indices in the funcids section
   let types := extractTypes m
-  let typeSection := if m.func.isEmpty then b0 else
-    typeHeader ++ lindex (vectorise types)
+  let typeSection := if types.isEmpty then b0 else
+    typeHeader ++ lindex (vectorise $ types.map extractFunctionType)
   let (funcBodies, blockLabels) := extractFuncBodies m types
   magic ++
   version ++

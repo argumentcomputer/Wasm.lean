@@ -38,6 +38,7 @@ open Global
 open FuncLabel
 open BlockLabel
 open Operation
+open FunctionType
 open Func
 open Module
 
@@ -47,10 +48,18 @@ def bracketed (p : Parsec Char String Unit α) :=
 def bracketedWs (p : Parsec Char String Unit α) :=
   owP *> bracketed p <* owP
 
-def oneOfTwoP (pa : Parsec Char String Unit α)
+def oneOf2P (pa : Parsec Char String Unit α)
               (pb : Parsec Char String Unit β)
     : Parsec Char String Unit (Except α β) :=
   .error <$> pa <|> .ok <$> pb
+
+def oneOf3P (pa : Parsec Char String Unit α)
+            (pb : Parsec Char String Unit β)
+            (pc : Parsec Char String Unit γ)
+    : Parsec Char String Unit (Except (Except α β) γ) :=
+  (.error ∘ .error) <$> pa
+  <|> (.error ∘ .ok) <$> pb
+  <|> .ok <$> pc
 
 /- Sometimes – mainly for module parsing, where declarations can be
   arbitrarily interspersed – we need a way to parse a mix of parsers.
@@ -61,14 +70,25 @@ def oneOfTwoP (pa : Parsec Char String Unit α)
   Consider that the "common prefix" we
   would use `attempt` for, brackets, is always known.
 -/
-def mixOfTwoLispP (pa : Parsec Char String Unit α)
-                  (pb : Parsec Char String Unit β)
+def mixOf2LispP (pa : Parsec Char String Unit α)
+                (pb : Parsec Char String Unit β)
     : Parsec Char String Unit (List α × List β) := do
-  let mix ← sepEndBy' (bracketed (oneOfTwoP pa pb)) owP
+  let mix ← sepEndBy' (bracketed (oneOf2P pa pb)) owP
   let either exc acc := match exc with
     | .error a => (a :: acc.1, acc.2)
     | .ok b => (acc.1, b :: acc.2)
   pure $ mix.foldr either ([],[])
+
+def mixOf3LispP (pa : Parsec Char String Unit α)
+                (pb : Parsec Char String Unit β)
+                (pc : Parsec Char String Unit γ)
+    : Parsec Char String Unit (List α × List β × List γ) := do
+  let mix ← sepEndBy' (bracketed (oneOf3P pa pb pc)) owP
+  let choose exc acc := match exc with
+    | .error (.error a) => (a :: acc.1, acc.2)
+    | .error (.ok b) => (acc.1, b :: acc.2.1, acc.2.2)
+    | .ok c => (acc.1, acc.2.1, c :: acc.2.2)
+  pure $ mix.foldr choose ([],[],[])
 
 def manyLispP (p : Parsec Char String Unit α)
     : Parsec Char String Unit (List α) :=
@@ -88,6 +108,11 @@ def globalLabelP : Parsec Char String Unit GlobalLabel :=
 def funcIdP : Parsec Char String Unit FuncId :=
   .by_index <$> (hexP <|> decimalP) <|>
   .by_name <$> idP
+
+def fTypeIdP : Parsec Char String Unit FTypeId := attempt $ bracketedWs $
+  string "type" *> ignoreP *>
+  (.by_index <$> (hexP <|> decimalP) <|>
+  .by_name <$> idP)
 
 def structLabelP : Parsec Char String Unit BlockLabelId :=
   .by_index <$> (hexP <|> decimalP) <|>
@@ -264,6 +289,21 @@ private def returnP : Parsec Char String Unit Operation :=
 
 end
 
+private def funcTypeParamsResultsP
+            : Parsec Char String Unit (List Local × List Type') := do
+  let params ← nilParamsP
+  let results ← brResultsP
+  pure (params, results)
+
+/-- Parse an explicitly listed function type. -/
+def funcTypeP : Parsec Char String Unit FunctionType := do
+  discard $ string "type"
+  let oname ← option' (attempt (ignoreP *> idP))
+  bracketedWs do
+    string "func" *> owP
+    let (params, results) ← funcTypeParamsResultsP
+    pure ⟨oname, params, results⟩
+
 def globalTypeP : Parsec Char String Unit GlobalType :=
   let mutP := string "mut" *> ignoreP
   let constTP := GlobalType.mk false <$> typeP
@@ -291,14 +331,12 @@ def funcP : Parsec Char String Unit Func := do
   discard $ string "func"
   let oname ← option' (attempt (ignoreP *> idP))
   let oexp ← owP *> option' (attempt exportP <* owP)
-  let ops ← option' nilParamsP
-  let ps := optional ops []
-  let rtypes ← brResultsP
-  let ols ← option' nilLocalsP
-  let ls := optional ols []
+  let ftidP := fTypeIdP <* owP <* funcTypeParamsResultsP
+  let ftype ← .inl <$> ftidP <|> .inr <$> funcTypeParamsResultsP
+  let ls ← nilLocalsP
   let oops ← option' opsP
   let ops := optional oops []
-  pure $ Func.mk oname oexp ps rtypes ls ops
+  pure $ Func.mk oname oexp ftype ls ops
 
 -- NB: A module consists of a sequence of fields that can occur in any order.
 -- All definitions and their respective bound identifiers scope over the entire
@@ -306,8 +344,8 @@ def funcP : Parsec Char String Unit Func := do
 def moduleP : Parsec Char String Unit Module := bracketedWs do
   discard $ string "module"
   let oname ← option' (attempt (ignoreP *> idP))
-  let (globals, funs) ← owP *> mixOfTwoLispP globalP funcP
+  let (ftypes, globals, funs) ← owP *> mixOf3LispP funcTypeP globalP funcP
 
-  pure $ Module.mk oname globals funs
+  pure $ Module.mk oname ftypes globals funs
 
 end textparser
