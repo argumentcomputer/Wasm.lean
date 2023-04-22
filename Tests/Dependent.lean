@@ -13,7 +13,6 @@ open Wasm.Wast.Num
 -- Open the namespace for the Nat, Int and Float types.
 open Num.Nat
 open Num.Int
-open Num.Float
 
 -- Check if something parses to an x and not to anything else.
 def parsesTo (x : Nat) (y : String) : Bool :=
@@ -31,14 +30,6 @@ def intParsesTo (x : Int) (y : String) : Bool :=
     | _ => false
   | _ => false
 
--- No regrets about copy-pasting.
-def floatParsesTo (x : Float) (y : String) : Bool :=
-  match mkFloat' y with
-  | some y => match y.parsed.val with
-    | .ok y => y == x
-    | _ => false
-  | _ => false
-
 -- Check if two things parse to the same Nat.
 def parsesToSame (x : String) (y : String) : Bool :=
   match mkNat' x, mkNat' y with
@@ -51,14 +42,6 @@ def parsesToSame (x : String) (y : String) : Bool :=
 def intParsesToSame (x : String) (y : String) : Bool :=
   -- debug !
   match mkInt' x, mkInt' y with
-  | some x, some y => match x.parsed.val, y.parsed.val with
-    | .ok x, .ok y => x == y
-    | _, _ => false
-  | _, _ => false
-
--- No regrets about copy-pasting.
-def floatParsesToSame (x : String) (y : String) : Bool :=
-  match mkFloat' x, mkFloat' y with
   | some x, some y => match x.parsed.val, y.parsed.val with
     | .ok x, .ok y => x == y
     | _, _ => false
@@ -227,32 +210,6 @@ def floatsWithExponentNotation := [
 ]
 
 
-def testFloat : TestSeq :=
-  test "correct floats parse" $
-    (floats ++ floatsWithExponentNotation).foldl
-      (fun acc x => acc && (mkFloat' x).isSome) true
-
-def testFloatUnderScores : TestSeq :=
-  test "correct floats parse to the same Float with underscores" $
-    floats.foldl
-      (fun acc x => acc && floatParsesToSame x (x.replace "_" "")) true
-
-def testFloatAntiScores : TestSeq :=
-  test "correct floats parse to different Floats than other correct floats" $
-    floats.foldl (fun acc x =>
-      let x' := x.replace "_" "7"
-      let y := if x == x' then s!"{x}1" else x'
-      acc && (not $ floatParsesToSame x y)
-    ) true
-
-def testBadFloatsDontParse : TestSeq :=
-  test "some wrong floats don't parse" $
-    floats.foldl (fun acc x => acc && (mkFloat' s!"..{x}").isNone) true
-
-def testOxxFloatsDontParse : TestSeq :=
-  test "more wrong floats don't parse" $
-    floats.foldl (fun acc x => acc && (mkFloat' s!"0xx{x}").isNone) true
-
 open Wasm.Wast.Identifier
 
 def ids := [
@@ -371,14 +328,6 @@ def main : IO UInt32 := do
     testBadIntsDontParse ++
     testOxxIntsDontParse ++
     (test "-22_2_2 is -2222, not anything else" $ intParsesTo (-2222) "-22_2_2") ++
-    testFloat ++
-    testFloatUnderScores ++
-    testFloatAntiScores ++
-    testBadFloatsDontParse ++
-    testOxxFloatsDontParse ++
-    (test "-22_2_2.0 is -2222.0, not anything else" $ floatParsesTo (-2222.0) "-22_2_2.0") ++
-    -- -0x3000.0e-3 is the same as -12288.0e-3 and -12288.0e-3 is the same as -12.288
-    (test "-0x3000.0e-3 is -12.288, not anything else" $ floatParsesTo (-12.288) "-0x3000.0e-3") ++
     testIdentifiers ++
     testIdentifiersDontParse ++
     testDigitsWithHexDigits ++

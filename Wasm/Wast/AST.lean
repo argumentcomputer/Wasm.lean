@@ -2,7 +2,6 @@ import Wasm.Wast.BitSize
 import Wasm.Wast.Num
 
 open Wasm.Wast.Num.Num.Int
-open Wasm.Wast.Num.Num.Float
 open Wasm.Wast.Num.Uni
 
 namespace Wasm.Wast.AST
@@ -10,7 +9,6 @@ section AST
 
 
 inductive Type' where
-  | f : BitSize → Type'
   | i : BitSize → Type'
   -- | v : BitSizeSIMD → Type'
   deriving DecidableEq
@@ -19,16 +17,13 @@ namespace Type'
 
 instance : ToString Type' where
   toString x := match x with
-  | .f y => "(Type'.f " ++ toString y ++ ")"
   | .i y => "(Type'.i " ++ toString y ++ ")"
   -- | .v y => "(Type'.v " ++ toString y ++ ")"
 
 def numUniType : NumUniT → Type'
   | .i x => .i x.bs
-  | .f x => .f x.bs
 
 def bitsize : Type' → BitSize
-  | .f bs => bs
   | .i bs => bs
 
 end Type'

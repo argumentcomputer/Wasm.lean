@@ -1,0 +1,29 @@
+ - [x] block
+ - [x] br
+ - [x] br_if
+ - [x] br_table
+ - [ ] bytes
+ - [ ] call
+ - [ ] call_indirect
+ - [ ] data
+ - [x] drop
+ - [ ] elem
+ - [ ] end
+ - [ ] export
+ - [x] func
+ - [x] global
+ - [x] i32
+ - [x] i64
+ - [x] local
+ - [x] loop
+ - [ ] memory
+ - [ ] module
+ - [x] mut
+ - [x] param
+ - [x] result
+ - [ ] return
+ - [x] select
+ - [ ] table
+---------------------------
+ - [x] type
+ - [x] unreachable

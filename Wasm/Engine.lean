@@ -204,11 +204,6 @@ def stackEntryTypecheck (x : Type') (y : StackEntry) :=
     | .i n => match x with
       | .i 32 => n.bs == 32
       | .i 64 => n.bs == 64
-      | _ => false
-    | .f n => match x with
-      | .f 32 => n.bs == 32
-      | .f 64 => n.bs == 64
-      | _ => false
   | .label _ => false
 
 /-- Checks that the given numerical values correspond to the given
@@ -408,8 +403,6 @@ partial def populateFuncParams (ps : List Local)
 def enf2Nums1Type : StackEntry → StackEntry → EngineM m Type'
   | .num (.i ⟨32, _⟩), .num (.i ⟨32, _⟩) => pure $ .i 32
   | .num (.i ⟨64, _⟩), .num (.i ⟨64, _⟩) => pure $ .i 64
-  | .num (.f ⟨32, _⟩), .num (.f ⟨32, _⟩) => pure $ .f 32
-  | .num (.f ⟨64, _⟩), .num (.f ⟨64, _⟩) => pure $ .f 64
   | _, _ => throwEE .param_type_incompatible
 
 /-- Check that two stack entries are of the same numerical type,
@@ -427,7 +420,6 @@ def getInt : StackEntry → EngineM m Int
 def unsigned (f : Int → Int → Int) (t : Type') := fun x y =>
   match t with
   | .i bs => f (Int.unsign x bs) (Int.unsign y bs)
-  | .f _ => unreachable!
 
 mutual
 
@@ -465,14 +457,6 @@ mutual
       | .num (.i ⟨b0, i0⟩), .num (.i ⟨_b1, i1⟩) =>
           push $ .num $ .i ⟨b0, binop i0 i1⟩
       | _, _ => throwEE .param_type_incompatible
-    let runFBinop binop := do -- sad we can't generalise over constructors
-      let operand1 ← bite
-      let operand0 ← bite
-      match operand0, operand1 with
-        -- TODO: check bitsize and overflow!
-      | .num (.f ⟨b0, f0⟩), .num (.f ⟨_b1, f1⟩) =>
-          push $ .num $ .f ⟨b0, binop f0 f1⟩
-      | _, _ => throwEE .param_type_incompatible
     let blockOp ps ts ops contLabel := do
       /- To populate the block type `[valuetypeᵐ] → [valuetype*]`, we start
       the block execution with the inner stack made up of:
@@ -503,9 +487,7 @@ mutual
       if i0 = 0 then push operand1 else push operand2
     | .eqz _t => runIUnop (if · = 0 then 1 else 0)
     | .eq (.i _) => runIBinop (if · = · then 1 else 0)
-    | .eq (.f _) => runFBinop (if · == · then 1 else 0) -- lmao even this isn't right because of +0 == -0
     | .ne (.i _) => runIBinop (if · ≠ · then 1 else 0)
-    | .ne (.f _) => runFBinop (if · != · then 1 else 0)
     | .lt_u t  => runIBinop $ unsigned (if · < · then 1 else 0) t
     | .lt_s _t => runIBinop (if · < · then 1 else 0)
     | .gt_u t  => runIBinop $ unsigned (if · > · then 1 else 0) t
@@ -514,10 +496,6 @@ mutual
     | .le_s _t => runIBinop (if · ≤ · then 1 else 0)
     | .ge_u t  => runIBinop $ unsigned (if · ≥ · then 1 else 0) t
     | .ge_s _t => runIBinop (if · ≥ · then 1 else 0)
-    | .lt _t => runFBinop (if · < · then 1 else 0)
-    | .gt _t => runFBinop (if · > · then 1 else 0)
-    | .le _t => runFBinop (if · ≤ · then 1 else 0)
-    | .ge _t => runFBinop (if · ≥ · then 1 else 0)
     | .clz t => runIUnop fun i =>
       ((toNBits i t.bitsize).takeWhile (· = .zero)).length
     | .ctz t => runIUnop fun i =>
@@ -525,14 +503,8 @@ mutual
     | .popcnt t => runIUnop fun i =>
       ((toNBits i t.bitsize).filter (· = .one)).length
     | .add (.i _) => runIBinop (· + ·)
-    | .add (.f _) => runFBinop (· + ·)
     | .sub (.i _) => runIBinop (· - ·)
-    | .sub (.f _) => runFBinop (· - ·)
     | .mul (.i _) => runIBinop (· * ·)
-    | .mul (.f _) => runFBinop (· * ·)
-    | .div _t => runFBinop (· / ·)
-    | .max _t => runFBinop max
-    | .min _t => runFBinop min
     | .div_s _t => runIBinop (· / ·)
     | .div_u  t => runIBinop $ unsigned (· / ·) t
     | .rem_s _t => runIBinop (· % ·)
@@ -545,17 +517,14 @@ mutual
     | .shr_s (.i bs) => runIBinop fun x k =>
       let N := (2 : Int)^(bs : Nat)
       (x >>> k) ||| (x &&& (N/2))
-    | .shr_s _ => throwEE .typecheck_failed
     | .rotl (.i bs) => runIBinop fun x k =>
       (x <<< k) ||| match k with
       | .ofNat   _ => (x >>> ((bs : Int) - k))
       | .negSucc _ => (x <<< ((bs : Int) + k))
-    | .rotl _ => throwEE .typecheck_failed
     | .rotr (.i bs) => runIBinop fun x k =>
       (x >>> k) ||| match k with
       | .ofNat   _ => x <<< ((bs : Int) - k)
       | .negSucc _ => x >>> ((bs : Int) + k)
-    | .rotr _ => throwEE .typecheck_failed
     | .local_get (.by_index idx) => do match (←getLocals).get? idx with
       | .some ⟨_, n, _⟩ => push $ .num n
       | _ => throwEE $ .local_with_given_id_missing idx
@@ -616,6 +585,7 @@ mutual
           then set topn
           else throwEE .not_enough_stuff_on_stack
         raiseReturn
+    | _ => unreachable!
 
   partial def runFunc (f : FunctionInstance m) : EngineM m PUnit := do
     let rec go : List Operation → EngineM m PUnit

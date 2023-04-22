@@ -25,6 +25,11 @@ lean_exe wasm {
   root := "Main"
 }
 
+lean_exe yati_raw {
+  supportInterpreter := true
+  root := "Yati32Raw"
+}
+
 lean_exe Tests.Dependent
 lean_exe Tests.Leb128
 lean_exe Tests.SimpleEncodings

@@ -35,9 +35,6 @@ def testWhitespace : TestSeq :=
   test' "\r\n \t\t\n  \r\t" ++
   test' "\r\n \t(;ignore me;)\t\n  \r\t"
 
-def testFisF : TestSeq :=
-  testParse typeP "f32" (.f 32)
-
 open Wasm.Wast.Num.Num.Int
 
 def testMinusOneisI32MinusOne : TestSeq :=
@@ -63,18 +60,6 @@ instance : BEq Func where
 
 def testParamIsActuallyLocal : TestSeq :=
   testParse paramP "param $t i32" (Local.mk (.some "t") (Type'.i 32))
-
-def testSomeParamsParse : TestSeq :=
-  testParse nilParamsP "(param $t i32) (param $coocoo f32) (param i64)" $
-    [Local.mk (.some "t") (Type'.i 32),
-      Local.mk (.some "coocoo") (Type'.f 32),
-      Local.mk .none (Type'.i 64)]
-
-def testSpacesAreIgnoredWhileParsingParams : TestSeq :=
-  testParse nilParamsP "(param i32) (param $coocoo f32)  ( param i64 ) ( something_else )" $
-    [Local.mk .none (Type'.i 32),
-    Local.mk (.some "coocoo") (Type'.f 32),
-    Local.mk .none (Type'.i 64)]
 
 def testResultParses : TestSeq :=
   testParse brResultsP "( result i32)" [Type'.i 32]
@@ -159,12 +144,9 @@ def testCommentsIgnored : TestSeq :=
 def main : IO UInt32 :=
   lspecIO $
     testWhitespace ++
-    testFisF ++
     testMinusOneisI32MinusOne ++
     testAdd42IsOpAddConstStack ++
     testParamIsActuallyLocal ++
-    testSomeParamsParse ++
-    testSpacesAreIgnoredWhileParsingParams ++
     testResultParses ++
     testBlockParses ++
     testIfParses ++

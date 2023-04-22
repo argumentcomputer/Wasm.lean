@@ -21,7 +21,6 @@ open Wasm.Wast.Name
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Nat
 open Wasm.Wast.Num.Num.Int
-open Wasm.Wast.Num.Num.Float
 open Wasm.Wast.Num.Uni
 
 
@@ -95,7 +94,7 @@ def manyLispP (p : Parsec Char String Unit α)
   sepEndBy' (attempt (bracketed p)) owP
 
 def typeP : Parsec Char String Unit Type' :=
-  (single 'i' *> .i <$> bitSizeP) <|> (single 'f' *> .f <$> bitSizeP)
+  (single 'i' *> .i <$> bitSizeP)
 
 def localLabelP : Parsec Char String Unit LocalLabel :=
   .by_index <$> (hexP <|> decimalP) <|>
@@ -191,12 +190,9 @@ private def aBinopP (tChar : Char) (con : BitSize → Type') (opS : String)
 private def iBinopP : String → (Type' → Operation)
             → Parsec Char String Unit Operation := aBinopP 'i' .i
 
-private def fBinopP : String → (Type' → Operation)
-            → Parsec Char String Unit Operation := aBinopP 'f' .f
-
 private def binopP (opS : String) (binopMk : Type' → Operation)
             : Parsec Char String Unit Operation :=
-  iBinopP opS binopMk <|> fBinopP opS binopMk
+  iBinopP opS binopMk
 
 private def localOpP : Parsec Char String Unit Operation := do
   let op ← (string "local.get" *> pure Operation.local_get)
@@ -243,11 +239,8 @@ private def returnP : Parsec Char String Unit Operation :=
     iBinopP "gt_u" .gt_u <|> iBinopP "gt_s" .gt_s <|>
     iBinopP "le_u" .le_u <|> iBinopP "le_s" .le_s <|>
     iBinopP "ge_u" .ge_u <|> iBinopP "ge_s" .ge_s <|>
-    fBinopP "lt" .lt <|> fBinopP "gt" .gt <|>
-    fBinopP "le" .le <|> fBinopP "ge" .ge <|>
     iUnopP "clz" .clz <|> iUnopP "ctz" .ctz <|> iUnopP "popcnt" .popcnt <|>
     binopP "add" .add <|> binopP "sub" .sub <|> binopP "mul" .mul <|>
-    fBinopP "div" .div <|> fBinopP "max" .max <|> fBinopP "min" .min <|>
     iBinopP "div_s" .div_s <|> iBinopP "div_u" .div_u <|>
     iBinopP "rem_s" .rem_s <|> iBinopP "rem_u" .rem_u <|>
     iBinopP "and" .and <|> iBinopP "or" .or <|> iBinopP "xor" .xor <|>

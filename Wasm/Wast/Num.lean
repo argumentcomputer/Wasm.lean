@@ -37,7 +37,6 @@ namespace NumType
 We define NumType inductive as a combination of int and float constructors with BitSize. -/
 inductive NumType :=
 | int : BitSize → NumType
-| float : BitSize → NumType
 
 end NumType
 
@@ -303,126 +302,20 @@ def iP : Parsec Char String Unit ConstInt := do
 
 end Num.Int
 
-----------------------------------------------------
---------------------- FLOATS -----------------------
-----------------------------------------------------
-
-/-
-
-Reference:
-https://webassembly.github.io/spec/core/text/values.html#floating-point
-
-TODO: represent `inf`, `nan`, and `nan:0x...`
-
--/
-
-namespace Num.Float
-
-open Nat
-open Digit
-
-def exponentP (radix : Radix) : Parsec Char String Unit Int := do
-  let _l ← match radix with
-    | .ten => oneOf "eE".data
-    | .sixteen => oneOf "pP".data
-  let expsign ← signP
-  let exponent ← radDigitP .ten
-  pure $ signum expsign * exponent
-
-def floatRadixP (radix : Radix) : Parsec Char String Unit Float := do
-  let _prefix ← radPrefixP radix
-  let sign ← signP
-  let s := Float.ofInt $ signum sign
-  let an ← natP
-  let _dot ← option $ string "."
-  let obs ← option $ radNumP radix
-  let significand := s * (an.toFloat + match obs with
-    | .none => 0
-    | .some bs => List.foldr (fun b acc => Id.run $ do
-      let rf := (radix : Nat).toFloat
-      (acc / rf) + b.toFloat / rf)  0.0 bs)
-  let exponent ← option $ exponentP radix
-  pure $ match exponent, radix with
-    | .none, _ => significand
-    | .some exp, .ten => significand * 10^(Float.ofInt exp)
-    | .some exp, .sixteen => significand * 2^(Float.ofInt exp)
-
-------------------------------------------------------------------------
--- TODO: Code generation for auxiliary structures and functions?!?!?! --
-------------------------------------------------------------------------
-
-def parseFloat' (label : String) (input : String) :=
-  runParserP (floatRadixP $ hod input) label input
-
-structure Float' (x : String) where
-  label : String := ""
-  parsed : Cached (parseFloat' label) x := {}
-  doesParse : Except.isOk parsed.val := by trivial
-
-def extractFloat (n : Float' x) : Float :=
-  let doesParse := n.doesParse
-  match npBranch : n.parsed.val with
-  | .ok y => y
-  | .error _ => by
-    unfold Except.isOk at doesParse
-    rw [npBranch] at doesParse
-    contradiction
-
-instance : Coe (Float' x) Float where
-  coe n := extractFloat n
-
-/- Perhaps, construct a valid Float.
-If you're parsing from a file with name `name`, set `label := name`. -/
-def mkFloat' (x : String) (label : String := "") : Option (Float' x) :=
-  let pr : Cached (parseFloat' label) x := {}
-  if isOk : Except.isOk pr.val then
-    .some {parsed := pr, label := label}
-  else
-    .none
-
-structure ConstFloat where
-  bs : BitSize
-  val : Float
-  deriving BEq
-
-instance : ToString ConstFloat where
-  toString x := "(ConstFloat " ++ toString x.bs ++ " " ++ toString x.val ++ ")"
-
-def fP : Parsec Char String Unit ConstFloat := do
-  let bs ← string "f32.const" <|> string "f64.const"
-  ignoreP
-  let ps ← getParserState
-  let ds ← many1' notSpecialP
-  -- TODO: CHECK THAT PARSED FLOAT FITS THE N BITS
-  match mkFloat' ⟨ds⟩ with
-  | .some f =>
-    let nbs := if bs = "f32.const" then 32 else 64
-    pure $ ConstFloat.mk nbs $ extractFloat f
-  | .none => parseError $ .trivial ps.offset .none $ hints0 Char
-
-------------------------------------------------------------------------
--- TODO: Code generation for auxiliary structures and functions?!?!?! --
-------------------------------------------------------------------------
-
-end Num.Float
-
 namespace Uni
 
 open NumType
 open Num.Int
-open Num.Float
 
 inductive NumUniT where
 | i : ConstInt → NumUniT
-| f : ConstFloat → NumUniT
   deriving BEq
 
 instance : ToString NumUniT where
   toString | .i ci => s!"(NumUniT.i {ci})"
-           | .f ci => s!"(NumUniT.f {ci})"
 
 def numUniTP : Parsec Char String Unit NumUniT :=
-  .i <$> iP <|> .f <$> fP
+  .i <$> iP
 
 end Uni
 

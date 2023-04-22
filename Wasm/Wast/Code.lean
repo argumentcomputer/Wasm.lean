@@ -19,7 +19,6 @@ open Wasm.Wast.AST
 open Wasm.Wast.Parser
 open Wasm.Wast.Parser.Common
 open Wasm.Wast.Num.Num.Int
-open Wasm.Wast.Num.Num.Float
 open Wasm.Wast.Num.Uni
 
 namespace Wasm.Wast.Code
@@ -27,7 +26,6 @@ namespace Wasm.Wast.Code
 /-- A number's default value is always `0`. -/
 def defNum : Type' → NumUniT
   | .i bs => .i ⟨bs, 0⟩
-  | .f bs => .f ⟨bs, 0⟩
 
 def replaceNth (xs : List α) (idx : Nat) (x : α) :=
   xs.take idx ++ x :: xs.drop (idx+1)

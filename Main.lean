@@ -1,5 +1,6 @@
 import Wasm
 import Wasm.Engine
+import Wasm.Demo.Steps
 import Wasm.Wast.AST
 import Wasm.Wast.Identifier
 import Wasm.Wast.Num
@@ -22,7 +23,7 @@ open Wasm.Leb128
 open Num.Digit
 open Num.Nat
 open Num.Int
-open Num.Float
+-- open Num.Float
 open Wasm.Wast.Num.Uni
 
 open Megaparsec.Parsec
@@ -31,6 +32,30 @@ def sameIdentifier (_n₁ : Option $ Identifier x) (_n₂ : Option $ Identifier 
                    : Option (Identifier "kek") := mkIdentifier "kek"
 #eval sameIdentifier (mkIdentifier "lol") (mkIdentifier "lol")
 -- #eval sameIdentifier (mkIdentifier "lol") (mkIdentifier "kek")
+
+def yatima : Int := Id.run $ do
+  let i := "(module $something_special
+    (global $a i32 (i32.const 1499550000))
+    (global i32 (i32.const 17))
+
+    (func $main (export \"main\")
+      (param $x i32)
+      (param i32)
+      (result i32 i32)
+
+      (block (result i32) (i32.const 3) (i32.add (br 0) (i32.const 9)))
+      (i32.add
+        (global.get $a)
+        (i32.add (i32.const 9000) (global.get 1))
+      )
+
+    )
+  )"
+  let o_parsed_module ← parseP moduleP "" i
+  match o_parsed_module with
+  | .error _ => pure $ -1
+  | .ok parsed_module => pure $ run_wasm parsed_module
+
 
 def main : IO Unit := do
 

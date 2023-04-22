@@ -35,8 +35,6 @@ def ttoi (x : Type') : UInt8 :=
   match x with
   | .i 32 => 0x7f
   | .i 64 => 0x7e
-  | .f 32 => 0x7d
-  | .f 64 => 0x7c
 
 def lindex (bss : ByteArray) : ByteArray :=
   uLeb128 bss.data.size ++ bss
@@ -175,228 +173,146 @@ def extractEqz (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x45
   | .i 64 => 0x50
-  | _ => unreachable!
 
 def extractEq (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x46
   | .i 64 => 0x51
-  | .f 32 => 0x5b
-  | .f 64 => 0x61
 
 def extractNe (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x47
   | .i 64 => 0x52
-  | .f 32 => 0x5c
-  | .f 64 => 0x62
-
-def extractLt (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x5d
-  | .f 64 => 0x63
-  | _ => unreachable!
-
-def extractGt (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x5e
-  | .f 64 => 0x64
-  | _ => unreachable!
-
-def extractLe (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x5f
-  | .f 64 => 0x65
-  | _ => unreachable!
-
-def extractGe (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x60
-  | .f 64 => 0x66
-  | _ => unreachable!
 
 def extractLts (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x48
   | .i 64 => 0x53
-  | _ => unreachable!
 
 def extractLtu (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x49
   | .i 64 => 0x54
-  | _ => unreachable!
 
 def extractGts (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x4a
   | .i 64 => 0x55
-  | _ => unreachable!
 
 def extractGtu (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x4b
   | .i 64 => 0x56
-  | _ => unreachable!
 
 def extractLes (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x4c
   | .i 64 => 0x57
-  | _ => unreachable!
 
 def extractLeu (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x4d
   | .i 64 => 0x58
-  | _ => unreachable!
 
 def extractGes (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x4e
   | .i 64 => 0x59
-  | _ => unreachable!
 
 def extractGeu (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x4f
   | .i 64 => 0x5a
-  | _ => unreachable!
 
 def extractClz (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x67
   | .i 64 => 0x79
-  | _ => unreachable!
 
 def extractCtz (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x68
   | .i 64 => 0x7a
-  | _ => unreachable!
 
 def extractPopcnt (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x69
   | .i 64 => 0x7b
-  | _ => unreachable!
 
 def extractAdd (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6a
   | .i 64 => 0x7c
-  | .f 32 => 0x92
-  | .f 64 => 0xa0
 
 def extractSub (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6b
   | .i 64 => 0x7d
-  | .f 32 => 0x93
-  | .f 64 => 0xa1
 
 def extractMul (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6c
   | .i 64 => 0x7e
-  | .f 32 => 0x94
-  | .f 64 => 0xa2
-
-def extractDiv (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x95
-  | .f 64 => 0xa3
-  | _ => unreachable!
-
-def extractMin (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x96
-  | .f 64 => 0xa4
-  | _ => unreachable!
-
-def extractMax (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x97
-  | .f 64 => 0xa5
-  | _ => unreachable!
-
-def extractCopysign (α : Type') : ByteArray :=
-  b $ match α with
-  | .f 32 => 0x98
-  | .f 64 => 0xa6
-  | _ => unreachable!
 
 def extractDivS (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6d
   | .i 64 => 0x7f
-  | _ => unreachable!
 
 def extractDivU (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6e
   | .i 64 => 0x80
-  | _ => unreachable!
 
 def extractRemS (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x6f
   | .i 64 => 0x81
-  | _ => unreachable!
 
 def extractRemU (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x70
   | .i 64 => 0x82
-  | _ => unreachable!
 
 def extractAnd (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x71
   | .i 64 => 0x83
-  | _ => unreachable!
 
 def extractOr (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x72
   | .i 64 => 0x84
-  | _ => unreachable!
 
 def extractXor (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x73
   | .i 64 => 0x85
-  | _ => unreachable!
 
 def extractShl (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x74
   | .i 64 => 0x86
-  | _ => unreachable!
 
 def extractShrS (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x75
   | .i 64 => 0x87
-  | _ => unreachable!
 
 def extractShrU (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x76
   | .i 64 => 0x88
-  | _ => unreachable!
 
 def extractRotl (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x77
   | .i 64 => 0x89
-  | _ => unreachable!
 
 def extractRotr (α : Type') : ByteArray :=
   b $ match α with
   | .i 32 => 0x78
   | .i 64 => 0x8a
-  | _ => unreachable!
 
 def extractLocalLabel : LocalLabel → ExtractM ByteArray
   | .by_index idx => pure $ sLeb128 idx
@@ -439,7 +355,6 @@ partial def extractOp (op : Operation) : ExtractM ByteArray := do
   | .drop => pure $ b 0x1a
   | .const (.i 32) (.i ci) => pure $ b 0x41 ++ sLeb128 ci.val
   | .const (.i 64) (.i ci) => pure $ b 0x42 ++ sLeb128 ci.val
-  | .const _ _ => sorry -- TODO: float binary encoding
   | .select .none => pure $ b 0x1b
   | .select (.some t) => pure $ b 0x1c ++ mkVec [t] (b ∘ ttoi)
   | .eqz t => pure $ extractEqz t
@@ -453,19 +368,12 @@ partial def extractOp (op : Operation) : ExtractM ByteArray := do
   | .le_s t => pure $ extractLes t
   | .ge_u t => pure $ extractGeu t
   | .ge_s t => pure $ extractGes t
-  | .lt t => pure $ extractLt t
-  | .gt t => pure $ extractGt t
-  | .le t => pure $ extractLe t
-  | .ge t => pure $ extractGe t
   | .clz    t => pure $ extractClz t
   | .ctz    t => pure $ extractCtz t
   | .popcnt t => pure $ extractPopcnt t
   | .add t => pure $ extractAdd t
   | .sub t => pure $ extractSub t
   | .mul t => pure $ extractMul t
-  | .div t => pure $ extractDiv t
-  | .min t => pure $ extractMin t
-  | .max t => pure $ extractMax t
   | .div_s t => pure $ extractDivS t
   | .div_u t => pure $ extractDivU t
   | .rem_s t => pure $ extractRemS t
@@ -506,6 +414,7 @@ partial def extractOp (op : Operation) : ExtractM ByteArray := do
     b 0x0e ++ mkVecM bls extractBlockLabelId ++ extractBlockLabelId bld
   | .call fi => b 0x10 ++ extractFuncId fi
   | .return => pure $ b 0x0f
+  | _ => unreachable!
 
 def extractOps (ops : List Operation) : ExtractM ByteArray :=
   flatten <$> ops.mapM extractOp
