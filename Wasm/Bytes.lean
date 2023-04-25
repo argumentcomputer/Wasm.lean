@@ -432,8 +432,11 @@ private def poorMansDeduplicate (xs : List α) [BEq α] : List α :=
 def typeHeader := b 0x01
 
 def extractTypes (m : Module) : FTypes :=
-  poorMansDeduplicate $
-    m.types ++ (m.func.map collectFuncAllTypes |> .join)
+  let stripParamNames (ft : FunctionType) : FunctionType :=
+    ⟨ft.tid, ft.ins.map stripParamName, ft.outs⟩
+  let funcTypes := m.func.map collectFuncAllTypes |> .join
+    |> .map stripParamNames
+  poorMansDeduplicate $ m.types ++ funcTypes
 
 /- Function section -/
 
@@ -444,7 +447,8 @@ def extractFuncIds (m : Module) (types : FTypes) : ByteArray :=
       | .inl (.by_name n) => match types.findIdx? (·.tid = .some n) with
         | .some idx => idx
         | .none => sorry
-      | .inr (params, results) => types.indexOf ⟨.none, params, results⟩
+      | .inr (params, results) =>
+        types.indexOf ⟨.none, params.map stripParamName, results⟩
     let funcIds := mkVec m.func (uLeb128 ∘ getIndex)
     b 0x03 ++ lindex funcIds
 

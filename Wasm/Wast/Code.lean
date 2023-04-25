@@ -34,3 +34,6 @@ def fetchFType (fts : List FunctionType)
               : FunctionType.FTypeId → Option FunctionType
   | .by_index idx => fts.get? idx
   | .by_name n => fts.find? (·.tid = .some n)
+
+open AST.Local in
+def stripParamName : Local → Local | p => {p with name := .none}
