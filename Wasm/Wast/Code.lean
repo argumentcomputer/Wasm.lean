@@ -31,3 +31,8 @@ def defNum : Type' → NumUniT
 
 def replaceNth (xs : List α) (idx : Nat) (x : α) :=
   xs.take idx ++ x :: xs.drop (idx+1)
+
+def fetchFType (fts : List FunctionType)
+              : FunctionType.FTypeId → Option FunctionType
+  | .by_index idx => fts.get? idx
+  | .by_name n => fts.find? (·.tid = .some n)

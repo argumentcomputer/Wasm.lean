@@ -37,7 +37,7 @@ def run_main (x : String) :=
   run { cmd := "./wasm-sandbox", args := #["run_main", x] } |>.toBaseIO
 
 def runModule (m : Module) : Except EngineErrors Int := do
-  let store := mkStore m
+  let store ← mkStore m
   let s₀ := Stack.mk []
   match exportedFidByName store "main" with
   | .none => .error $ .function_not_found (.by_name "main")

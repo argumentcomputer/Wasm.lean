@@ -490,6 +490,71 @@ def modsNumeric :=
 
   ]
 
+def modsType :=
+[
+  "(module
+      (type (func))
+      (type $t (func))
+  )"
+, "(module
+      (type (func (param i32)))
+      (type (func (param $x i32)))
+      (type (func (result i32)))
+      (type (func (param i32) (result i32)))
+      (type (func (param $x i32) (result i32)))
+  )"
+, "(module
+      (type (func (param f32 f64)))
+      (type (func (result i64 f32)))
+      (type (func (param i32 i64) (result f32 f64)))
+  )"
+, "(module
+      (type (func (param f32) (param f64)))
+      (type (func (param $x f32) (param f64)))
+      (type (func (param f32) (param $y f64)))
+      (type (func (param $x f32) (param $y f64)))
+      (type (func (result i64) (result f32)))
+      (type (func (param i32) (param i64) (result f32) (result f64)))
+      (type (func (param $x i32) (param $y i64) (result f32) (result f64)))
+  )"
+, "(module
+      (type (func (param f32 f64) (param $x i32) (param f64 i32 i32)))
+      (type (func (result i64 i64 f32) (result f32 i32)))
+      (type
+        (func (param i32 i32) (param i64 i32) (result f32 f64) (result f64 i32))
+      )
+  )"
+, "(module
+      (type $t (func (param $x i32)))
+      (func (type $t) (local.get 0) (drop))
+  )"
+, "(module
+      (type $sig-1 (func))
+      (type $sig-2 (func (result i32)))
+      (type $sig-3 (func (param $x i32)))
+      (type $sig-4 (func (param i32 f64 i32) (result i32)))
+
+      (func (export \"type-use-1\") (type $sig-1))
+      (func (export \"type-use-2\") (type $sig-2) (i32.const 0))
+      (func (export \"type-use-3\") (type $sig-3))
+      (func (export \"type-use-4\") (type $sig-4) (i32.const 0))
+  )"
+, "(module
+      (type $sig-1 (func))
+      (type $sig-2 (func (result i32)))
+      (type $sig-3 (func (param $x i32)))
+      (type $sig-4 (func (param i32 f64 i32) (result i32)))
+
+      (func (type $sig-2) (result i32) (i32.const 0))
+      (func (type $sig-3) (param i32))
+      (func (type $sig-4) (param i32) (param f64 i32) (result i32) (i32.const 0))
+  )"
+, "(module
+      (func (type $forward))
+      (type $forward (func))
+  )"
+]
+
 def meaningfulPrograms :=
 [
   "(module
@@ -590,6 +655,6 @@ def meaningfulPrograms :=
 
 def main : IO UInt32 := do
   match (← doesWasmSandboxRun?) with
-  | .ok _ => withWasmSandboxRun moduleTestSeq [ uWasmMods, modsControl, modsLocal, modsGlobal, modsNumeric ]
+  | .ok _ => withWasmSandboxRun moduleTestSeq [ uWasmMods, modsControl, modsLocal, modsGlobal, modsNumeric, modsType ]
   -- TODO: test meaningful programs
   | _ => withWasmSandboxFail
